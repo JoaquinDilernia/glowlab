@@ -11427,7 +11427,6 @@ app.get("/api/style-widget.js", async (req, res) => {
         // Asegurar que el contenedor tenga position relative
         imageContainer.style.position = 'relative';
         imageContainer.style.display = 'block';
-        imageContainer.style.overflow = 'hidden';
         
         // Buscar todas las imágenes dentro del contenedor
         const images = imageContainer.querySelectorAll('img');
@@ -11446,6 +11445,10 @@ app.get("/api/style-widget.js", async (req, res) => {
             imgVista2.src = imgVista2.dataset.src;
           }
           
+          // Obtener dimensiones de la primera imagen para aplicar a la segunda
+          const img1Width = imgVista1.width || imgVista1.naturalWidth;
+          const img1Height = imgVista1.height || imgVista1.naturalHeight;
+          
           // Configurar imágenes para superposición correcta
           imgVista1.style.display = 'block';
           imgVista1.style.width = '100%';
@@ -11458,25 +11461,24 @@ app.get("/api/style-widget.js", async (req, res) => {
           imgVista2.style.top = '0';
           imgVista2.style.left = '0';
           imgVista2.style.width = '100%';
-          imgVista2.style.height = '100%';
-          imgVista2.style.objectFit = 'cover';
+          imgVista2.style.height = 'auto';
+          imgVista2.style.objectFit = 'contain';
           imgVista2.style.transition = 'opacity 0.3s ease';
+          imgVista2.style.pointerEvents = 'none';
           
           if (isOn) {
             // Mostrar vista 2, ocultar vista 1
             imgVista1.style.opacity = '0';
-            imgVista1.style.visibility = 'hidden';
             imgVista2.style.opacity = '1';
-            imgVista2.style.visibility = 'visible';
+            imgVista2.style.pointerEvents = 'auto';
             imgVista2.style.zIndex = '2';
             console.log('PromoNube: Vista 2 ACTIVADA');
           } else {
             // Mostrar vista 1, ocultar vista 2
             imgVista1.style.opacity = '1';
-            imgVista1.style.visibility = 'visible';
             imgVista2.style.opacity = '0';
-            imgVista2.style.visibility = 'hidden';
-            imgVista2.style.zIndex = '1';
+            imgVista2.style.pointerEvents = 'none';
+            imgVista2.style.zIndex = '0';
             console.log('PromoNube: Vista 1 ACTIVADA');
           }
         }
