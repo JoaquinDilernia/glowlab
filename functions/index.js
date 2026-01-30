@@ -11424,6 +11424,11 @@ app.get("/api/style-widget.js", async (req, res) => {
         const imageContainer = item.querySelector('a[href*="/productos/"], .item-link, .product-image');
         if (!imageContainer) return;
         
+        // Asegurar que el contenedor tenga position relative
+        imageContainer.style.position = 'relative';
+        imageContainer.style.display = 'block';
+        imageContainer.style.overflow = 'hidden';
+        
         // Buscar todas las imágenes dentro del contenedor
         const images = imageContainer.querySelectorAll('img');
         console.log('PromoNube: Imágenes en producto:', images.length);
@@ -11441,16 +11446,21 @@ app.get("/api/style-widget.js", async (req, res) => {
             imgVista2.src = imgVista2.dataset.src;
           }
           
-          // Forzar display block para que se muestren
+          // Configurar imágenes para superposición correcta
           imgVista1.style.display = 'block';
-          imgVista2.style.display = 'block';
+          imgVista1.style.width = '100%';
+          imgVista1.style.height = 'auto';
           imgVista1.style.position = 'relative';
+          imgVista1.style.transition = 'opacity 0.3s ease';
+          
+          imgVista2.style.display = 'block';
           imgVista2.style.position = 'absolute';
           imgVista2.style.top = '0';
           imgVista2.style.left = '0';
           imgVista2.style.width = '100%';
           imgVista2.style.height = '100%';
           imgVista2.style.objectFit = 'cover';
+          imgVista2.style.transition = 'opacity 0.3s ease';
           
           if (isOn) {
             // Mostrar vista 2, ocultar vista 1
