@@ -11452,7 +11452,6 @@ app.get("/api/style-widget.js", async (req, res) => {
           imgVista1.style.height = 'auto';
           imgVista1.style.position = 'relative';
           imgVista1.style.transition = 'opacity 0.3s ease';
-          imgVista1.style.zIndex = '1';
           
           imgVista2.style.display = 'block';
           imgVista2.style.position = 'absolute';
@@ -11462,19 +11461,22 @@ app.get("/api/style-widget.js", async (req, res) => {
           imgVista2.style.height = '100%';
           imgVista2.style.objectFit = 'cover';
           imgVista2.style.transition = 'opacity 0.3s ease';
-          imgVista2.style.zIndex = '0';
           
           if (isOn) {
             // Mostrar vista 2, ocultar vista 1
             imgVista1.style.opacity = '0';
+            imgVista1.style.visibility = 'hidden';
             imgVista2.style.opacity = '1';
+            imgVista2.style.visibility = 'visible';
             imgVista2.style.zIndex = '2';
             console.log('PromoNube: Vista 2 ACTIVADA');
           } else {
             // Mostrar vista 1, ocultar vista 2
             imgVista1.style.opacity = '1';
+            imgVista1.style.visibility = 'visible';
             imgVista2.style.opacity = '0';
-            imgVista2.style.zIndex = '0';
+            imgVista2.style.visibility = 'hidden';
+            imgVista2.style.zIndex = '1';
             console.log('PromoNube: Vista 1 ACTIVADA');
           }
         }
