@@ -1,0 +1,361 @@
+/* GIFT CARDS MAIN - DISEÑO LIMPIO COMO GIFTY */
+
+.gift-cards-main {
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+/* Header Simple */
+.main-header {
+  background: white;
+  padding: 24px 32px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.main-header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.btn-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-back:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.btn-create-primary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #7c7cff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-create-primary:hover {
+  background: #6b6bef;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(124, 124, 255, 0.3);
+}
+
+/* Navegación Simple - 3 Tabs */
+.simple-nav {
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0 32px;
+  display: flex;
+  gap: 8px;
+}
+
+.nav-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.nav-tab:hover {
+  color: #475569;
+  background: #f8fafc;
+}
+
+.nav-tab.active {
+  color: #7c7cff;
+  border-bottom-color: #7c7cff;
+  font-weight: 600;
+}
+
+/* Contenido Principal */
+.main-content {
+  padding: 32px;
+}
+
+/* Empty States Limpios */
+.empty-state-clean {
+  background: white;
+  border-radius: 16px;
+  padding: 80px 40px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.empty-state-clean h3 {
+  margin: 16px 0 8px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.empty-state-clean p {
+  margin: 0 0 24px 0;
+  color: #64748b;
+  font-size: 15px;
+}
+
+.btn-create-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #7c7cff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-create-empty:hover {
+  background: #6b6bef;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(124, 124, 255, 0.3);
+}
+
+/* Tablas Limpias */
+.products-table,
+.coupons-table {
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.products-table table,
+.coupons-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.products-table thead,
+.coupons-table thead {
+  background: #f8fafc;
+}
+
+.products-table th,
+.coupons-table th {
+  padding: 16px 20px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.products-table td,
+.coupons-table td {
+  padding: 16px 20px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 14px;
+  color: #475569;
+}
+
+.products-table tbody tr:hover,
+.coupons-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.product-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.text-bold {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #7c7cff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-link:hover {
+  color: #6b6bef;
+  text-decoration: underline;
+}
+
+.coupon-code {
+  display: inline-block;
+  padding: 6px 12px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* Badges */
+.badge-active {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-used {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #e2e8f0;
+  color: #475569;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-inactive {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Grid de Templates Limpio */
+.templates-grid-clean {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 24px;
+}
+
+.template-card-clean {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s;
+}
+
+.template-card-clean:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.template-preview-clean {
+  width: 100%;
+  height: 160px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+.badge-default-clean {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: white;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.4);
+}
+
+.template-info-clean {
+  padding: 16px;
+}
+
+.template-info-clean h4 {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.category-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  background: #f1f5f9;
+  color: #64748b;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Loading */
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: #64748b;
+  font-size: 15px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .main-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  
+  .simple-nav {
+    padding: 0 16px;
+    overflow-x: auto;
+  }
+  
+  .main-content {
+    padding: 16px;
+  }
+  
+  .products-table,
+  .coupons-table {
+    overflow-x: auto;
+  }
+  
+  .templates-grid-clean {
+    grid-template-columns: 1fr;
+  }
+}

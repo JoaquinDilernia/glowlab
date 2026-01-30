@@ -1,0 +1,28 @@
+{
+  "name": "promonube-functions",
+  "version": "1.0.0",
+  "description": "Firebase Functions for PromoNube",
+  "main": "index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
+    "busboy": "^1.6.0",
+    "canvas": "^3.2.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^6.2.0",
+    "mercadopago": "^2.11.0",
+    "multer": "^2.0.2"
+  }
+}

@@ -1,0 +1,212 @@
+.chart-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.section-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.chart-container {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 200px;
+  padding: 20px 0;
+  gap: 4px;
+}
+
+.chart-bar-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-bar-container {
+  width: 100%;
+  height: 160px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.chart-bar {
+  width: 100%;
+  max-width: 24px;
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  transition: all 0.3s ease;
+  min-height: 4px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4px;
+  cursor: pointer;
+}
+
+.chart-bar:hover {
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  transform: scaleY(1.05);
+}
+
+.chart-bar-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: white;
+}
+
+.chart-bar-date {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.usage-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.table-responsive {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.usage-table thead {
+  background: #f9fafb;
+}
+
+.usage-table th {
+  text-align: left;
+  padding: 12px 16px;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 2px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.usage-table th svg {
+  display: inline;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.usage-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #4b5563;
+}
+
+.usage-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.email-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-number {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: #3b82f6;
+}
+
+.discount-cell {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.total-cell {
+  font-weight: 600;
+  color: #059669;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-paid {
+  background: #dcfce7;
+  color: #065f46;
+}
+
+.status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-cancelled,
+.status-refunded {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.stat-subtitle {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 4px 0 0 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .chart-container {
+    height: 150px;
+    gap: 2px;
+  }
+
+  .chart-bar-container {
+    height: 120px;
+  }
+
+  .chart-bar {
+    max-width: 16px;
+  }
+
+  .chart-bar-label {
+    font-size: 9px;
+  }
+
+  .chart-bar-date {
+    font-size: 10px;
+  }
+
+  .usage-table {
+    font-size: 12px;
+  }
+
+  .usage-table th,
+  .usage-table td {
+    padding: 8px 12px;
+  }
+}

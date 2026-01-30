@@ -1,0 +1,368 @@
+.integrations-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.integrations-loading {
+  text-align: center;
+  padding: 100px 20px;
+  font-size: 18px;
+  color: #666;
+}
+
+.integrations-header {
+  margin-bottom: 40px;
+}
+
+.integrations-header h1 {
+  font-size: 36px;
+  margin-bottom: 12px;
+  color: #1a1a1a;
+}
+
+.integrations-header .subtitle {
+  font-size: 16px;
+  color: #666;
+  max-width: 800px;
+  line-height: 1.6;
+}
+
+.integrations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  gap: 30px;
+  margin-bottom: 40px;
+}
+
+@media (max-width: 768px) {
+  .integrations-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Integration Card */
+.integration-card {
+  background: white;
+  border-radius: 16px;
+  padding: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.integration-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.integration-card.coming-soon {
+  opacity: 0.7;
+  background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+}
+
+/* Integration Header */
+.integration-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.integration-logo {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  background: linear-gradient(135deg, #7C7CFF 0%, #6969FF 100%);
+}
+
+.perfit-logo {
+  background: linear-gradient(135deg, #6366f1 0%, #7C7CFF 100%);
+}
+
+.mailchimp-logo {
+  background: linear-gradient(135deg, #ffe01b 0%, #ffc01b 100%);
+}
+
+.integration-header > div:nth-child(2) {
+  flex: 1;
+}
+
+.integration-header h2 {
+  font-size: 24px;
+  margin: 0 0 4px 0;
+  color: #1a1a1a;
+}
+
+/* Status Badge */
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.status-badge.configured {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-badge.not-configured {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-badge.coming-soon-badge {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 52px;
+  height: 28px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .3s;
+  border-radius: 28px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background: linear-gradient(135deg, #7C7CFF 0%, #6969FF 100%);
+}
+
+input:checked + .slider:before {
+  transform: translateX(24px);
+}
+
+/* Integration Description */
+.integration-description {
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 24px;
+  font-size: 15px;
+}
+
+/* Form */
+.integration-form {
+  margin-bottom: 24px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #1a1a1a;
+  font-size: 14px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 15px;
+  transition: all 0.2s;
+  box-sizing: border-box;
+  color: #1f2937;
+  background-color: #ffffff;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #7C7CFF;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  color: #1f2937;
+}
+
+.form-group small {
+  display: block;
+  margin-top: 6px;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+/* Actions */
+.integration-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.btn-save,
+.btn-test {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-save {
+  background: linear-gradient(135deg, #7C7CFF 0%, #6969FF 100%);
+  color: white;
+  flex: 1;
+}
+
+.btn-save:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-test {
+  background: white;
+  color: #7C7CFF;
+  border: 2px solid #7C7CFF;
+}
+
+.btn-test:hover:not(:disabled) {
+  background: #f3f4ff;
+}
+
+.btn-save:disabled,
+.btn-test:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Benefits */
+.integration-benefits {
+  background: #f9fafb;
+  padding: 20px;
+  border-radius: 12px;
+  margin-top: 20px;
+}
+
+.integration-benefits h4 {
+  margin: 0 0 12px 0;
+  color: #1a1a1a;
+  font-size: 16px;
+}
+
+.integration-benefits ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.integration-benefits li {
+  color: #666;
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Coming Soon */
+.coming-soon-info {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.coming-soon-info p {
+  color: #666;
+  margin-bottom: 20px;
+  font-size: 15px;
+}
+
+.btn-notify {
+  padding: 12px 32px;
+  background: #e5e7eb;
+  color: #9ca3af;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: not-allowed;
+}
+
+/* Footer */
+.integrations-footer {
+  margin-top: 60px;
+}
+
+.help-box {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  padding: 30px;
+  border-radius: 16px;
+  border-left: 4px solid #0ea5e9;
+}
+
+.help-box h3 {
+  margin: 0 0 12px 0;
+  color: #1a1a1a;
+  font-size: 20px;
+}
+
+.help-box p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.6;
+  font-size: 15px;
+}
+
+.help-box a {
+  color: #0ea5e9;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.help-box a:hover {
+  text-decoration: underline;
+}
+
+/* Back Button */
+.back-btn {
+  background: white;
+  border: 2px solid #e5e7eb;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 20px;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}

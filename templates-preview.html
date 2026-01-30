@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Templates Predeterminados - PromoNube Gift Cards</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: white;
+      text-align: center;
+      margin-bottom: 10px;
+      font-size: 2.5rem;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+
+    .subtitle {
+      text-align: center;
+      color: rgba(255,255,255,0.9);
+      margin-bottom: 50px;
+      font-size: 1.1rem;
+    }
+
+    .templates-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+      gap: 30px;
+      margin-bottom: 50px;
+    }
+
+    .template-card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .template-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 50px rgba(0,0,0,0.3);
+    }
+
+    .template-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .template-name {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .default-badge {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .template-preview {
+      width: 100%;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      margin-bottom: 15px;
+      position: relative;
+      aspect-ratio: 1200/628;
+    }
+
+    .template-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .sample-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-weight: bold;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      white-space: nowrap;
+    }
+
+    .template-specs {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .spec {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.95rem;
+      color: #555;
+    }
+
+    .spec-label {
+      font-weight: 600;
+      color: #333;
+    }
+
+    .color-preview {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      border: 2px solid #ddd;
+    }
+
+    .info-section {
+      background: white;
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      margin-bottom: 30px;
+    }
+
+    .info-section h2 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 1.8rem;
+    }
+
+    .info-section p {
+      color: #555;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+
+    .info-section ul {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .info-section li {
+      color: #555;
+      line-height: 1.8;
+      padding-left: 30px;
+      position: relative;
+    }
+
+    .info-section li:before {
+      content: "✓";
+      position: absolute;
+      left: 8px;
+      color: #667eea;
+      font-weight: bold;
+    }
+
+    .footer {
+      text-align: center;
+      color: rgba(255,255,255,0.8);
+      margin-top: 40px;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 Gift Cards Templates Predeterminados</h1>
+    <p class="subtitle">4 diseños profesionales instalados automáticamente al instalar PromoNube</p>
+
+    <div class="info-section">
+      <h2>📖 ¿Qué son los Templates Predeterminados?</h2>
+      <p>Cuando una tienda instala PromoNube por primera vez, el sistema crea automáticamente 4 diseños profesionales listos para usar. Estos templates:</p>
+      <ul>
+        <li>Se instalan sin intervención del usuario</li>
+        <li>Cubren diferentes estilos visuales (elegante, premium, suave, minimalista)</li>
+        <li>Están optimizados para diferentes tipos de marcas</li>
+        <li>Incluyen configuración de texto predefinida (color, tamaño, posición)</li>
+        <li>El primero se marca automáticamente como "default"</li>
+      </ul>
+    </div>
+
+    <div class="templates-grid">
+      <!-- Template 1: Elegante Morado -->
+      <div class="template-card">
+        <div class="template-header">
+          <h3 class="template-name">Elegante Morado</h3>
+          <span class="default-badge">✨ DEFAULT</span>
+        </div>
+        <div class="template-preview">
+          <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJncmFkMSIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6IzY2N2VlYTtzdG9wLW9wYWNpdHk6MSIgLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiM3NjRiYTI7c3RvcC1vcGFjaXR5OjEiIC8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjI4IiBmaWxsPSJ1cmwoI2dyYWQxKSIvPjxjaXJjbGUgY3g9IjIwMCIgY3k9IjEwMCIgcj0iMTAwIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMSkiLz48Y2lyY2xlIGN4PSIxMDAwIiBjeT0iNTAwIiByPSIxNTAiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4xKSIvPjwvc3ZnPg==" alt="Elegante Morado">
+          <div class="sample-text" style="color: #FFFFFF; font-size: 56px;">$100.000</div>
+        </div>
+        <div class="template-specs">
+          <div class="spec">
+            <span class="spec-label">Color texto:</span>
+            <div class="color-preview" style="background: #FFFFFF;"></div>
+            <span>#FFFFFF</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Tamaño:</span>
+            <span>56px</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Posición:</span>
+            <span>Centro</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Estilo:</span>
+            <span>Gradiente morado/violeta</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Template 2: Dorado Premium -->
+      <div class="template-card">
+        <div class="template-header">
+          <h3 class="template-name">Dorado Premium</h3>
+        </div>
+        <div class="template-preview">
+          <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJncmFkMiIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6IzFFMTkxQjtzdG9wLW9wYWNpdHk6MSIgLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiMzNzM3Mzc7c3RvcC1vcGFjaXR5OjEiIC8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjI4IiBmaWxsPSJ1cmwoI2dyYWQyKSIvPjxyZWN0IHg9IjEwMCIgeT0iNTAiIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MjgiIGZpbGw9InJnYmEoMjU1LDIxNSwwLDAuMykiLz48cmVjdCB4PSIxMDUwIiB5PSI1MCIgd2lkdGg9IjUwIiBoZWlnaHQ9IjUyOCIgZmlsbD0icmdiYSgyNTUsMjE1LDAsMC4zKSIvPjwvc3ZnPg==" alt="Dorado Premium">
+          <div class="sample-text" style="color: #FFD700; font-size: 52px;">$100.000</div>
+        </div>
+        <div class="template-specs">
+          <div class="spec">
+            <span class="spec-label">Color texto:</span>
+            <div class="color-preview" style="background: #FFD700;"></div>
+            <span>#FFD700</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Tamaño:</span>
+            <span>52px</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Posición:</span>
+            <span>Centro</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Estilo:</span>
+            <span>Negro con barras doradas</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Template 3: Rosado Suave -->
+      <div class="template-card">
+        <div class="template-header">
+          <h3 class="template-name">Rosado Suave</h3>
+        </div>
+        <div class="template-preview">
+          <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJncmFkMyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6I2ZjZTdmMztzdG9wLW9wYWNpdHk6MSIgLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiNmZGJmZDI7c3RvcC1vcGFjaXR5OjEiIC8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjI4IiBmaWxsPSJ1cmwoI2dyYWQzKSIvPjxjaXJjbGUgY3g9IjMwMCIgY3k9IjMwMCIgcj0iMjAwIiBmaWxsPSJyZ2JhKDI1NSwxOTIsMjAzLDAuNCkiLz48Y2lyY2xlIGN4PSI5MDAiIGN5PSIyMDAiIHI9IjE1MCIgZmlsbD0icmdiYSgyNTUsMTkyLDIwMywwLjQpIi8+PC9zdmc+" alt="Rosado Suave">
+          <div class="sample-text" style="color: #EC4899; font-size: 48px;">$100.000</div>
+        </div>
+        <div class="template-specs">
+          <div class="spec">
+            <span class="spec-label">Color texto:</span>
+            <div class="color-preview" style="background: #EC4899;"></div>
+            <span>#EC4899</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Tamaño:</span>
+            <span>48px</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Posición:</span>
+            <span>Centro</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Estilo:</span>
+            <span>Gradiente rosa pastel</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Template 4: Azul Minimalista -->
+      <div class="template-card">
+        <div class="template-header">
+          <h3 class="template-name">Azul Minimalista</h3>
+        </div>
+        <div class="template-preview">
+          <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJncmFkNCIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6IzBmMTcyYTtzdG9wLW9wYWNpdHk6MSIgLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiMxZTQwYWY7c3RvcC1vcGFjaXR5OjEiIC8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjI4IiBmaWxsPSJ1cmwoI2dyYWQ0KSIvPjxsaW5lIHgxPSIwIiB5MT0iMzE0IiB4Mj0iMTIwMCIgeTI9IjMxNCIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMikiIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPg==" alt="Azul Minimalista">
+          <div class="sample-text" style="color: #60A5FA; font-size: 50px;">$100.000</div>
+        </div>
+        <div class="template-specs">
+          <div class="spec">
+            <span class="spec-label">Color texto:</span>
+            <div class="color-preview" style="background: #60A5FA;"></div>
+            <span>#60A5FA</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Tamaño:</span>
+            <span>50px</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Posición:</span>
+            <span>Centro</span>
+          </div>
+          <div class="spec">
+            <span class="spec-label">Estilo:</span>
+            <span>Azul oscuro minimalista</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-section">
+      <h2>🔧 Implementación Técnica</h2>
+      <p><strong>Función:</strong> <code>installDefaultTemplates(storeId)</code></p>
+      <p><strong>Cuándo se ejecuta:</strong> Automáticamente en el auth callback después de registrar la tienda</p>
+      <p><strong>Almacenamiento:</strong> SVG en formato base64 dentro del data URL</p>
+      <p><strong>Colección Firestore:</strong> <code>giftcard_templates</code></p>
+      <p><strong>Campo especial:</strong> <code>isSystemTemplate: true</code> para diferenciarlos de templates custom</p>
+    </div>
+
+    <div class="footer">
+      <p>PromoNube - Gift Cards con Templates Profesionales</p>
+      <p>Deploy completado: ✅ Función activa en Firebase</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,7 @@
+Código,Tipo,Valor,Máx Usos,Válido Desde,Válido Hasta,Descripción
+VERANO2024,Porcentaje,20,100,,,Descuento de verano 20%
+INVIERNO50,Monto Fijo,5000,50,,,Descuento fijo de $5000
+NAVIDAD25,Porcentaje,25,200,,,Promo navideña 25% OFF
+VIPCLIENTE,Porcentaje,30,10,,,Descuento VIP exclusivo
+NUEVO2024,Monto Fijo,3000,500,,,Bienvenida para nuevos clientes
+FLASH15,Porcentaje,15,Ilimitado,,,Flash sale 15% de descuento

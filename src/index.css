@@ -1,0 +1,109 @@
+:root {
+  /* GlowLab Brand Colors */
+  --glow-accent: #7C7CFF;
+  --glow-accent-hover: #6969FF;
+  --glow-accent-light: #9E9EFF;
+  --glow-dark: #242424;
+  --glow-light: #ffffff;
+  
+  font-family: 'Roboto', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: var(--glow-accent);
+  text-decoration: inherit;
+}
+a:hover {
+  color: var(--glow-accent-hover);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: 'Roboto', sans-serif;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: var(--glow-accent);
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: var(--glow-accent-hover);
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+
+/* Import Roboto font */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
+/* Global form styles - Ensure good contrast */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="url"],
+input[type="date"],
+input[type="datetime-local"],
+textarea,
+select {
+  color: #1f2937;
+  background-color: #ffffff;
+}
+
+/* Dark theme forms (login, register) - These OVERRIDE the defaults */
+.login-container input,
+.register-container input {
+  color: #ffffff !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Ensure labels are readable */
+label {
+  color: #1f2937;
+}
+
+/* Dark theme labels */
+.login-container label,
+.register-container label {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
