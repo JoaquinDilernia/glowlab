@@ -11424,9 +11424,9 @@ app.get("/api/style-widget.js", async (req, res) => {
         const imageContainer = item.querySelector('a[href*="/productos/"], .item-link, .product-image');
         if (!imageContainer) return;
         
-        // Asegurar que el contenedor tenga position relative
+        // Configurar contenedor con grid para superponer imágenes
+        imageContainer.style.display = 'grid';
         imageContainer.style.position = 'relative';
-        imageContainer.style.display = 'block';
         
         // Buscar todas las imágenes dentro del contenedor
         const images = imageContainer.querySelectorAll('img');
@@ -11445,40 +11445,26 @@ app.get("/api/style-widget.js", async (req, res) => {
             imgVista2.src = imgVista2.dataset.src;
           }
           
-          // Obtener dimensiones de la primera imagen para aplicar a la segunda
-          const img1Width = imgVista1.width || imgVista1.naturalWidth;
-          const img1Height = imgVista1.height || imgVista1.naturalHeight;
-          
-          // Configurar imágenes para superposición correcta
-          imgVista1.style.display = 'block';
+          // Ambas imágenes en la misma celda del grid
+          imgVista1.style.gridArea = '1 / 1';
           imgVista1.style.width = '100%';
           imgVista1.style.height = 'auto';
-          imgVista1.style.position = 'relative';
           imgVista1.style.transition = 'opacity 0.3s ease';
           
-          imgVista2.style.display = 'block';
-          imgVista2.style.position = 'absolute';
-          imgVista2.style.top = '0';
-          imgVista2.style.left = '0';
+          imgVista2.style.gridArea = '1 / 1';
           imgVista2.style.width = '100%';
           imgVista2.style.height = 'auto';
-          imgVista2.style.objectFit = 'contain';
           imgVista2.style.transition = 'opacity 0.3s ease';
-          imgVista2.style.pointerEvents = 'none';
           
           if (isOn) {
             // Mostrar vista 2, ocultar vista 1
             imgVista1.style.opacity = '0';
             imgVista2.style.opacity = '1';
-            imgVista2.style.pointerEvents = 'auto';
-            imgVista2.style.zIndex = '2';
             console.log('PromoNube: Vista 2 ACTIVADA');
           } else {
             // Mostrar vista 1, ocultar vista 2
             imgVista1.style.opacity = '1';
             imgVista2.style.opacity = '0';
-            imgVista2.style.pointerEvents = 'none';
-            imgVista2.style.zIndex = '0';
             console.log('PromoNube: Vista 1 ACTIVADA');
           }
         }
