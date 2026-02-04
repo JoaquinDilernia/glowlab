@@ -36,6 +36,8 @@ function SpinWheelConfig() {
     specificUrls: '', // URLs separadas por coma
     showOnce: true,
     maxSpinsPerEmail: 1, // Máximo de giros por email (validación backend)
+    couponExpirationMinutes: 15, // Tiempo de validez del cupón en minutos
+    requireEmail: true, // Si el email es obligatorio o no
     
     // Segmentos/Premios
     segments: [
@@ -313,6 +315,18 @@ function SpinWheelConfig() {
               />
             </div>
 
+            <div className="form-group checkbox">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={config.requireEmail !== false}
+                  onChange={(e) => setConfig({ ...config, requireEmail: e.target.checked })}
+                />
+                <span>Solicitar email obligatoriamente</span>
+              </label>
+              <small className="field-hint">Si lo desactivás, los usuarios podrán girar sin ingresar email (no se sincronizará con integraciones)</small>
+            </div>
+
             <div className="form-group">
               <label>Texto de Términos</label>
               <input
@@ -524,6 +538,28 @@ function SpinWheelConfig() {
                 max="10"
               />
               <small className="field-hint">Cuántas veces puede jugar un usuario con el mismo email (validación en servidor)</small>
+            </div>
+
+            <div className="form-group">
+              <label>⏰ Tiempo de Validez del Cupón</label>
+              <select
+                value={config.couponExpirationMinutes || 15}
+                onChange={(e) => setConfig({ ...config, couponExpirationMinutes: parseInt(e.target.value) })}
+              >
+                <option value="15">15 minutos</option>
+                <option value="30">30 minutos</option>
+                <option value="60">1 hora</option>
+                <option value="120">2 horas</option>
+                <option value="180">3 horas</option>
+                <option value="360">6 horas</option>
+                <option value="720">12 horas</option>
+                <option value="1440">24 horas (1 día)</option>
+                <option value="2880">48 horas (2 días)</option>
+                <option value="4320">72 horas (3 días)</option>
+                <option value="10080">7 días</option>
+                <option value="43200">30 días</option>
+              </select>
+              <small className="field-hint">El cupón expirará automáticamente después de este tiempo desde que se genera</small>
             </div>
 
             <div className="form-group checkbox">

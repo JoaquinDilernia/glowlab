@@ -212,12 +212,18 @@ function StyleConfig() {
 
     setLoading(true);
     try {
-      // Limpiar slides sin botones antes de guardar
+      // Limpiar slides sin botones y recalcular índices antes de guardar
+      const slidesWithButtons = config.banners.slides.filter(slide => slide.buttons && slide.buttons.length > 0);
+      const reindexedSlides = slidesWithButtons.map((slide, index) => ({
+        ...slide,
+        slideIndex: index
+      }));
+      
       const cleanedConfig = {
         ...config,
         banners: {
           ...config.banners,
-          slides: config.banners.slides.filter(slide => slide.buttons && slide.buttons.length > 0)
+          slides: reindexedSlides
         }
       };
       
@@ -378,13 +384,22 @@ function StyleConfig() {
   };
 
   const removeSlide = (slideIndex) => {
-    setConfig(prev => ({
-      ...prev,
-      banners: {
-        ...prev.banners,
-        slides: prev.banners.slides.filter((_, i) => i !== slideIndex)
-      }
-    }));
+    setConfig(prev => {
+      const remainingSlides = prev.banners.slides.filter((_, i) => i !== slideIndex);
+      // Recalcular slideIndex para que sean secuenciales
+      const reindexedSlides = remainingSlides.map((slide, newIndex) => ({
+        ...slide,
+        slideIndex: newIndex
+      }));
+      
+      return {
+        ...prev,
+        banners: {
+          ...prev.banners,
+          slides: reindexedSlides
+        }
+      };
+    });
   };
 
   const updateSlide = (slideIndex, field, value) => {
@@ -1142,19 +1157,23 @@ function StyleConfig() {
                                         const alpha = opacity / 100;
                                         const newColor = `rgba(${r},${g},${b},${alpha})`;
                                         
-                                        // Actualizar ambos valores en una sola llamada
-                                        const updatedSlides = [...config.banners.slides];
-                                        updatedSlides[slideIndex].buttons[buttonIndex] = {
-                                          ...updatedSlides[slideIndex].buttons[buttonIndex],
-                                          backgroundColor: newColor,
-                                          backgroundOpacity: opacity
-                                        };
-                                        
+                                        // Actualizar usando la función updateButtonInSlide correctamente
                                         setConfig(prev => ({
                                           ...prev,
                                           banners: {
                                             ...prev.banners,
-                                            slides: updatedSlides
+                                            slides: prev.banners.slides.map((s, sIdx) => 
+                                              sIdx === slideIndex ? {
+                                                ...s,
+                                                buttons: s.buttons.map((btn, bIdx) => 
+                                                  bIdx === buttonIndex ? {
+                                                    ...btn,
+                                                    backgroundColor: newColor,
+                                                    backgroundOpacity: opacity
+                                                  } : btn
+                                                )
+                                              } : s
+                                            )
                                           }
                                         }));
                                       }}

@@ -5622,10 +5622,6 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
   const { wheelId } = req.params;
   const { email } = req.body;
 
-  if (!email) {
-    return res.json({ success: false, message: "Email requerido" });
-  }
-
   try {
     const wheelRef = db.collection("promonube_spin_wheels").doc(wheelId);
     const wheelDoc = await wheelRef.get();
@@ -5641,24 +5637,32 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
       return res.json({ success: false, message: "Ruleta desactivada" });
     }
 
-    // 🔍 VERIFICAR SI EL EMAIL YA JUGÓ EN ESTA RULETA
-    const maxSpinsPerEmail = wheelData.maxSpinsPerEmail || 1; // Por defecto 1 vez
-    
-    const previousSpinsQuery = await db.collection("spin_wheel_results")
-      .where("wheelId", "==", wheelId)
-      .where("email", "==", email)
-      .get();
+    // Verificar si el email es requerido
+    const requireEmail = wheelData.requireEmail !== false; // Por defecto true
+    if (requireEmail && !email) {
+      return res.json({ success: false, message: "Email requerido" });
+    }
 
-    const previousSpinsCount = previousSpinsQuery.size;
-    
-    if (previousSpinsCount >= maxSpinsPerEmail) {
-      console.log(`⚠️ Email ${email} ya participó ${previousSpinsCount} veces en ruleta ${wheelId} (máximo: ${maxSpinsPerEmail})`);
-      return res.json({ 
-        success: false, 
-        message: maxSpinsPerEmail === 1 
-          ? "Ya participaste en esta ruleta. Solo podés jugar una vez."
-          : `Ya alcanzaste el máximo de ${maxSpinsPerEmail} intentos en esta ruleta.`
-      });
+    // 🔍 VERIFICAR SI EL EMAIL YA JUGÓ EN ESTA RULETA (solo si hay email)
+    if (email) {
+      const maxSpinsPerEmail = wheelData.maxSpinsPerEmail || 1; // Por defecto 1 vez
+      
+      const previousSpinsQuery = await db.collection("spin_wheel_results")
+        .where("wheelId", "==", wheelId)
+        .where("email", "==", email)
+        .get();
+
+      const previousSpinsCount = previousSpinsQuery.size;
+      
+      if (previousSpinsCount >= maxSpinsPerEmail) {
+        console.log(`⚠️ Email ${email} ya participó ${previousSpinsCount} veces en ruleta ${wheelId} (máximo: ${maxSpinsPerEmail})`);
+        return res.json({ 
+          success: false, 
+          message: maxSpinsPerEmail === 1 
+            ? "Ya participaste en esta ruleta. Solo podés jugar una vez."
+            : `Ya alcanzaste el máximo de ${maxSpinsPerEmail} intentos en esta ruleta.`
+        });
+      }
     }
 
     // Seleccionar premio basado en probabilidades (acepta prizes o segments)
@@ -5819,42 +5823,44 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
     // Actualizar estadísticas
     await wheelRef.update({
       totalSpins: (wheelData.totalSpins || 0) + 1,
-      emailsCollected: (wheelData.emailsCollected || 0) + 1
+      emailsCollected: (wheelData.emailsCollected || 0) + (email ? 1 : 0)
     });
 
-    // 🚀 SINCRONIZAR EMAIL CON INTEGRACIONES (Perfit, Mailchimp, etc)
-    const store = await getStoreById(wheelData.storeId);
-    if (store) {
-      const emailData = {
-        tags: [
-          'spin_wheel',
-          `premio_${selectedPrize.type}`,
-          couponCode ? 'con_cupon' : 'sin_cupon'
-        ],
-        customFields: {
-          'ultimo_premio': selectedPrize.label,
-          'cupon_codigo': couponCode || '',
-          'fecha_giro': new Date().toISOString()
-        },
-        // Usar la lista configurada en la ruleta, o la lista por defecto de la tienda
-        lists: wheelData.perfitListId ? [wheelData.perfitListId] : (store.perfitDefaultList ? [store.perfitDefaultList] : [])
-      };
+    // 🚀 SINCRONIZAR EMAIL CON INTEGRACIONES (Perfit, Mailchimp, etc) - Solo si hay email
+    if (email) {
+      const store = await getStoreById(wheelData.storeId);
+      if (store) {
+        const emailData = {
+          tags: [
+            'spin_wheel',
+            `premio_${selectedPrize.type}`,
+            couponCode ? 'con_cupon' : 'sin_cupon'
+          ],
+          customFields: {
+            'ultimo_premio': selectedPrize.label,
+            'cupon_codigo': couponCode || '',
+            'fecha_giro': new Date().toISOString()
+          },
+          // Usar la lista configurada en la ruleta, o la lista por defecto de la tienda
+          lists: wheelData.perfitListId ? [wheelData.perfitListId] : (store.perfitDefaultList ? [store.perfitDefaultList] : [])
+        };
 
-      console.log('📧 [Spin Wheel] Sincronizando email con integraciones:', {
-        email,
-        storeId: wheelData.storeId,
-        perfitListId: wheelData.perfitListId,
-        perfitDefaultList: store.perfitDefaultList,
-        finalLists: emailData.lists,
-        tags: emailData.tags
-      });
+        console.log('📧 [Spin Wheel] Sincronizando email con integraciones:', {
+          email,
+          storeId: wheelData.storeId,
+          perfitListId: wheelData.perfitListId,
+          perfitDefaultList: store.perfitDefaultList,
+          finalLists: emailData.lists,
+          tags: emailData.tags
+        });
 
-      // Sincronizar en background (no bloquear la respuesta)
-      syncEmailToIntegrations(store, email, emailData).catch(err => {
-        console.error('❌ Error sincronizando email:', err);
-      });
-    } else {
-      console.error('❌ Store no encontrado para wheelData.storeId:', wheelData.storeId);
+        // Sincronizar en background (no bloquear la respuesta)
+        syncEmailToIntegrations(store, email, emailData).catch(err => {
+          console.error('❌ Error sincronizando email:', err);
+        });
+      } else {
+        console.error('❌ Store no encontrado para wheelData.storeId:', wheelData.storeId);
+      }
     }
 
     console.log("✅ Giro procesado:", { wheelId, email, prize: selectedPrize.label, couponCode });
@@ -6551,13 +6557,15 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         <p class="pn-subtitle">\${WHEEL_CONFIG.subtitle}</p>
         <div id="pn-content">
           \${createWheel()}
+          \${WHEEL_CONFIG.requireEmail !== false ? \`
           <input 
             type="email" 
             id="pn-email" 
             class="pn-input" 
-            placeholder="tu@email.com" 
+            placeholder="\${WHEEL_CONFIG.emailPlaceholder || 'tu@email.com'}" 
             required 
           />
+          \` : ''}
           <button id="pn-spin-btn" class="pn-button">\${WHEEL_CONFIG.buttonText}</button>
         </div>
       </div>
@@ -6570,28 +6578,32 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     const emailInput = document.getElementById('pn-email');
     
     spinBtn.addEventListener('click', handleSpin);
-    emailInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') handleSpin();
-    });
+    if (emailInput) {
+      emailInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleSpin();
+      });
+    }
   }
   
   // Función para manejar el giro
   async function handleSpin() {
     const emailInput = document.getElementById('pn-email');
     const spinBtn = document.getElementById('pn-spin-btn');
-    const email = emailInput.value.trim();
+    const email = emailInput ? emailInput.value.trim() : '';
     
-    // Validar email
-    if (!email || !email.match(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/)) {
-      emailInput.style.border = '2px solid #ff4444';
-      emailInput.focus();
-      setTimeout(() => { emailInput.style.border = 'none'; }, 2000);
-      return;
+    // Validar email solo si el campo existe y requireEmail es true
+    if (WHEEL_CONFIG.requireEmail !== false && emailInput) {
+      if (!email || !email.match(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/)) {
+        emailInput.style.border = '2px solid #ff4444';
+        emailInput.focus();
+        setTimeout(() => { emailInput.style.border = 'none'; }, 2000);
+        return;
+      }
     }
     
     // Deshabilitar controles
     spinBtn.disabled = true;
-    emailInput.disabled = true;
+    if (emailInput) emailInput.disabled = true;
     spinBtn.textContent = '🎰 GIRANDO...';
     
     try {
@@ -6599,7 +6611,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       const response = await fetch(\`\${API_URL}/api/spin-wheel/\${WHEEL_CONFIG.wheelId}/spin\`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email: email || null })
       });
       
       const data = await response.json();
@@ -6607,7 +6619,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       if (!data.success) {
         alert(data.message || 'Ocurrió un error');
         spinBtn.disabled = false;
-        emailInput.disabled = false;
+        if (emailInput) emailInput.disabled = false;
         spinBtn.textContent = WHEEL_CONFIG.buttonText;
         return;
       }
@@ -6650,7 +6662,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     } catch (error) {
       console.error('[PromoNube] Error:', error);
       spinBtn.disabled = false;
-      emailInput.disabled = false;
+      if (emailInput) emailInput.disabled = false;
       spinBtn.textContent = WHEEL_CONFIG.buttonText;
       alert('Ocurrió un error. Por favor intentá de nuevo.');
     }
@@ -7418,10 +7430,67 @@ app.get("/api/countdown-widget.js", async (req, res) => {
             transform: translateY(0);
           }
         }
+        /* Tablet */
         @media (max-width: 768px) {
           #pn-countdown-bar {
-            padding: 12px 16px !important;
-            gap: 16px !important;
+            padding: 10px 14px !important;
+            gap: 12px !important;
+            flex-wrap: wrap !important;
+          }
+          #pn-countdown-bar > div:first-child {
+            font-size: 14px !important;
+          }
+          #pn-countdown-timer {
+            font-size: 15px !important;
+            gap: 6px !important;
+          }
+          #pn-countdown-bar a {
+            font-size: 12px !important;
+            padding: 8px 16px !important;
+          }
+        }
+        /* Mobile */
+        @media (max-width: 480px) {
+          #pn-countdown-bar {
+            padding: 8px 12px !important;
+            gap: 8px !important;
+            font-size: 12px !important;
+          }
+          #pn-countdown-bar > div:first-child {
+            font-size: 12px !important;
+            text-align: center !important;
+            width: 100% !important;
+          }
+          #pn-countdown-timer {
+            font-size: 13px !important;
+            gap: 4px !important;
+            letter-spacing: 0.5px !important;
+          }
+          #pn-countdown-bar a {
+            font-size: 11px !important;
+            padding: 7px 14px !important;
+            white-space: nowrap !important;
+          }
+        }
+        /* Mobile pequeño */
+        @media (max-width: 360px) {
+          #pn-countdown-bar {
+            padding: 6px 10px !important;
+            gap: 6px !important;
+          }
+          #pn-countdown-bar > div:first-child {
+            font-size: 11px !important;
+          }
+          #pn-countdown-timer {
+            font-size: 12px !important;
+            gap: 3px !important;
+          }
+          #pn-countdown-timer span {
+            font-size: 11px !important;
+          }
+          #pn-countdown-bar a {
+            font-size: 10px !important;
+            padding: 6px 12px !important;
           }
         }
       \`;
@@ -8172,6 +8241,8 @@ app.post("/api/badges", async (req, res) => {
     ruleType,
     ruleConfig,
     isActive,
+    startDate,
+    endDate,
     design
   } = req.body;
 
@@ -8189,6 +8260,8 @@ app.post("/api/badges", async (req, res) => {
       ruleType,
       ruleConfig: ruleConfig || {},
       isActive: isActive ?? true,
+      startDate: startDate || null,
+      endDate: endDate || null,
       design: design || {
         shape: 'rectangle',
         position: 'top-right',
@@ -8196,6 +8269,7 @@ app.post("/api/badges", async (req, res) => {
         textColor: '#FFFFFF',
         fontSize: 12,
         fontWeight: 'bold',
+        textTransform: 'uppercase',
         animation: 'pulse',
         borderRadius: 4,
         showIcon: false,
@@ -8229,6 +8303,8 @@ app.put("/api/badges/:badgeId", async (req, res) => {
     ruleType,
     ruleConfig,
     isActive,
+    startDate,
+    endDate,
     design
   } = req.body;
 
@@ -8257,6 +8333,8 @@ app.put("/api/badges/:badgeId", async (req, res) => {
       ruleType,
       ruleConfig: ruleConfig || {},
       isActive: isActive ?? true,
+      startDate: startDate !== undefined ? startDate : existingData.startDate,
+      endDate: endDate !== undefined ? endDate : existingData.endDate,
       design: design || existingData.design,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
@@ -8504,11 +8582,15 @@ app.get("/api/badges-script.js", async (req, res) => {
   function evaluateBadgeRule(badge, productData) {
     const { ruleType, ruleConfig } = badge;
 
+    // Verificar fechas de vigencia
+    const now = new Date();
+    if (badge.startDate && new Date(badge.startDate) > now) return false;
+    if (badge.endDate && new Date(badge.endDate) < now) return false;
+
     switch (ruleType) {
       case 'new_products': {
         if (!productData.created_at) return false;
         const createdAt = new Date(productData.created_at);
-        const now = new Date();
         const daysDiff = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
         return daysDiff <= (ruleConfig.daysToShowAsNew || 7);
       }
@@ -8517,25 +8599,31 @@ app.get("/api/badges-script.js", async (req, res) => {
         return ruleConfig.productIds?.includes(productData.id);
       }
 
-      case 'price_min': {
+      case 'price_range': {
         const price = parseFloat(productData.price);
-        return price >= (ruleConfig.minPrice || 0);
-      }
-
-      case 'price_max': {
-        const price = parseFloat(productData.price);
-        return price <= (ruleConfig.maxPrice || Infinity);
+        const minPrice = ruleConfig.minPrice;
+        const maxPrice = ruleConfig.maxPrice;
+        
+        if (minPrice && maxPrice) {
+          return price >= minPrice && price <= maxPrice;
+        } else if (minPrice) {
+          return price >= minPrice;
+        } else if (maxPrice) {
+          return price <= maxPrice;
+        }
+        return false;
       }
 
       case 'discount': {
         if (!productData.compare_at_price || !productData.price) return false;
         const comparePrice = parseFloat(productData.compare_at_price);
         const price = parseFloat(productData.price);
+        if (comparePrice <= price) return false;
         const discountPercent = ((comparePrice - price) / comparePrice) * 100;
         return discountPercent >= (ruleConfig.minDiscount || 0);
       }
 
-      case 'stock_low': {
+      case 'stock': {
         const stock = parseInt(productData.stock || 0);
         return stock > 0 && stock <= (ruleConfig.maxStock || 5);
       }
@@ -8562,8 +8650,10 @@ app.get("/api/badges-script.js", async (req, res) => {
     // Posiciones
     const positions = {
       'top-left': 'top: 10px; left: 10px;',
+      'top-center': 'top: 10px; left: 50%; transform: translateX(-50%);',
       'top-right': 'top: 10px; right: 10px;',
       'bottom-left': 'bottom: 10px; left: 10px;',
+      'bottom-center': 'bottom: 10px; left: 50%; transform: translateX(-50%);',
       'bottom-right': 'bottom: 10px; right: 10px;'
     };
 
@@ -8571,8 +8661,6 @@ app.get("/api/badges-script.js", async (req, res) => {
     if (design.shape === 'circle') {
       badgeEl.classList.add('pn-badge-circle');
       borderRadius = 50;
-    } else if (design.shape === 'flag') {
-      badgeEl.classList.add('pn-badge-flag');
     }
 
     if (design.animation && design.animation !== 'none') {
@@ -8585,8 +8673,9 @@ app.get("/api/badges-script.js", async (req, res) => {
       color: \${design.textColor || '#FFFFFF'};
       font-size: \${design.fontSize || 12}px;
       font-weight: \${design.fontWeight || 'bold'};
-      padding: \${design.shape === 'circle' ? '0' : '6px 12px'};
-      border-radius: \${design.shape === 'circle' ? '50%' : borderRadius + 'px'};
+      text-transform: \${design.textTransform || 'uppercase'};
+      padding: \${design.shape === 'circle' ? '12px' : '6px 12px'};
+      border-radius: \${borderRadius}px;
     \`;
 
     if (design.showIcon && design.icon) {
@@ -8604,13 +8693,39 @@ app.get("/api/badges-script.js", async (req, res) => {
 
   // Agregar badges a un producto
   function addBadgesToProduct(productElement, productId) {
-    const productData = productDataMap[productId];
-    if (!productData) return;
-
     // Evitar duplicados
     if (productElement.querySelector('.pn-badge-container')) return;
 
-    const matchingBadges = BADGES_CONFIG.filter(badge => 
+    // Optimización: Evaluar badges de tipo manual primero (solo requieren ID)
+    const manualBadges = BADGES_CONFIG.filter(badge => 
+      badge.ruleType === 'manual' && 
+      badge.ruleConfig?.productIds?.includes(productId)
+    );
+    
+    // Si hay un badge manual que aplica, usarlo directamente
+    if (manualBadges.length > 0) {
+      const container = document.createElement('div');
+      container.className = 'pn-badge-container';
+      const badgeEl = createBadgeElement(manualBadges[0]);
+      container.appendChild(badgeEl);
+      
+      const imageContainer = productElement.querySelector('.js-item-product, .product-image, .item-image') || 
+                            productElement.querySelector('img')?.parentElement;
+      if (imageContainer) {
+        imageContainer.style.position = 'relative';
+        imageContainer.appendChild(container);
+      }
+      return;
+    }
+
+    // Para otros tipos de badges, consultar metadata
+    const otherBadges = BADGES_CONFIG.filter(badge => badge.ruleType !== 'manual');
+    if (otherBadges.length === 0) return;
+
+    const productData = productDataMap[productId];
+    if (!productData) return;
+
+    const matchingBadges = otherBadges.filter(badge => 
       evaluateBadgeRule(badge, productData)
     );
 
@@ -8620,11 +8735,9 @@ app.get("/api/badges-script.js", async (req, res) => {
     container.className = 'pn-badge-container';
 
     // Agregar solo el primer badge que coincida
-    // (para evitar superposición, se puede mejorar con lógica de múltiples badges)
     const badgeEl = createBadgeElement(matchingBadges[0]);
     container.appendChild(badgeEl);
 
-    // Encontrar la imagen del producto
     const imageContainer = productElement.querySelector('.js-item-product, .product-image, .item-image') || 
                           productElement.querySelector('img')?.parentElement;
 
@@ -8671,7 +8784,7 @@ app.get("/api/badges-script.js", async (req, res) => {
           }
         }
 
-        if (productId && productDataMap[productId]) {
+        if (productId) {
           addBadgesToProduct(product, productId);
           productsFound++;
         }
@@ -8697,16 +8810,24 @@ app.get("/api/badges-script.js", async (req, res) => {
   async function init() {
     injectStyles();
     
-    const dataLoaded = await loadProductData();
+    // Optimización: Solo cargar metadata si hay badges que la necesitan
+    const needsMetadata = BADGES_CONFIG.some(badge => badge.ruleType !== 'all_products');
     
-    if (dataLoaded) {
-      processProducts();
-      observeDOM();
-
-      setTimeout(processProducts, 1000);
+    if (needsMetadata) {
+      console.log('📊 Cargando metadata de productos...');
+      const dataLoaded = await loadProductData();
+      
+      if (!dataLoaded) {
+        console.warn('⚠️ PromoNube: No se pudieron cargar los datos de productos');
+      }
     } else {
-      console.warn('⚠️ PromoNube: No se pudieron cargar los datos de productos');
+      console.log('✅ Modo rápido: Todos los badges son "all_products", no se necesita metadata');
     }
+
+    processProducts();
+    observeDOM();
+
+    setTimeout(processProducts, 1000);
   }
 
   if (document.readyState === 'loading') {

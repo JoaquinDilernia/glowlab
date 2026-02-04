@@ -1,110 +1,128 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Plus, Tag, Settings, Trash2, Eye, EyeOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Plus, Tag, Calendar, MapPin, Package, Percent, Layers, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
 import { apiRequest } from '../config';
 import './BadgesList.css';
 
 function BadgesList() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const storeId = localStorage.getItem('promonube_store_id');
-  
-  const [loading, setLoading] = useState(true);
   const [badges, setBadges] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadBadges();
-  }, [location]); // Recargar cuando cambia la ubicación
+  }, []);
 
   const loadBadges = async () => {
-    setLoading(true);
     try {
-      console.log('🔍 Cargando badges para storeId:', storeId);
+      const storeId = localStorage.getItem('promonube_store_id');
       const data = await apiRequest(`/api/badges?storeId=${storeId}`);
-      console.log('📦 Badges recibidos:', data);
-      console.log('📊 Es array?', Array.isArray(data));
-      console.log('📏 Cantidad:', data?.length);
-      
-      const badgesArray = Array.isArray(data) ? data : [];
-      console.log('✅ Setting badges:', badgesArray);
-      
-      setBadges(badgesArray);
-      
-      console.log('🎯 Badges después de setBadges:', badgesArray.length);
+      setBadges(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('❌ Error loading badges:', error);
+      console.error('Error cargando badges:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleCreateBadge = (ruleType) => {
+    navigate(`/badges/new?type=${ruleType}`);
+  };
+
+  const toggleBadgeStatus = async (badgeId, currentStatus) => {
+    try {
+      const storeId = localStorage.getItem('promonube_store_id');
+      await apiRequest(`/api/badges/${badgeId}/toggle`, {
+        method: 'POST',
+        body: { storeId, isActive: !currentStatus }
+      });
+      loadBadges();
+    } catch (error) {
+      console.error('Error toggling badge:', error);
+      alert('Error al cambiar el estado del badge');
+    }
+  };
+
   const deleteBadge = async (badgeId) => {
-    if (!window.confirm('¿Eliminar este badge?')) return;
+    if (!confirm('¿Estás seguro de eliminar este badge?')) return;
     
     try {
-      const data = await apiRequest(`/api/badges/${badgeId}?storeId=${storeId}`, {
+      const storeId = localStorage.getItem('promonube_store_id');
+      await apiRequest(`/api/badges/${badgeId}?storeId=${storeId}`, {
         method: 'DELETE'
       });
-
-      if (data.success) {
-        setBadges(prev => prev.filter(b => b.badgeId !== badgeId));
-        alert('✅ Badge eliminado');
-      } else {
-        alert('❌ Error al eliminar');
-      }
+      loadBadges();
     } catch (error) {
-      console.error('Error:', error);
-      alert('❌ Error al eliminar');
+      console.error('Error eliminando badge:', error);
+      alert('Error al eliminar el badge');
     }
   };
 
-  const toggleStatus = async (badgeId) => {
-    try {
-      const data = await apiRequest(`/api/badges/${badgeId}/toggle`, {
-        method: 'PATCH',
-        body: JSON.stringify({ storeId })
-      });
-
-      if (data.success) {
-        setBadges(prev => prev.map(b => 
-          b.badgeId === badgeId ? { ...b, enabled: data.enabled } : b
-        ));
-      }
-    } catch (error) {
-      console.error('Error:', error);
+  const ruleTypes = [
+    {
+      id: 'new_products',
+      icon: Package,
+      iconEmoji: '🆕',
+      title: 'Productos Nuevos',
+      description: 'Días desde creación',
+      color: '#3B82F6'
+    },
+    {
+      id: 'manual',
+      icon: Tag,
+      iconEmoji: '✋',
+      title: 'Selección Manual',
+      description: 'Elige productos específicos',
+      color: '#8B5CF6'
+    },
+    {
+      id: 'price_range',
+      icon: MapPin,
+      iconEmoji: '💰',
+      title: 'Rango de Precio',
+      description: 'Mayor/menor a precio X',
+      color: '#F59E0B'
+    },
+    {
+      id: 'discount',
+      icon: Percent,
+      iconEmoji: '%',
+      title: 'Descuentos',
+      description: 'Descuento mínimo %',
+      color: '#EF4444'
+    },
+    {
+      id: 'stock',
+      icon: Layers,
+      iconEmoji: '📦',
+      title: 'Stock Bajo',
+      description: 'Últimas unidades',
+      color: '#EC4899'
+    },
+    {
+      id: 'category',
+      icon: Calendar,
+      iconEmoji: '📁',
+      title: 'Por Categoría',
+      description: 'Productos de categoría X',
+      color: '#10B981'
     }
+  ];
+
+  const getRuleIcon = (ruleType) => {
+    const rule = ruleTypes.find(r => r.id === ruleType);
+    return rule ? rule.icon : Tag;
   };
 
-  const getRuleTypeLabel = (rule) => {
-    if (!rule || !rule.type) {
-      return '⚠️ Regla no definida';
-    }
-    
-    switch(rule.type) {
-      case 'new_products':
-        return `🆕 Productos nuevos (${rule.days || 30} días)`;
-      case 'manual':
-        return `✋ Manual (${rule.productIds?.length || 0} productos)`;
-      case 'price_min':
-        return `💰 Precio > $${rule.minPrice || 0}`;
-      case 'price_max':
-        return `💸 Precio < $${rule.maxPrice || 0}`;
-      case 'discount':
-        return `%️ Descuento > ${rule.minDiscount || 0}%`;
-      case 'stock_low':
-        return `📦 Stock bajo (≤ ${rule.maxStock || 10} unidades)`;
-      case 'category':
-        return `📂 Categoría: ${rule.categoryName || rule.categoryId || 'Sin nombre'}`;
-      default:
-        return `❓ ${rule.type}`;
-    }
+  const getRuleColor = (ruleType) => {
+    const rule = ruleTypes.find(r => r.id === ruleType);
+    return rule ? rule.color : '#6B7280';
   };
 
   if (loading) {
-    console.log('⏳ Loading...');
     return (
-      <div className="badges-container">
-        <div className="loading-state">
+      <div className="badges-page">
+        <div className="loading-container">
           <div className="spinner"></div>
           <p>Cargando badges...</p>
         </div>
@@ -112,165 +130,129 @@ function BadgesList() {
     );
   }
 
-  console.log('🎨 Rendering with badges:', badges);
-  console.log('🔢 badges.length:', badges.length);
-  console.log('❓ badges.length === 0?', badges.length === 0);
-
   return (
-    <div className="badges-container">
-      <header className="page-header-modern">
-        <div className="header-content-modern">
-          <div className="header-top-modern">
-            <button className="btn-back-modern" onClick={() => navigate('/dashboard')}>
-              <ArrowLeft size={20} />
-              <span>Dashboard</span>
-            </button>
-            <button className="btn-primary-gradient" onClick={() => navigate('/badges/create')}>
-              <Plus size={18} />
-              <span>Nuevo Badge</span>
-            </button>
-          </div>
-          <div className="header-info-section">
-            <h1 className="page-title-gradient">🏷️ Badges en Productos</h1>
-            <p className="page-subtitle-modern">Destaca productos con etiquetas personalizadas y reglas automáticas</p>
+    <div className="badges-page">
+      <header className="badges-header">
+        <button className="btn-back" onClick={() => navigate('/dashboard')}>
+          <ArrowLeft size={20} />
+          Dashboard
+        </button>
+        <div className="header-content">
+          <div className="header-title">
+            <Tag size={32} className="header-icon" />
+            <div>
+              <h1>Badges en Productos</h1>
+              <p>Destaca productos con etiquetas personalizadas y reglas automáticas</p>
+            </div>
           </div>
         </div>
       </header>
 
-      {badges.length === 0 ? (
-        <div className="empty-state-modern">
-          <div className="empty-icon-large">🏷️</div>
-          <h2 className="empty-title">Crea Tu Primer Badge</h2>
-          <p className="empty-description">Destaca productos con etiquetas visuales según múltiples reglas y criterios</p>
-
-          <div style={{
-            marginTop: '40px',
-            padding: '30px',
-            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-            borderRadius: '20px',
-            border: '2px solid #bae6fd',
-            maxWidth: '700px',
-            margin: '40px auto'
-          }}>
-            <h4 style={{fontSize: '18px', fontWeight: '700', color: '#0369a1', marginBottom: '20px', textAlign: 'center'}}>
-              💡 Tipos de Reglas Disponibles
-            </h4>
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px'}}>
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>🆕</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Productos Nuevos</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Días desde creación</p>
-              </div>
-              
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>✋</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Selección Manual</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Elige productos específicos</p>
-              </div>
-
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>💰</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Rango de Precio</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Mayor/menor a precio X</p>
-              </div>
-
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>%</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Descuentos</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Descuento mínimo %</p>
-              </div>
-
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>📦</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Stock Bajo</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Últimas unidades</p>
-              </div>
-
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>📂</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Por Categoría</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Toda una categoría</p>
-              </div>
-            </div>
-
-            <div style={{marginTop: '24px', padding: '16px', background: '#fef3c7', borderRadius: '12px', border: '1px solid #fbbf24'}}>
-              <strong style={{color: '#92400e', fontSize: '14px'}}>✨ Múltiples badges simultáneos</strong>
-              <p style={{margin: '8px 0 0 0', fontSize: '13px', color: '#78350f'}}>
-                Puedes tener varios badges activos con diferentes reglas. Cada producto mostrará todos los badges que cumplan con sus criterios.
-              </p>
-            </div>
+      <main className="badges-main">
+        {/* Rule Types Grid */}
+        <section className="rule-types-section">
+          <div className="section-header">
+            <div className="section-icon">⚡</div>
+            <h2>Tipos de Reglas Disponibles</h2>
           </div>
-
-          <button 
-            className="btn-primary-large" 
-            onClick={() => navigate('/badges/create')}
-            style={{marginTop: '30px'}}
-          >
-            <Plus size={20} />
-            Crear Mi Primer Badge
-          </button>
-        </div>
-      ) : (
-        <div className="badges-grid-modern">
-          {badges.filter(badge => {
-            const hasId = badge && (badge.badgeId || badge.id);
-            console.log('🔍 Filtrando badge:', badge, 'hasId:', hasId);
-            return hasId;
-          }).map((badge, idx) => {
-            const badgeId = badge.badgeId || badge.id;
-            console.log('🎨 Renderizando badge:', badgeId, badge);
-            return (
-            <div key={badgeId || idx} className="badge-card-modern">
-              <div className="badge-card-header">
-                <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
-                  <div 
-                    className="badge-preview-mini"
-                    style={{
-                      background: badge.backgroundColor || '#ff4757',
-                      color: badge.textColor || '#ffffff',
-                      padding: '6px 12px',
-                      borderRadius: badge.badgeShape === 'rounded' ? '20px' : badge.badgeShape === 'circular' ? '50%' : '4px',
-                      fontSize: '11px',
-                      fontWeight: '700'
-                    }}
-                  >
-                    {badge.badgeText || 'BADGE'}
+          <div className="rule-types-grid">
+            {ruleTypes.map((rule) => {
+              const Icon = rule.icon;
+              return (
+                <div
+                  key={rule.id}
+                  className="rule-type-card"
+                  onClick={() => handleCreateBadge(rule.id)}
+                  style={{ '--rule-color': rule.color }}
+                >
+                  <div className="rule-type-icon">
+                    <span className="icon-emoji">{rule.iconEmoji}</span>
                   </div>
-                  <div>
-                    <h3 className="badge-title">{badge.name || 'Sin nombre'}</h3>
-                    <p className="badge-subtitle">{getRuleTypeLabel(badge.rule)}</p>
-                  </div>
+                  <h3>{rule.title}</h3>
+                  <p>{rule.description}</p>
+                  <button className="btn-create-badge">
+                    <Plus size={16} />
+                    Crear Badge
+                  </button>
                 </div>
-                <button 
-                  className={`toggle-btn-mini ${badge.enabled ? 'active' : ''}`}
-                  onClick={() => toggleStatus(badgeId)}
-                  title={badge.enabled ? 'Desactivar' : 'Activar'}
-                >
-                  {badge.enabled ? <Eye size={18} /> : <EyeOff size={18} />}
-                </button>
-              </div>
+              );
+            })}
+          </div>
+        </section>
 
-              <div className="badge-actions">
-                <button 
-                  className="btn-secondary-small"
-                  onClick={() => navigate(`/badges/${badgeId}/config`)}
-                >
-                  <Settings size={16} />
-                  Configurar
-                </button>
-                <button 
-                  className="btn-danger-small"
-                  onClick={() => deleteBadge(badgeId)}
-                >
-                  <Trash2 size={16} />
-                  Eliminar
-                </button>
-              </div>
+        {/* Active Badges List */}
+        {badges.length > 0 && (
+          <section className="badges-list-section">
+            <h2>Tus Badges ({badges.length})</h2>
+            <div className="badges-grid">
+              {badges.map((badge) => {
+                const Icon = getRuleIcon(badge.ruleType);
+                const color = getRuleColor(badge.ruleType);
+                
+                return (
+                  <div key={badge.id || badge.badgeId} className="badge-card">
+                    <div className="badge-card-header">
+                      <div className="badge-preview" style={{
+                        backgroundColor: badge.design?.backgroundColor || badge.backgroundColor || '#FF6B6B',
+                        color: badge.design?.textColor || badge.textColor || '#FFFFFF',
+                        borderRadius: `${badge.design?.borderRadius || badge.borderRadius || 4}px`
+                      }}>
+                        {badge.design?.showIcon && <span>{badge.design?.icon}</span>}
+                        {badge.badgeText || badge.text}
+                      </div>
+                      <button
+                        className={`btn-toggle ${(badge.isActive || badge.enabled) ? 'active' : 'inactive'}`}
+                        onClick={() => toggleBadgeStatus(badge.id || badge.badgeId, badge.isActive || badge.enabled)}
+                        title={(badge.isActive || badge.enabled) ? 'Desactivar' : 'Activar'}
+                      >
+                        {(badge.isActive || badge.enabled) ? <Eye size={16} /> : <EyeOff size={16} />}
+                      </button>
+                    </div>
+
+                    <div className="badge-card-body">
+                      <h3>{badge.badgeName || badge.name}</h3>
+                      <div className="badge-meta">
+                        <div className="meta-item" style={{ color }}>
+                          <Icon size={16} />
+                          <span>{ruleTypes.find(r => r.id === badge.ruleType)?.title}</span>
+                        </div>
+                        <div className="meta-item">
+                          <MapPin size={14} />
+                          <span>{(badge.design?.position || badge.position || 'top-right').replace(/-/g, ' ')}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="badge-card-footer">
+                      <button
+                        className="btn-edit"
+                        onClick={() => navigate(`/badges/${badge.id || badge.badgeId}/edit`)}
+                      >
+                        <Edit size={16} />
+                        Editar
+                      </button>
+                      <button
+                        className="btn-delete"
+                        onClick={() => deleteBadge(badge.id || badge.badgeId)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            );
-          })}
-        </div>
-      )}
+          </section>
+        )}
+
+        {badges.length === 0 && (
+          <div className="empty-state">
+            <Tag size={64} className="empty-icon" />
+            <h2>Crea Tu Primer Badge</h2>
+            <p>Destaca productos con etiquetas visuales según múltiples reglas y criterios</p>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
