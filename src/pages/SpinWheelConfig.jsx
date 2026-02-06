@@ -37,6 +37,7 @@ function SpinWheelConfig() {
     showOnce: true,
     maxSpinsPerEmail: 1, // Máximo de giros por email (validación backend)
     couponExpirationMinutes: 15, // Tiempo de validez del cupón en minutos
+    showEmailField: true, // Mostrar u ocultar campo de email
     requireEmail: true, // Si el email es obligatorio o no
     
     // Segmentos/Premios
@@ -76,7 +77,9 @@ function SpinWheelConfig() {
         // Normalizar: convertir prizes a segments si es necesario
         const wheelData = {
           ...data.wheel,
-          segments: data.wheel.segments || data.wheel.prizes || config.segments
+          segments: data.wheel.segments || data.wheel.prizes || config.segments,
+          showEmailField: data.wheel.showEmailField !== false,
+          requireEmail: data.wheel.requireEmail !== false
         };
         setConfig(wheelData);
       }
@@ -319,13 +322,26 @@ function SpinWheelConfig() {
               <label>
                 <input
                   type="checkbox"
-                  checked={config.requireEmail !== false}
-                  onChange={(e) => setConfig({ ...config, requireEmail: e.target.checked })}
+                  checked={config.showEmailField !== false}
+                  onChange={(e) => setConfig({ ...config, showEmailField: e.target.checked })}
                 />
-                <span>Solicitar email obligatoriamente</span>
+                <span>Mostrar campo de email</span>
               </label>
-              <small className="field-hint">Si lo desactivás, los usuarios podrán girar sin ingresar email (no se sincronizará con integraciones)</small>
             </div>
+
+            {config.showEmailField !== false && (
+              <div className="form-group checkbox">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={config.requireEmail !== false}
+                    onChange={(e) => setConfig({ ...config, requireEmail: e.target.checked })}
+                  />
+                  <span>Solicitar email obligatoriamente</span>
+                </label>
+                <small className="field-hint">Si lo desactivás, los usuarios podrán girar sin ingresar email (no se sincronizará con integraciones)</small>
+              </div>
+            )}
 
             <div className="form-group">
               <label>Texto de Términos</label>

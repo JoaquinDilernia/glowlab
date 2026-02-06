@@ -30,6 +30,7 @@ import './App.css';
 function App() {
   return (
     <Router>
+      <div className="app-root">
       <Routes>
         <Route path="/" element={<Register />} />
         <Route path="/login" element={<Login />} />
@@ -62,6 +63,18 @@ function App() {
         <Route path="/payment-test" element={<PaymentTest />} />
         <Route path="/admin" element={<AdminPanel />} />
       </Routes>
+      <a
+        className="whatsapp-float"
+        href="https://wa.me/5491173612561"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Soporte por WhatsApp"
+        title="Soporte por WhatsApp"
+      >
+        <span className="whatsapp-icon" aria-hidden="true">🟢</span>
+        <span className="whatsapp-text">Soporte</span>
+      </a>
+      </div>
     </Router>
   );
 }

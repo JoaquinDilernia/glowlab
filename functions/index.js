@@ -5638,7 +5638,8 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
     }
 
     // Verificar si el email es requerido
-    const requireEmail = wheelData.requireEmail !== false; // Por defecto true
+    const showEmailField = wheelData.showEmailField !== false; // Por defecto true
+    const requireEmail = showEmailField && wheelData.requireEmail !== false; // Por defecto true
     if (requireEmail && !email) {
       return res.json({ success: false, message: "Email requerido" });
     }
@@ -6077,7 +6078,9 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     textColor: wheelData.textColor || '#FFFFFF',
     showOnce: wheelData.showOnce !== false, // Por defecto true (mostrar solo una vez)
     delaySeconds: wheelData.delaySeconds || 3,
-    exitIntent: wheelData.exitIntent || false
+    exitIntent: wheelData.exitIntent || false,
+    showEmailField: wheelData.showEmailField !== false, // Por defecto true (mostrar campo de email)
+    requireEmail: wheelData.requireEmail !== false // Por defecto true (email obligatorio)
   }, null, 2)};
   
   const API_URL = "https://apipromonube-jlfopowzaq-uc.a.run.app";
@@ -6557,13 +6560,13 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         <p class="pn-subtitle">\${WHEEL_CONFIG.subtitle}</p>
         <div id="pn-content">
           \${createWheel()}
-          \${WHEEL_CONFIG.requireEmail !== false ? \`
+          \${WHEEL_CONFIG.showEmailField !== false ? \`
           <input 
             type="email" 
             id="pn-email" 
             class="pn-input" 
             placeholder="\${WHEEL_CONFIG.emailPlaceholder || 'tu@email.com'}" 
-            required 
+            \${WHEEL_CONFIG.requireEmail !== false ? 'required' : ''} 
           />
           \` : ''}
           <button id="pn-spin-btn" class="pn-button">\${WHEEL_CONFIG.buttonText}</button>
@@ -6592,7 +6595,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     const email = emailInput ? emailInput.value.trim() : '';
     
     // Validar email solo si el campo existe y requireEmail es true
-    if (WHEEL_CONFIG.requireEmail !== false && emailInput) {
+    if (WHEEL_CONFIG.showEmailField !== false && WHEEL_CONFIG.requireEmail !== false && emailInput) {
       if (!email || !email.match(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/)) {
         emailInput.style.border = '2px solid #ff4444';
         emailInput.focus();
@@ -7430,67 +7433,10 @@ app.get("/api/countdown-widget.js", async (req, res) => {
             transform: translateY(0);
           }
         }
-        /* Tablet */
         @media (max-width: 768px) {
           #pn-countdown-bar {
-            padding: 10px 14px !important;
-            gap: 12px !important;
-            flex-wrap: wrap !important;
-          }
-          #pn-countdown-bar > div:first-child {
-            font-size: 14px !important;
-          }
-          #pn-countdown-timer {
-            font-size: 15px !important;
-            gap: 6px !important;
-          }
-          #pn-countdown-bar a {
-            font-size: 12px !important;
-            padding: 8px 16px !important;
-          }
-        }
-        /* Mobile */
-        @media (max-width: 480px) {
-          #pn-countdown-bar {
-            padding: 8px 12px !important;
-            gap: 8px !important;
-            font-size: 12px !important;
-          }
-          #pn-countdown-bar > div:first-child {
-            font-size: 12px !important;
-            text-align: center !important;
-            width: 100% !important;
-          }
-          #pn-countdown-timer {
-            font-size: 13px !important;
-            gap: 4px !important;
-            letter-spacing: 0.5px !important;
-          }
-          #pn-countdown-bar a {
-            font-size: 11px !important;
-            padding: 7px 14px !important;
-            white-space: nowrap !important;
-          }
-        }
-        /* Mobile pequeño */
-        @media (max-width: 360px) {
-          #pn-countdown-bar {
-            padding: 6px 10px !important;
-            gap: 6px !important;
-          }
-          #pn-countdown-bar > div:first-child {
-            font-size: 11px !important;
-          }
-          #pn-countdown-timer {
-            font-size: 12px !important;
-            gap: 3px !important;
-          }
-          #pn-countdown-timer span {
-            font-size: 11px !important;
-          }
-          #pn-countdown-bar a {
-            font-size: 10px !important;
-            padding: 6px 12px !important;
+            padding: 12px 16px !important;
+            gap: 16px !important;
           }
         }
       \`;
@@ -8011,9 +7957,9 @@ app.get("/api/new-badge-script.js", async (req, res) => {
   let productDatesMap = {};
 
   // Función para obtener fechas de productos desde la API
-  async function loadProductDates() {
+  async function loadProductData() {
     try {
-      const response = await fetch(\`https://apipromonube-jlfopowzaq-uc.a.run.app/api/product-dates/\${STORE_ID}\`);
+      const response = await fetch(\`https://apipromonube-jlfopowzaq-uc.a.run.app/api/products/metadata?storeId=\${STORE_ID}\`);
       const data = await response.json();
       
       if (data.success && data.productDates) {
@@ -8241,8 +8187,6 @@ app.post("/api/badges", async (req, res) => {
     ruleType,
     ruleConfig,
     isActive,
-    startDate,
-    endDate,
     design
   } = req.body;
 
@@ -8260,8 +8204,6 @@ app.post("/api/badges", async (req, res) => {
       ruleType,
       ruleConfig: ruleConfig || {},
       isActive: isActive ?? true,
-      startDate: startDate || null,
-      endDate: endDate || null,
       design: design || {
         shape: 'rectangle',
         position: 'top-right',
@@ -8269,7 +8211,6 @@ app.post("/api/badges", async (req, res) => {
         textColor: '#FFFFFF',
         fontSize: 12,
         fontWeight: 'bold',
-        textTransform: 'uppercase',
         animation: 'pulse',
         borderRadius: 4,
         showIcon: false,
@@ -8303,8 +8244,6 @@ app.put("/api/badges/:badgeId", async (req, res) => {
     ruleType,
     ruleConfig,
     isActive,
-    startDate,
-    endDate,
     design
   } = req.body;
 
@@ -8333,8 +8272,6 @@ app.put("/api/badges/:badgeId", async (req, res) => {
       ruleType,
       ruleConfig: ruleConfig || {},
       isActive: isActive ?? true,
-      startDate: startDate !== undefined ? startDate : existingData.startDate,
-      endDate: endDate !== undefined ? endDate : existingData.endDate,
       design: design || existingData.design,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
@@ -8567,7 +8504,7 @@ app.get("/api/badges-script.js", async (req, res) => {
   // Cargar datos de productos desde la API
   async function loadProductData() {
     try {
-      const response = await fetch(\`https://us-central1-promonube-4a00c.cloudfunctions.net/api/products/metadata?storeId=\${STORE_ID}\`);
+      const response = await fetch(\`https://apipromonube-jlfopowzaq-uc.a.run.app/api/products/metadata?storeId=\${STORE_ID}\`);
       const data = await response.json();
       productDataMap = data.products || {};
       console.log('📦 Datos de productos cargados:', Object.keys(productDataMap).length);
@@ -8582,15 +8519,16 @@ app.get("/api/badges-script.js", async (req, res) => {
   function evaluateBadgeRule(badge, productData) {
     const { ruleType, ruleConfig } = badge;
 
-    // Verificar fechas de vigencia
-    const now = new Date();
-    if (badge.startDate && new Date(badge.startDate) > now) return false;
-    if (badge.endDate && new Date(badge.endDate) < now) return false;
-
     switch (ruleType) {
+      case 'all_products': {
+        // Todos los productos siempre cumplen
+        return true;
+      }
+
       case 'new_products': {
         if (!productData.created_at) return false;
         const createdAt = new Date(productData.created_at);
+        const now = new Date();
         const daysDiff = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
         return daysDiff <= (ruleConfig.daysToShowAsNew || 7);
       }
@@ -8599,31 +8537,25 @@ app.get("/api/badges-script.js", async (req, res) => {
         return ruleConfig.productIds?.includes(productData.id);
       }
 
-      case 'price_range': {
+      case 'price_min': {
         const price = parseFloat(productData.price);
-        const minPrice = ruleConfig.minPrice;
-        const maxPrice = ruleConfig.maxPrice;
-        
-        if (minPrice && maxPrice) {
-          return price >= minPrice && price <= maxPrice;
-        } else if (minPrice) {
-          return price >= minPrice;
-        } else if (maxPrice) {
-          return price <= maxPrice;
-        }
-        return false;
+        return price >= (ruleConfig.minPrice || 0);
+      }
+
+      case 'price_max': {
+        const price = parseFloat(productData.price);
+        return price <= (ruleConfig.maxPrice || Infinity);
       }
 
       case 'discount': {
         if (!productData.compare_at_price || !productData.price) return false;
         const comparePrice = parseFloat(productData.compare_at_price);
         const price = parseFloat(productData.price);
-        if (comparePrice <= price) return false;
         const discountPercent = ((comparePrice - price) / comparePrice) * 100;
         return discountPercent >= (ruleConfig.minDiscount || 0);
       }
 
-      case 'stock': {
+      case 'stock_low': {
         const stock = parseInt(productData.stock || 0);
         return stock > 0 && stock <= (ruleConfig.maxStock || 5);
       }
@@ -8650,10 +8582,8 @@ app.get("/api/badges-script.js", async (req, res) => {
     // Posiciones
     const positions = {
       'top-left': 'top: 10px; left: 10px;',
-      'top-center': 'top: 10px; left: 50%; transform: translateX(-50%);',
       'top-right': 'top: 10px; right: 10px;',
       'bottom-left': 'bottom: 10px; left: 10px;',
-      'bottom-center': 'bottom: 10px; left: 50%; transform: translateX(-50%);',
       'bottom-right': 'bottom: 10px; right: 10px;'
     };
 
@@ -8661,6 +8591,8 @@ app.get("/api/badges-script.js", async (req, res) => {
     if (design.shape === 'circle') {
       badgeEl.classList.add('pn-badge-circle');
       borderRadius = 50;
+    } else if (design.shape === 'flag') {
+      badgeEl.classList.add('pn-badge-flag');
     }
 
     if (design.animation && design.animation !== 'none') {
@@ -8673,9 +8605,8 @@ app.get("/api/badges-script.js", async (req, res) => {
       color: \${design.textColor || '#FFFFFF'};
       font-size: \${design.fontSize || 12}px;
       font-weight: \${design.fontWeight || 'bold'};
-      text-transform: \${design.textTransform || 'uppercase'};
-      padding: \${design.shape === 'circle' ? '12px' : '6px 12px'};
-      border-radius: \${borderRadius}px;
+      padding: \${design.shape === 'circle' ? '0' : '6px 12px'};
+      border-radius: \${design.shape === 'circle' ? '50%' : borderRadius + 'px'};
     \`;
 
     if (design.showIcon && design.icon) {
@@ -8696,38 +8627,22 @@ app.get("/api/badges-script.js", async (req, res) => {
     // Evitar duplicados
     if (productElement.querySelector('.pn-badge-container')) return;
 
-    // Optimización: Evaluar badges de tipo manual primero (solo requieren ID)
-    const manualBadges = BADGES_CONFIG.filter(badge => 
-      badge.ruleType === 'manual' && 
-      badge.ruleConfig?.productIds?.includes(productId)
-    );
-    
-    // Si hay un badge manual que aplica, usarlo directamente
-    if (manualBadges.length > 0) {
-      const container = document.createElement('div');
-      container.className = 'pn-badge-container';
-      const badgeEl = createBadgeElement(manualBadges[0]);
-      container.appendChild(badgeEl);
-      
-      const imageContainer = productElement.querySelector('.js-item-product, .product-image, .item-image') || 
-                            productElement.querySelector('img')?.parentElement;
-      if (imageContainer) {
-        imageContainer.style.position = 'relative';
-        imageContainer.appendChild(container);
+    // Optimización: Si hay badges de tipo "all_products", agregarlos directamente sin consultar metadata
+    const allProductsBadges = BADGES_CONFIG.filter(badge => badge.ruleType === 'all_products');
+    const otherBadges = BADGES_CONFIG.filter(badge => badge.ruleType !== 'all_products');
+
+    let matchingBadges = [...allProductsBadges];
+
+    // Solo consultar metadata si hay badges con otras reglas
+    if (otherBadges.length > 0) {
+      const productData = productDataMap[productId];
+      if (productData) {
+        const otherMatches = otherBadges.filter(badge => 
+          evaluateBadgeRule(badge, productData)
+        );
+        matchingBadges = [...matchingBadges, ...otherMatches];
       }
-      return;
     }
-
-    // Para otros tipos de badges, consultar metadata
-    const otherBadges = BADGES_CONFIG.filter(badge => badge.ruleType !== 'manual');
-    if (otherBadges.length === 0) return;
-
-    const productData = productDataMap[productId];
-    if (!productData) return;
-
-    const matchingBadges = otherBadges.filter(badge => 
-      evaluateBadgeRule(badge, productData)
-    );
 
     if (matchingBadges.length === 0) return;
 
@@ -8735,9 +8650,11 @@ app.get("/api/badges-script.js", async (req, res) => {
     container.className = 'pn-badge-container';
 
     // Agregar solo el primer badge que coincida
+    // (para evitar superposición, se puede mejorar con lógica de múltiples badges)
     const badgeEl = createBadgeElement(matchingBadges[0]);
     container.appendChild(badgeEl);
 
+    // Encontrar la imagen del producto
     const imageContainer = productElement.querySelector('.js-item-product, .product-image, .item-image') || 
                           productElement.querySelector('img')?.parentElement;
 
@@ -10133,9 +10050,12 @@ app.get("/api/style-widget.js", async (req, res) => {
                               slide.closest('.product-detail') ||
                               slide.closest('[class*="product-slider"]') ||
                               slide.closest('[class*="product-detail"]');
-        return !isProductSlide;
+        const containerSlide = slide.closest('.swiper-slide');
+        const isDuplicate = (slide.classList && slide.classList.contains('swiper-slide-duplicate')) ||
+                            (containerSlide && containerSlide.classList.contains('swiper-slide-duplicate'));
+        return !isProductSlide && !isDuplicate;
       });
-      console.log('PromoNube: Slides después de filtrar productos:', slides.length);
+      console.log('PromoNube: Slides después de filtrar productos/duplicados:', slides.length);
     } else {
       slides = [];
     }
@@ -10553,14 +10473,30 @@ app.get("/api/style-widget.js", async (req, res) => {
           console.log('PromoNube: Font-size aplicado:', fontSize);
         }
         
-        if (currentStyle) {
+        if (currentStyle && targetLink) {
           targetLink.setAttribute('style', currentStyle);
+          if (item.color) {
+            var childNodes = targetLink.querySelectorAll('*');
+            for (var childIdx = 0; childIdx < childNodes.length; childIdx++) {
+              childNodes[childIdx].style.setProperty('color', item.color, 'important');
+            }
+          }
           console.log('PromoNube: Estilos aplicados:', currentStyle);
           
           // Re-aplicar estilos cada 100ms durante 2 segundos para asegurar que se mantengan
           var reapplyCount = 0;
           var reapplyInterval = setInterval(function() {
+            if (!targetLink || !targetLink.setAttribute) {
+              clearInterval(reapplyInterval);
+              return;
+            }
             targetLink.setAttribute('style', currentStyle);
+            if (item.color) {
+              var childNodesRe = targetLink.querySelectorAll('*');
+              for (var childIdxRe = 0; childIdxRe < childNodesRe.length; childIdxRe++) {
+                childNodesRe[childIdxRe].style.setProperty('color', item.color, 'important');
+              }
+            }
             reapplyCount++;
             if (reapplyCount >= 20) {
               clearInterval(reapplyInterval);
@@ -10650,6 +10586,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                 }
                 
                 if (dropdown) {
+                  dropdown.classList.add('pn-menu-dropdown-has-image');
                   // ID único para esta imagen
                   var imageId = 'pn-menu-img-' + currentMenu.name + '-pos' + pos;
                   
@@ -10745,6 +10682,25 @@ app.get("/api/style-widget.js", async (req, res) => {
         margin: 0 !important;
         display: block !important;
       }
+
+      /* Layout con imagen a la derecha */
+      .pn-menu-dropdown-has-image {
+        position: relative !important;
+        padding-right: 420px !important;
+      }
+
+      .pn-menu-dropdown-has-image > li {
+        max-width: calc(100% - 420px) !important;
+      }
+
+      .pn-menu-dropdown-has-image .pn-menu-dropdown-image-wrapper,
+      .pn-menu-dropdown-has-image .pn-menu-dropdown-image {
+        position: absolute !important;
+        top: 0 !important;
+        right: 0 !important;
+        width: 380px !important;
+        max-width: 380px !important;
+      }
       
       .pn-menu-dropdown-image {
         display: block !important;
@@ -10770,10 +10726,12 @@ app.get("/api/style-widget.js", async (req, res) => {
         .pn-menu-dropdown-image {
           display: block !important;
           padding: 20px 15px !important;
+          text-align: center !important;
         }
         
         .pn-menu-dropdown-img {
           max-width: 450px !important;
+          margin: 0 auto !important;
         }
         
         /* Para dropdowns con flexbox */
@@ -10795,6 +10753,17 @@ app.get("/api/style-widget.js", async (req, res) => {
       
       /* Mobile: imagen visible y adaptada */
       @media (max-width: 768px) {
+        .pn-menu-dropdown-has-image {
+          padding-right: 0 !important;
+        }
+
+        .pn-menu-dropdown-has-image .pn-menu-dropdown-image-wrapper,
+        .pn-menu-dropdown-has-image .pn-menu-dropdown-image {
+          position: relative !important;
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+
         .pn-menu-dropdown-image {
           display: block !important;
           width: 100% !important;
@@ -10875,6 +10844,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     var searchModal = document.createElement('div');
     searchModal.id = modalId;
     searchModal.className = 'pn-search-modal';
+    searchModal.style.zIndex = '999999';
     
     // Variables de configuración
     var showLogo = CONFIG.searchBar.showLogo || false;
@@ -10902,7 +10872,7 @@ app.get("/api/style-widget.js", async (req, res) => {
           </svg>
         </button>
         <div class="pn-search-content">
-          \${showLogo && logoUrl ? '<img src="' + logoUrl + '" alt="Logo" class="pn-search-logo" style="max-width: ' + logoSize + 'px; height: auto; margin: 0 auto 30px; display: block;" />' : ''}
+          \${showLogo && logoUrl ? '<img src="' + logoUrl + '" alt="Logo" class="pn-search-logo" style="max-width: ' + logoSize + 'px; height: auto; margin: 0 auto 12px; display: block;" />' : ''}
           <h2 class="pn-search-title">\${CONFIG.searchBar.placeholder || '¿Qué estás buscando?'}</h2>
           <form class="pn-search-form" action="/search" method="get">
             <input 
@@ -11008,7 +10978,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         left: 0;
         width: 100%;
         height: 100%;
-        z-index: 99999;
+        z-index: 2147483647;
         visibility: hidden;
         opacity: 0;
         transition: visibility 0s 0.3s, opacity 0.3s ease;
@@ -11097,7 +11067,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       .pn-search-logo {
         max-width: 100%;
         height: auto;
-        margin: 0 auto 30px;
+        margin: 0 auto 12px;
         display: block;
       }
 
@@ -11440,12 +11410,110 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     console.log('PromoNube: ✅ Activando Cambio de Vista...');
 
+    // Aplicar hover para mostrar la segunda imagen en TODOS los productos
+    function applySecondViewHover() {
+      const productItems = document.querySelectorAll('.js-item-product, .product-item, [data-component="product-item"]');
+
+      productItems.forEach(function(item) {
+        const imageContainer = item.querySelector('a[href*="/productos/"], .item-link, .product-image');
+        if (!imageContainer || imageContainer.dataset.pnSecondViewApplied === 'true') return;
+
+        const images = imageContainer.querySelectorAll('img');
+        if (images.length < 2) return;
+
+        const imgVista1 = images[0];
+        const imgVista2 = images[1];
+
+        if (imgVista1.dataset.src && !imgVista1.src) {
+          imgVista1.src = imgVista1.dataset.src;
+        }
+        if (imgVista2.dataset.src && !imgVista2.src) {
+          imgVista2.src = imgVista2.dataset.src;
+        }
+
+        imageContainer.classList.add('pn-second-view-container');
+        imgVista1.classList.add('pn-view-1');
+        imgVista2.classList.add('pn-view-2');
+
+        // Forzar visibilidad para evitar blanco
+        imgVista1.style.display = 'block';
+        imgVista1.style.visibility = 'visible';
+        imgVista2.style.display = 'block';
+        imgVista2.style.visibility = 'visible';
+
+        imageContainer.dataset.pnSecondViewApplied = 'true';
+      });
+    }
+
+    // Inyectar estilos para hover (solo una vez)
+    if (!document.getElementById('pn-second-view-styles')) {
+      const hoverStyles = document.createElement('style');
+      hoverStyles.id = 'pn-second-view-styles';
+      hoverStyles.textContent =
+        '.pn-second-view-container {\\\\n' +
+        '  position: relative !important;\\\\n' +
+        '  display: block !important;\\\\n' +
+        '}\\\\n' +
+        '.pn-second-view-container img {\\\\n' +
+        '  transition: opacity 0.3s ease !important;\\\\n' +
+        '}\\\\n' +
+        '.pn-second-view-container img.pn-view-1 {\\\\n' +
+        '  opacity: 1;\\\\n' +
+        '  position: relative;\\\\n' +
+        '  z-index: 1;\\\\n' +
+        '}\\\\n' +
+        '.pn-second-view-container img.pn-view-2 {\\\\n' +
+        '  opacity: 0;\\\\n' +
+        '  position: absolute;\\\\n' +
+        '  top: 0;\\\\n' +
+        '  left: 0;\\\\n' +
+        '  width: 100%;\\\\n' +
+        '  height: auto;\\\\n' +
+        '  z-index: 2;\\\\n' +
+        '  display: block;\\\\n' +
+        '  visibility: visible;\\\\n' +
+        '}\\\\n' +
+        '.pn-second-view-on .pn-second-view-container img.pn-view-1 {\\\\n' +
+        '  opacity: 0 !important;\\\\n' +
+        '}\\\\n' +
+        '.pn-second-view-on .pn-second-view-container img.pn-view-2 {\\\\n' +
+        '  opacity: 1 !important;\\\\n' +
+        '  display: block !important;\\\\n' +
+        '  visibility: visible !important;\\\\n' +
+        '}\\\\n' +
+        '.pn-second-view-container:hover img.pn-view-1 {\\\\n' +
+        '  opacity: 0;\\\\n' +
+        '}\\\\n' +
+        '.pn-second-view-container:hover img.pn-view-2 {\\\\n' +
+        '  opacity: 1;\\\\n' +
+        '}\\\\n';
+      document.head.appendChild(hoverStyles);
+    }
+
+    applySecondViewHover();
+
+    // Reaplicar si hay carga dinámica de productos
+    const observer = new MutationObserver(() => applySecondViewHover());
+    observer.observe(document.body, { childList: true, subtree: true });
+
     // Buscar el contenedor donde va el toggle (al lado de DESTACADO)
     const filterContainer = document.querySelector('.js-controls-footer, .filters-container, .category-controls, .d-flex.justify-content-between');
     
     if (!filterContainer) {
-      console.warn('PromoNube: No se encontró contenedor de filtros');
-      return;
+      // Fallback: insertar antes del grid/listado de productos
+      const productsContainer = document.querySelector('.js-products-grid, .products-grid, .product-grid, .js-products-list, .products-list') ||
+        document.querySelector('.js-item-product')?.closest('section, .container, .products, .product-list') ||
+        document.querySelector('main');
+      if (productsContainer) {
+        const fallbackWrapper = document.createElement('div');
+        fallbackWrapper.className = 'pn-light-toggle-fallback';
+        fallbackWrapper.style.cssText = 'margin: 10px 0 20px; display: flex; align-items: center; justify-content: flex-start;';
+        productsContainer.insertBefore(fallbackWrapper, productsContainer.firstChild);
+        filterContainer = fallbackWrapper;
+      } else {
+        console.warn('PromoNube: No se encontró contenedor de filtros ni fallback');
+        return;
+      }
     }
 
     // Crear el toggle si no existe
@@ -11536,6 +11604,8 @@ app.get("/api/style-widget.js", async (req, res) => {
     // Función para activar/desactivar las luces
     function toggleLights(isOn) {
       console.log('PromoNube: Cambiando luces a:', isOn ? 'ON' : 'OFF');
+
+      document.body.classList.toggle('pn-second-view-on', !!isOn);
       
       const productItems = document.querySelectorAll('.js-item-product, .product-item, [data-component="product-item"]');
       console.log('PromoNube: Productos encontrados:', productItems.length);
@@ -11581,11 +11651,15 @@ app.get("/api/style-widget.js", async (req, res) => {
             // Mostrar vista 2, ocultar vista 1
             imgVista1.style.opacity = '0';
             imgVista2.style.opacity = '1';
+            imgVista2.style.display = 'block';
+            imgVista2.style.visibility = 'visible';
             console.log('PromoNube: Vista 2 ACTIVADA');
           } else {
             // Mostrar vista 1, ocultar vista 2
             imgVista1.style.opacity = '1';
             imgVista2.style.opacity = '0';
+            imgVista1.style.display = 'block';
+            imgVista1.style.visibility = 'visible';
             console.log('PromoNube: Vista 1 ACTIVADA');
           }
         }
@@ -11954,6 +12028,16 @@ app.get("/api/style-widget.js", async (req, res) => {
     console.log('PromoNube Theme Switcher: Accent:', accentColor);
   }
 
+  function injectBadgesScript() {
+    if (window.promonubeBadgesScriptLoaded) return;
+    window.promonubeBadgesScriptLoaded = true;
+
+    const badgesScript = document.createElement('script');
+    badgesScript.src = 'https://apipromonube-jlfopowzaq-uc.a.run.app/api/badges-script.js?store=${store}';
+    badgesScript.async = true;
+    document.head.appendChild(badgesScript);
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
       customizeWhatsApp();
@@ -11962,6 +12046,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       setTimeout(customizeSearchBar, 600); // Buscador mejorado
       setTimeout(customizeLightToggle, 1000); // Dar tiempo a la página para cargar
       setTimeout(customizeTheme, 500); // Aplicar tema lo antes posible
+      setTimeout(injectBadgesScript, 800);
     });
   } else {
     customizeWhatsApp();
@@ -11970,6 +12055,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     setTimeout(customizeSearchBar, 600); // Buscador mejorado
     setTimeout(customizeLightToggle, 1000); // Dar tiempo a la página para cargar
     setTimeout(customizeTheme, 500); // Aplicar tema lo antes posible
+    setTimeout(injectBadgesScript, 800);
   }
 
 })();

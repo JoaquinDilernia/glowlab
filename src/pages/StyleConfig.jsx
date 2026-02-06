@@ -212,18 +212,12 @@ function StyleConfig() {
 
     setLoading(true);
     try {
-      // Limpiar slides sin botones y recalcular índices antes de guardar
-      const slidesWithButtons = config.banners.slides.filter(slide => slide.buttons && slide.buttons.length > 0);
-      const reindexedSlides = slidesWithButtons.map((slide, index) => ({
-        ...slide,
-        slideIndex: index
-      }));
-      
+      // Limpiar slides sin botones antes de guardar
       const cleanedConfig = {
         ...config,
         banners: {
           ...config.banners,
-          slides: reindexedSlides
+          slides: config.banners.slides.filter(slide => slide.buttons && slide.buttons.length > 0)
         }
       };
       
@@ -366,8 +360,13 @@ function StyleConfig() {
 
   const addSlide = () => {
     const currentSlides = config.banners.slides || [];
+    const maxSlideIndex = currentSlides.reduce((maxIndex, slide) => {
+      const value = typeof slide.slideIndex === 'number' ? slide.slideIndex : -1;
+      return Math.max(maxIndex, value);
+    }, -1);
+    const nextSlideIndex = maxSlideIndex + 1;
     const newSlide = {
-      slideIndex: currentSlides.length,
+      slideIndex: nextSlideIndex,
       position: 'center',
       gap: '12px',
       columns: 'auto',
@@ -384,22 +383,16 @@ function StyleConfig() {
   };
 
   const removeSlide = (slideIndex) => {
-    setConfig(prev => {
-      const remainingSlides = prev.banners.slides.filter((_, i) => i !== slideIndex);
-      // Recalcular slideIndex para que sean secuenciales
-      const reindexedSlides = remainingSlides.map((slide, newIndex) => ({
-        ...slide,
-        slideIndex: newIndex
-      }));
-      
-      return {
-        ...prev,
-        banners: {
-          ...prev.banners,
-          slides: reindexedSlides
-        }
-      };
-    });
+    setConfig(prev => ({
+      ...prev,
+      banners: {
+        ...prev.banners,
+        slides: prev.banners.slides.filter((slide, i) => {
+          const currentIndex = typeof slide.slideIndex === 'number' ? slide.slideIndex : i;
+          return currentIndex !== slideIndex;
+        })
+      }
+    }));
   };
 
   const updateSlide = (slideIndex, field, value) => {
@@ -407,8 +400,10 @@ function StyleConfig() {
       ...prev,
       banners: {
         ...prev.banners,
-        slides: prev.banners.slides.map((slide, i) => 
-          i === slideIndex ? { ...slide, [field]: value } : slide
+        slides: prev.banners.slides.map((slide, i) => {
+          const currentIndex = typeof slide.slideIndex === 'number' ? slide.slideIndex : i;
+          return currentIndex === slideIndex ? { ...slide, [field]: value } : slide;
+        }
         )
       }
     }));
@@ -437,8 +432,10 @@ function StyleConfig() {
       ...prev,
       banners: {
         ...prev.banners,
-        slides: prev.banners.slides.map((slide, i) => 
-          i === slideIndex ? { ...slide, buttons: [...slide.buttons, newButton] } : slide
+        slides: prev.banners.slides.map((slide, i) => {
+          const currentIndex = typeof slide.slideIndex === 'number' ? slide.slideIndex : i;
+          return currentIndex === slideIndex ? { ...slide, buttons: [...slide.buttons, newButton] } : slide;
+        }
         )
       }
     }));
@@ -449,13 +446,15 @@ function StyleConfig() {
       ...prev,
       banners: {
         ...prev.banners,
-        slides: prev.banners.slides.map((slide, i) => 
-          i === slideIndex ? {
+        slides: prev.banners.slides.map((slide, i) => {
+          const currentIndex = typeof slide.slideIndex === 'number' ? slide.slideIndex : i;
+          return currentIndex === slideIndex ? {
             ...slide,
             buttons: slide.buttons.map((btn, j) => 
               j === buttonIndex ? { ...btn, [field]: value } : btn
             )
-          } : slide
+          } : slide;
+        }
         )
       }
     }));
@@ -466,11 +465,13 @@ function StyleConfig() {
       ...prev,
       banners: {
         ...prev.banners,
-        slides: prev.banners.slides.map((slide, i) => 
-          i === slideIndex ? {
+        slides: prev.banners.slides.map((slide, i) => {
+          const currentIndex = typeof slide.slideIndex === 'number' ? slide.slideIndex : i;
+          return currentIndex === slideIndex ? {
             ...slide,
             buttons: slide.buttons.filter((_, j) => j !== buttonIndex)
-          } : slide
+          } : slide;
+        }
         )
       }
     }));
@@ -956,8 +957,11 @@ function StyleConfig() {
                   </div>
                 ) : (
                   <>
-                    {config.banners.slides.map((slide, slideIndex) => (
-                      <div key={slideIndex} style={{
+                    {config.banners.slides.map((slide, slideIndex) => {
+                      const slideKey = typeof slide.slideIndex === 'number' ? slide.slideIndex : slideIndex;
+                      const displayIndex = slideKey + 1;
+                      return (
+                      <div key={slideKey} style={{
                         background: 'linear-gradient(135deg, #667eea15 0%, #764ba215 100%)',
                         padding: '25px',
                         borderRadius: '16px',
@@ -971,11 +975,11 @@ function StyleConfig() {
                           marginBottom: '20px'
                         }}>
                           <h3 style={{margin: 0, fontSize: '18px', fontWeight: '700'}}>
-                            🖼️ Imagen #{slideIndex + 1} del Carrusel
+                            🖼️ Imagen #{displayIndex} del Carrusel
                           </h3>
                           <button 
                             className="btn-remove-small"
-                            onClick={() => removeSlide(slideIndex)}
+                            onClick={() => removeSlide(slideKey)}
                             style={{fontSize: '18px', padding: '8px 14px'}}
                           >
                             🗑️ Eliminar
@@ -996,7 +1000,7 @@ function StyleConfig() {
                               <div
                                 key={pos.value}
                                 className={`position-option ${slide.position === pos.value ? 'selected' : ''}`}
-                                onClick={() => updateSlide(slideIndex, 'position', pos.value)}
+                                onClick={() => updateSlide(slideKey, 'position', pos.value)}
                                 style={{padding: '10px 8px', fontSize: '13px'}}
                               >
                                 <strong>{pos.label}</strong>
@@ -1013,7 +1017,7 @@ function StyleConfig() {
                               <div
                                 key={pos.value}
                                 className={`position-option ${slide.position === pos.value ? 'selected' : ''}`}
-                                onClick={() => updateSlide(slideIndex, 'position', pos.value)}
+                                onClick={() => updateSlide(slideKey, 'position', pos.value)}
                                 style={{padding: '10px 8px', fontSize: '13px'}}
                               >
                                 <strong>{pos.label}</strong>
@@ -1027,7 +1031,7 @@ function StyleConfig() {
                               <div
                                 key={pos.value}
                                 className={`position-option ${slide.position === pos.value ? 'selected' : ''}`}
-                                onClick={() => updateSlide(slideIndex, 'position', pos.value)}
+                                onClick={() => updateSlide(slideKey, 'position', pos.value)}
                                 style={{padding: '10px 8px', fontSize: '13px'}}
                               >
                                 <strong>{pos.label}</strong>
@@ -1041,7 +1045,7 @@ function StyleConfig() {
                             <label>📐 Columnas (Layout)</label>
                             <select
                               value={slide.columns || 'auto'}
-                              onChange={(e) => updateSlide(slideIndex, 'columns', e.target.value)}
+                              onChange={(e) => updateSlide(slideKey, 'columns', e.target.value)}
                               style={{width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd'}}
                             >
                               <option value="auto">Automático (ajusta según espacio)</option>
@@ -1056,7 +1060,7 @@ function StyleConfig() {
                             <input
                               type="text"
                               value={slide.gap || '12px'}
-                              onChange={(e) => updateSlide(slideIndex, 'gap', e.target.value)}
+                              onChange={(e) => updateSlide(slideKey, 'gap', e.target.value)}
                               placeholder="12px"
                             />
                           </div>
@@ -1077,7 +1081,7 @@ function StyleConfig() {
                                 <h4>Botón {buttonIndex + 1}</h4>
                                 <button 
                                   className="btn-remove-small"
-                                  onClick={() => removeButtonFromSlide(slideIndex, buttonIndex)}
+                                  onClick={() => removeButtonFromSlide(slideKey, buttonIndex)}
                                 >
                                   ✕
                                 </button>
@@ -1089,7 +1093,7 @@ function StyleConfig() {
                                   <input
                                     type="text"
                                     value={button.text}
-                                    onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'text', e.target.value)}
+                                    onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'text', e.target.value)}
                                   />
                                 </div>
                                 <div className="form-group">
@@ -1097,7 +1101,7 @@ function StyleConfig() {
                                   <input
                                     type="text"
                                     value={button.url}
-                                    onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'url', e.target.value)}
+                                    onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'url', e.target.value)}
                                   />
                                 </div>
                               </div>
@@ -1109,12 +1113,12 @@ function StyleConfig() {
                                     <input
                                       type="color"
                                       value={button.backgroundColor?.startsWith('rgba') || button.backgroundColor?.startsWith('rgb') ? '#000000' : (button.backgroundColor || '#000000')}
-                                      onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'backgroundColor', e.target.value)}
+                                      onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'backgroundColor', e.target.value)}
                                     />
                                     <input
                                       type="text"
                                       value={button.backgroundColor}
-                                      onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'backgroundColor', e.target.value)}
+                                      onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'backgroundColor', e.target.value)}
                                       placeholder="rgba(0,0,0,0.8) o #FF5733"
                                     />
                                   </div>
@@ -1157,23 +1161,19 @@ function StyleConfig() {
                                         const alpha = opacity / 100;
                                         const newColor = `rgba(${r},${g},${b},${alpha})`;
                                         
-                                        // Actualizar usando la función updateButtonInSlide correctamente
+                                        // Actualizar ambos valores en una sola llamada
+                                        const updatedSlides = [...config.banners.slides];
+                                        updatedSlides[slideIndex].buttons[buttonIndex] = {
+                                          ...updatedSlides[slideIndex].buttons[buttonIndex],
+                                          backgroundColor: newColor,
+                                          backgroundOpacity: opacity
+                                        };
+                                        
                                         setConfig(prev => ({
                                           ...prev,
                                           banners: {
                                             ...prev.banners,
-                                            slides: prev.banners.slides.map((s, sIdx) => 
-                                              sIdx === slideIndex ? {
-                                                ...s,
-                                                buttons: s.buttons.map((btn, bIdx) => 
-                                                  bIdx === buttonIndex ? {
-                                                    ...btn,
-                                                    backgroundColor: newColor,
-                                                    backgroundOpacity: opacity
-                                                  } : btn
-                                                )
-                                              } : s
-                                            )
+                                            slides: updatedSlides
                                           }
                                         }));
                                       }}
@@ -1190,12 +1190,12 @@ function StyleConfig() {
                                     <input
                                       type="color"
                                       value={button.textColor}
-                                      onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'textColor', e.target.value)}
+                                      onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'textColor', e.target.value)}
                                     />
                                     <input
                                       type="text"
                                       value={button.textColor}
-                                      onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'textColor', e.target.value)}
+                                      onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'textColor', e.target.value)}
                                     />
                                   </div>
                                 </div>
@@ -1205,12 +1205,12 @@ function StyleConfig() {
                                     <input
                                       type="color"
                                       value={button.hoverColor?.startsWith('rgba') || button.hoverColor?.startsWith('rgb') ? '#333333' : (button.hoverColor || '#333333')}
-                                      onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'hoverColor', e.target.value)}
+                                      onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'hoverColor', e.target.value)}
                                     />
                                     <input
                                       type="text"
                                       value={button.hoverColor || 'rgba(51,51,51,1)'}
-                                      onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'hoverColor', e.target.value)}
+                                      onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'hoverColor', e.target.value)}
                                       placeholder="rgba(51,51,51,1)"
                                     />
                                   </div>
@@ -1223,7 +1223,7 @@ function StyleConfig() {
                                   <input
                                     type="text"
                                     value={button.padding || '12px 32px'}
-                                    onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'padding', e.target.value)}
+                                    onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'padding', e.target.value)}
                                     placeholder="12px 32px"
                                   />
                                 </div>
@@ -1232,7 +1232,7 @@ function StyleConfig() {
                                   <input
                                     type="text"
                                     value={button.borderRadius || '8px'}
-                                    onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'borderRadius', e.target.value)}
+                                    onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'borderRadius', e.target.value)}
                                     placeholder="0px = cuadrado | 8px = redondeado | 50px = muy redondo"
                                   />
                                 </div>
@@ -1244,7 +1244,7 @@ function StyleConfig() {
                                   <input
                                     type="text"
                                     value={button.borderWidth || '0px'}
-                                    onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'borderWidth', e.target.value)}
+                                    onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'borderWidth', e.target.value)}
                                     placeholder="0px, 2px, 3px"
                                   />
                                 </div>
@@ -1252,7 +1252,7 @@ function StyleConfig() {
                                   <label>📐 Estilo de Borde</label>
                                   <select
                                     value={button.borderStyle || 'solid'}
-                                    onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'borderStyle', e.target.value)}
+                                    onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'borderStyle', e.target.value)}
                                     style={{width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd'}}
                                   >
                                     <option value="solid">Sólido</option>
@@ -1271,12 +1271,12 @@ function StyleConfig() {
                                     <input
                                       type="color"
                                       value={button.borderColor || '#000000'}
-                                      onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'borderColor', e.target.value)}
+                                      onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'borderColor', e.target.value)}
                                     />
                                     <input
                                       type="text"
                                       value={button.borderColor || '#000000'}
-                                      onChange={(e) => updateButtonInSlide(slideIndex, buttonIndex, 'borderColor', e.target.value)}
+                                      onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'borderColor', e.target.value)}
                                     />
                                   </div>
                                 </div>
@@ -1307,13 +1307,13 @@ function StyleConfig() {
 
                         <button 
                           className="btn-add" 
-                          onClick={() => addButtonToSlide(slideIndex)}
+                          onClick={() => addButtonToSlide(slideKey)}
                           style={{marginTop: '15px'}}
                         >
                           + Agregar Botón a esta Imagen
                         </button>
                       </div>
-                    ))}
+                    )})}
 
                     <button className="btn-add" onClick={addSlide}>
                       + Agregar Otra Imagen del Carrusel

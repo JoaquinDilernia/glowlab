@@ -94,7 +94,6 @@ function SpinWheelAnalytics() {
           </div>
         </div>
 
-        {/* COMENTADO: Tasa de conversión no es confiable si no se rastrea el uso del cupón 
         <div className="metric-card highlight">
           <div className="metric-icon">📈</div>
           <div className="metric-info">
@@ -112,7 +111,6 @@ function SpinWheelAnalytics() {
             <span className="metric-label">Ticket promedio: ${analytics.avgOrderValue}</span>
           </div>
         </div>
-        */}
       </div>
 
       {/* Distribución de premios */}
@@ -224,15 +222,33 @@ function SpinWheelAnalytics() {
             <span className="summary-value">{analytics.couponsUsed}</span>
           </div>
           <div className="summary-item">
-            <span className="summary-label">🎯 ROI Estimado</span>
-            <span className="summary-value">
-              {analytics.totalDiscount > 0 
-                ? ((analytics.totalRevenue / analytics.totalDiscount) * 100).toFixed(0) 
-                : 0}%
-            </span>
+            <span className="summary-label">🎯 ROI</span>
+            <span className="summary-value">{analytics.roi}%</span>
           </div>
         </div>
       </div>
+
+      {/* Top Cupones Usados */}
+      {analytics.topCoupons && analytics.topCoupons.length > 0 && (
+        <div className="analytics-section">
+          <h2>🏆 Top Cupones Usados</h2>
+          <div className="top-coupons-list">
+            {analytics.topCoupons.map((coupon, index) => (
+              <div key={index} className="top-coupon-item">
+                <div className="coupon-rank">#{index + 1}</div>
+                <div className="coupon-details">
+                  <code className="coupon-code">{coupon.couponCode}</code>
+                  <span className="coupon-email">{coupon.email}</span>
+                </div>
+                <div className="coupon-stats">
+                  <span className="coupon-total">${coupon.total.toLocaleString()}</span>
+                  <span className="coupon-discount">-${coupon.discount.toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

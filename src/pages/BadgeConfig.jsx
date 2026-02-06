@@ -1,57 +1,28 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  Save, 
-  Eye, 
-  Sparkles, 
-  Calendar,
-  MapPin,
-  Search,
-  X,
-  Package,
-  Tag,
-  Percent,
-  Layers,
-  FolderTree,
-  Circle,
-  Square,
-  Maximize2,
-  Zap
-} from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../config';
 import './BadgeConfig.css';
 
 function BadgeConfig() {
   const { badgeId } = useParams();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  
-  // Get rule type from URL or default to new_products
-  const urlRuleType = searchParams.get('type') || 'new_products';
+  const [activeTab, setActiveTab] = useState('general');
   
   // General config
   const [badgeName, setBadgeName] = useState('');
   const [badgeText, setBadgeText] = useState('');
-  const [ruleType, setRuleType] = useState(urlRuleType);
+  const [ruleType, setRuleType] = useState('new_products');
   const [isActive, setIsActive] = useState(true);
-  
-  // Dates
-  const [hasStartDate, setHasStartDate] = useState(false);
-  const [startDate, setStartDate] = useState('');
-  const [hasEndDate, setHasEndDate] = useState(false);
-  const [endDate, setEndDate] = useState('');
   
   // Rule-specific config
   const [daysToShowAsNew, setDaysToShowAsNew] = useState(7);
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
-  const [priceMode, setPriceMode] = useState('min'); // min, max, range
-  const [minDiscount, setMinDiscount] = useState(10);
-  const [maxStock, setMaxStock] = useState(5);
+  const [minDiscount, setMinDiscount] = useState('');
+  const [maxStock, setMaxStock] = useState('');
   const [selectedCategories, setSelectedCategories] = useState([]);
   
   // Design config
@@ -61,7 +32,6 @@ function BadgeConfig() {
   const [textColor, setTextColor] = useState('#FFFFFF');
   const [fontSize, setFontSize] = useState(12);
   const [fontWeight, setFontWeight] = useState('bold');
-  const [textTransform, setTextTransform] = useState('uppercase');
   const [animation, setAnimation] = useState('pulse');
   const [borderRadius, setBorderRadius] = useState(4);
   const [showIcon, setShowIcon] = useState(false);
@@ -76,64 +46,39 @@ function BadgeConfig() {
   const [categories, setCategories] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
 
-  // Suggestions for badge text
-  const suggestions = {
-    new_products: ['NUEVO', '🆕 NUEVO', 'RECIÉN LLEGADO', 'NOVEDAD', '✨ NUEVO'],
-    manual: ['DESTACADO', '⭐ DESTACADO', 'RECOMENDADO', 'POPULAR', 'TOP'],
-    price_range: ['OFERTA', '🔥 OFERTA', 'PRECIO ESPECIAL', 'PROMOCIÓN', '💰 SUPER PRECIO'],
-    discount: ['DESCUENTO', '% OFF', '🎉 OFERTA', 'REBAJA', '💥 DESCUENTO'],
-    stock: ['ÚLTIMAS UNIDADES', '⚡ POCAS UNIDADES', 'STOCK LIMITADO', '🔴 ÚLTIMAS', 'APROVECHA'],
-    category: ['CATEGORÍA', '📁 CATEGORÍA', 'ESPECIAL', 'COLECCIÓN', '✨ ESPECIAL']
-  };
-
-  const ruleTypesInfo = {
-    new_products: { title: 'Productos Nuevos', icon: Package, color: '#3B82F6', emoji: '🆕' },
-    manual: { title: 'Selección Manual', icon: Tag, color: '#8B5CF6', emoji: '✋' },
-    price_range: { title: 'Rango de Precio', icon: MapPin, color: '#F59E0B', emoji: '💰' },
-    discount: { title: 'Descuentos', icon: Percent, color: '#EF4444', emoji: '%' },
-    stock: { title: 'Stock Bajo', icon: Layers, color: '#EC4899', emoji: '📦' },
-    category: { title: 'Por Categoría', icon: FolderTree, color: '#10B981', emoji: '📁' }
-  };
-
   useEffect(() => {
     if (badgeId) {
       loadBadgeConfig();
     }
-    if (ruleType === 'category' && categories.length === 0) {
-      loadCategories();
-    }
-  }, [badgeId, ruleType]);
+  }, [badgeId]);
 
   const loadBadgeConfig = async () => {
     setLoading(true);
     try {
       const storeId = localStorage.getItem('promonube_store_id');
-      const data = await apiRequest(`/api/badges/${badgeId}?storeId=${storeId}`);
       
+      const data = await apiRequest(
+        `/api/badges/${badgeId}?storeId=${storeId}`
+      );
+      
+      // General
       setBadgeName(data.badgeName || '');
       setBadgeText(data.badgeText || '');
       setRuleType(data.ruleType || 'new_products');
       setIsActive(data.isActive ?? true);
       
-      if (data.startDate) {
-        setHasStartDate(true);
-        setStartDate(data.startDate);
-      }
-      if (data.endDate) {
-        setHasEndDate(true);
-        setEndDate(data.endDate);
-      }
-      
+      // Rules
       if (data.ruleConfig) {
         setDaysToShowAsNew(data.ruleConfig.daysToShowAsNew || 7);
-        setSelectedProducts(data.ruleConfig.products || []);
+        setSelectedProducts(data.ruleConfig.productIds || []);
         setMinPrice(data.ruleConfig.minPrice || '');
         setMaxPrice(data.ruleConfig.maxPrice || '');
-        setMinDiscount(data.ruleConfig.minDiscount || 10);
-        setMaxStock(data.ruleConfig.maxStock || 5);
+        setMinDiscount(data.ruleConfig.minDiscount || '');
+        setMaxStock(data.ruleConfig.maxStock || '');
         setSelectedCategories(data.ruleConfig.categoryIds || []);
       }
       
+      // Design
       if (data.design) {
         setShape(data.design.shape || 'rectangle');
         setPosition(data.design.position || 'top-right');
@@ -141,7 +86,6 @@ function BadgeConfig() {
         setTextColor(data.design.textColor || '#FFFFFF');
         setFontSize(data.design.fontSize || 12);
         setFontWeight(data.design.fontWeight || 'bold');
-        setTextTransform(data.design.textTransform || 'uppercase');
         setAnimation(data.design.animation || 'pulse');
         setBorderRadius(data.design.borderRadius || 4);
         setShowIcon(data.design.showIcon || false);
@@ -155,67 +99,29 @@ function BadgeConfig() {
     }
   };
 
-  const searchProducts = async (query) => {
-    const searchQuery = query || productSearch;
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
+  const searchProducts = async () => {
+    if (!productSearch.trim()) return;
     
     setSearchingProducts(true);
     try {
       const storeId = localStorage.getItem('promonube_store_id');
-      const accessToken = localStorage.getItem('promonube_access_token');
       
-      // Buscar directamente en TiendaNube API
-      const response = await fetch(
-        `https://api.tiendanube.com/v1/${storeId}/products?q=${encodeURIComponent(searchQuery)}&per_page=10`,
-        {
-          headers: {
-            'Authentication': `bearer ${accessToken}`,
-            'User-Agent': 'GlowLab (contacto@glowlab.com)'
-          }
-        }
+      const data = await apiRequest(
+        `/api/tiendanube/products/search?storeId=${storeId}&q=${encodeURIComponent(productSearch)}`
       );
       
-      if (!response.ok) throw new Error('Error buscando productos');
-      
-      const data = await response.json();
-      setSearchResults(data || []);
+      setSearchResults(data);
     } catch (error) {
       console.error('Error buscando productos:', error);
-      setSearchResults([]);
+      alert('Error al buscar productos');
     } finally {
       setSearchingProducts(false);
     }
   };
 
-  // Debounce para la búsqueda
-  const [searchTimeout, setSearchTimeout] = useState(null);
-  
-  const handleSearchChange = (value) => {
-    setProductSearch(value);
-    
-    if (searchTimeout) clearTimeout(searchTimeout);
-    
-    const timeout = setTimeout(() => {
-      searchProducts(value);
-    }, 500);
-    
-    setSearchTimeout(timeout);
-  };
-
   const addProduct = (product) => {
-    // Normalizar el producto para guardar solo lo necesario
-    const normalizedProduct = {
-      id: product.id,
-      name: product.name?.es || product.name,
-      price: product.variants?.[0]?.price || product.price || 0,
-      image: product.images?.[0]?.src || null
-    };
-    
-    if (!selectedProducts.find(p => p.id === normalizedProduct.id)) {
-      setSelectedProducts([...selectedProducts, normalizedProduct]);
+    if (!selectedProducts.find(p => p.id === product.id)) {
+      setSelectedProducts([...selectedProducts, product]);
     }
     setProductSearch('');
     setSearchResults([]);
@@ -229,10 +135,15 @@ function BadgeConfig() {
     setLoadingCategories(true);
     try {
       const storeId = localStorage.getItem('promonube_store_id');
-      const data = await apiRequest(`/api/tiendanube/categories?storeId=${storeId}`);
-      setCategories(data || []);
+      
+      const data = await apiRequest(
+        `/api/tiendanube/categories?storeId=${storeId}`
+      );
+      
+      setCategories(data);
     } catch (error) {
       console.error('Error cargando categorías:', error);
+      alert('Error al cargar las categorías');
     } finally {
       setLoadingCategories(false);
     }
@@ -251,36 +162,60 @@ function BadgeConfig() {
       alert('Por favor ingresa un nombre para el badge');
       return;
     }
+    
     if (!badgeText.trim()) {
-      alert('Por favor ingresa el texto del badge');
+      alert('Por favor ingresa el texto que se mostrará en el badge');
       return;
     }
-
-    // Validate rule-specific
+    
+    // Validate rule-specific fields
     if (ruleType === 'manual' && selectedProducts.length === 0) {
       alert('Por favor selecciona al menos un producto');
       return;
     }
+    
+    if (ruleType === 'price_min' && !minPrice) {
+      alert('Por favor ingresa el precio mínimo');
+      return;
+    }
+    
+    if (ruleType === 'price_max' && !maxPrice) {
+      alert('Por favor ingresa el precio máximo');
+      return;
+    }
+    
+    if (ruleType === 'discount' && !minDiscount) {
+      alert('Por favor ingresa el descuento mínimo');
+      return;
+    }
+    
+    if (ruleType === 'stock_low' && !maxStock) {
+      alert('Por favor ingresa el stock máximo');
+      return;
+    }
+    
     if (ruleType === 'category' && selectedCategories.length === 0) {
       alert('Por favor selecciona al menos una categoría');
       return;
     }
-
+    
     setSaving(true);
     try {
       const storeId = localStorage.getItem('promonube_store_id');
       
       const ruleConfig = {};
+      
       if (ruleType === 'new_products') {
         ruleConfig.daysToShowAsNew = parseInt(daysToShowAsNew);
       } else if (ruleType === 'manual') {
         ruleConfig.productIds = selectedProducts.map(p => p.id);
-      } else if (ruleType === 'price_range') {
-        if (minPrice) ruleConfig.minPrice = parseFloat(minPrice);
-        if (maxPrice) ruleConfig.maxPrice = parseFloat(maxPrice);
+      } else if (ruleType === 'price_min') {
+        ruleConfig.minPrice = parseFloat(minPrice);
+      } else if (ruleType === 'price_max') {
+        ruleConfig.maxPrice = parseFloat(maxPrice);
       } else if (ruleType === 'discount') {
         ruleConfig.minDiscount = parseFloat(minDiscount);
-      } else if (ruleType === 'stock') {
+      } else if (ruleType === 'stock_low') {
         ruleConfig.maxStock = parseInt(maxStock);
       } else if (ruleType === 'category') {
         ruleConfig.categoryIds = selectedCategories;
@@ -293,8 +228,6 @@ function BadgeConfig() {
         ruleType,
         ruleConfig,
         isActive,
-        startDate: hasStartDate ? startDate : null,
-        endDate: hasEndDate ? endDate : null,
         design: {
           shape,
           position,
@@ -302,25 +235,32 @@ function BadgeConfig() {
           textColor,
           fontSize,
           fontWeight,
-          textTransform,
           animation,
           borderRadius,
           showIcon,
-          icon
+          icon,
         }
       };
       
       if (badgeId) {
-        await apiRequest(`/api/badges/${badgeId}`, {
-          method: 'PUT',
-          body: JSON.stringify(badgeData)
-        });
+        // Update existing
+        await apiRequest(
+          `/api/badges/${badgeId}`,
+          {
+            method: 'PUT',
+            body: JSON.stringify(badgeData)
+          }
+        );
         alert('Badge actualizado correctamente');
       } else {
-        await apiRequest('/api/badges', {
-          method: 'POST',
-          body: JSON.stringify(badgeData)
-        });
+        // Create new
+        await apiRequest(
+          '/api/badges',
+          {
+            method: 'POST',
+            body: JSON.stringify(badgeData)
+          }
+        );
         alert('Badge creado correctamente');
       }
       
@@ -333,544 +273,625 @@ function BadgeConfig() {
     }
   };
 
-  const ruleInfo = ruleTypesInfo[ruleType];
-  const RuleIcon = ruleInfo?.icon || Tag;
+  const renderRuleConfig = () => {
+    switch (ruleType) {
+      case 'all_products':
+        return (
+          <div className="rule-config-section">
+            <h3>👁️ Configuración: Todos los Productos</h3>
+            <div style={{
+              background: '#e3f2fd',
+              border: '1px solid #2196f3',
+              borderRadius: '8px',
+              padding: '16px',
+              marginTop: '12px'
+            }}>
+              <p style={{ margin: 0, color: '#1565c0', fontWeight: '500' }}>
+                ✅ Este badge se mostrará en TODOS los productos de tu tienda automáticamente.
+              </p>
+              <p style={{ margin: '8px 0 0 0', color: '#555', fontSize: '14px' }}>
+                No requiere configuración adicional. Ideal para promociones generales como "Envío Gratis", "Garantía Extendida", etc.
+              </p>
+            </div>
+          </div>
+        );
+
+      case 'new_products':
+        return (
+          <div className="rule-config-section">
+            <h3>⏰ Configuración: Productos Nuevos</h3>
+            <p className="rule-description">
+              Se mostrará el badge en productos creados hace menos de X días
+            </p>
+            
+            <div className="form-group">
+              <label>Días para mostrar como "nuevo"</label>
+              <input
+                type="number"
+                min="1"
+                max="365"
+                value={daysToShowAsNew}
+                onChange={(e) => setDaysToShowAsNew(e.target.value)}
+                className="input-field"
+              />
+              <small>Productos creados en los últimos {daysToShowAsNew} días mostrarán este badge</small>
+            </div>
+          </div>
+        );
+      
+      case 'manual':
+        return (
+          <div className="rule-config-section">
+            <h3>✋ Configuración: Selección Manual</h3>
+            <p className="rule-description">
+              Selecciona manualmente los productos que tendrán este badge
+            </p>
+            
+            <div className="form-group">
+              <label>Buscar y agregar productos</label>
+              <div className="product-search-box">
+                <input
+                  type="text"
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && searchProducts()}
+                  placeholder="Buscar por nombre..."
+                  className="input-field"
+                />
+                <button
+                  onClick={searchProducts}
+                  disabled={searchingProducts}
+                  className="btn-search"
+                >
+                  {searchingProducts ? 'Buscando...' : 'Buscar'}
+                </button>
+              </div>
+              
+              {searchResults.length > 0 && (
+                <div className="search-results">
+                  {searchResults.map(product => (
+                    <div key={product.id} className="search-result-item">
+                      <div className="product-info">
+                        {product.images?.[0] && (
+                          <img src={product.images[0].src} alt={product.name.es} />
+                        )}
+                        <span>{product.name.es}</span>
+                      </div>
+                      <button
+                        onClick={() => addProduct(product)}
+                        className="btn-add-product"
+                        disabled={selectedProducts.find(p => p.id === product.id)}
+                      >
+                        {selectedProducts.find(p => p.id === product.id) ? 'Agregado' : 'Agregar'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {selectedProducts.length > 0 && (
+                <div className="selected-products">
+                  <h4>Productos seleccionados ({selectedProducts.length})</h4>
+                  <div className="selected-products-list">
+                    {selectedProducts.map(product => (
+                      <div key={product.id} className="selected-product-item">
+                        {product.images?.[0] && (
+                          <img src={product.images[0].src} alt={product.name.es} />
+                        )}
+                        <span>{product.name.es}</span>
+                        <button
+                          onClick={() => removeProduct(product.id)}
+                          className="btn-remove-product"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      
+      case 'price_min':
+        return (
+          <div className="rule-config-section">
+            <h3>💰 Configuración: Precio Mínimo</h3>
+            <p className="rule-description">
+              Se mostrará el badge en productos con precio igual o mayor al especificado
+            </p>
+            
+            <div className="form-group">
+              <label>Precio mínimo ($)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                className="input-field"
+                placeholder="Ej: 10000"
+              />
+              <small>Productos con precio ≥ ${minPrice || '0'}</small>
+            </div>
+          </div>
+        );
+      
+      case 'price_max':
+        return (
+          <div className="rule-config-section">
+            <h3>💰 Configuración: Precio Máximo</h3>
+            <p className="rule-description">
+              Se mostrará el badge en productos con precio igual o menor al especificado
+            </p>
+            
+            <div className="form-group">
+              <label>Precio máximo ($)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                className="input-field"
+                placeholder="Ej: 5000"
+              />
+              <small>Productos con precio ≤ ${maxPrice || '0'}</small>
+            </div>
+          </div>
+        );
+      
+      case 'discount':
+        return (
+          <div className="rule-config-section">
+            <h3>📉 Configuración: Descuento Mínimo</h3>
+            <p className="rule-description">
+              Se mostrará el badge en productos con descuento igual o mayor al especificado
+            </p>
+            
+            <div className="form-group">
+              <label>Descuento mínimo (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={minDiscount}
+                onChange={(e) => setMinDiscount(e.target.value)}
+                className="input-field"
+                placeholder="Ej: 20"
+              />
+              <small>Productos con descuento ≥ {minDiscount || '0'}%</small>
+            </div>
+          </div>
+        );
+      
+      case 'stock_low':
+        return (
+          <div className="rule-config-section">
+            <h3>📦 Configuración: Stock Bajo</h3>
+            <p className="rule-description">
+              Se mostrará el badge en productos con stock igual o menor al especificado
+            </p>
+            
+            <div className="form-group">
+              <label>Stock máximo</label>
+              <input
+                type="number"
+                min="0"
+                value={maxStock}
+                onChange={(e) => setMaxStock(e.target.value)}
+                className="input-field"
+                placeholder="Ej: 5"
+              />
+              <small>Productos con stock ≤ {maxStock || '0'} unidades</small>
+            </div>
+          </div>
+        );
+      
+      case 'category':
+        return (
+          <div className="rule-config-section">
+            <h3>📂 Configuración: Por Categoría</h3>
+            <p className="rule-description">
+              Se mostrará el badge en productos de las categorías seleccionadas
+            </p>
+            
+            <div className="form-group">
+              <label>Categorías</label>
+              {categories.length === 0 && (
+                <button
+                  onClick={loadCategories}
+                  disabled={loadingCategories}
+                  className="btn-load-categories"
+                >
+                  {loadingCategories ? 'Cargando...' : 'Cargar Categorías'}
+                </button>
+              )}
+              
+              {categories.length > 0 && (
+                <div className="categories-list">
+                  {categories.map(category => (
+                    <label key={category.id} className="category-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={selectedCategories.includes(category.id)}
+                        onChange={() => toggleCategory(category.id)}
+                      />
+                      <span>{category.name.es}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              
+              {selectedCategories.length > 0 && (
+                <small>{selectedCategories.length} categoría(s) seleccionada(s)</small>
+              )}
+            </div>
+          </div>
+        );
+      
+      default:
+        return null;
+    }
+  };
 
   if (loading) {
     return (
-      <div className="badge-config-page">
-        <div className="loading-container">
-          <div className="spinner"></div>
-          <p>Cargando configuración...</p>
-        </div>
+      <div className="badge-config-container">
+        <div className="loading-state">Cargando configuración...</div>
       </div>
     );
   }
 
   return (
-    <div className="badge-config-page">
-      {/* Header */}
-      <header className="config-header">
-        <button className="btn-back" onClick={() => navigate('/badges')}>
-          <ArrowLeft size={20} />
-          Volver a Badges
+    <div className="badge-config-container">
+      <div className="badge-config-header">
+        <button onClick={() => navigate('/badges')} className="btn-back">
+          ← Volver
         </button>
-        <div className="header-content">
-          <div className="header-title">
-            <div className="rule-badge" style={{ background: ruleInfo?.color }}>
-              <span className="rule-emoji">{ruleInfo?.emoji}</span>
-            </div>
-            <div>
-              <h1>{badgeId ? 'Editar' : 'Crear'} Badge - {ruleInfo?.title}</h1>
-              <p>Configura las reglas y el diseño de tu badge personalizado</p>
-            </div>
-          </div>
-        </div>
-      </header>
+        <h1>{badgeId ? 'Editar Badge' : 'Nuevo Badge'}</h1>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="btn-save-header"
+        >
+          {saving ? 'Guardando...' : 'Guardar Badge'}
+        </button>
+      </div>
 
-      <div className="config-container">
-        {/* Left Panel - Configuration */}
-        <div className="config-panel">
-          
-          {/* General Section */}
-          <section className="config-section">
-            <div className="section-header">
-              <Sparkles size={20} />
-              <h2>Información General</h2>
-            </div>
-            
+      <div className="config-tabs">
+        <button
+          className={`tab-button ${activeTab === 'general' ? 'active' : ''}`}
+          onClick={() => setActiveTab('general')}
+        >
+          General
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'design' ? 'active' : ''}`}
+          onClick={() => setActiveTab('design')}
+        >
+          Diseño
+        </button>
+      </div>
+
+      <div className="config-content">
+        {activeTab === 'general' && (
+          <div className="general-tab">
             <div className="form-group">
               <label>Nombre del Badge (interno)</label>
               <input
                 type="text"
                 value={badgeName}
                 onChange={(e) => setBadgeName(e.target.value)}
-                placeholder="Ej: Badge de productos nuevos"
                 className="input-field"
+                placeholder="Ej: Badge de Ofertas"
               />
-              <span className="input-hint">Este nombre solo lo verás tú en el panel</span>
+              <small>Este nombre es solo para identificar el badge en tu panel</small>
             </div>
 
             <div className="form-group">
-              <label>Texto del Badge</label>
+              <label>Texto del Badge (visible)</label>
               <input
                 type="text"
                 value={badgeText}
                 onChange={(e) => setBadgeText(e.target.value)}
-                placeholder="Ej: NUEVO"
                 className="input-field"
-                maxLength="20"
+                placeholder="Ej: ¡OFERTA!"
               />
-              <span className="input-hint">Texto que verán tus clientes ({badgeText.length}/20)</span>
+              <small>Este texto se mostrará en los productos</small>
             </div>
 
-            {/* Suggestions */}
-            <div className="suggestions">
-              <label className="suggestions-label">Sugerencias:</label>
-              <div className="suggestions-chips">
-                {suggestions[ruleType]?.map((suggestion, idx) => (
-                  <button
-                    key={idx}
-                    className="suggestion-chip"
-                    onClick={() => setBadgeText(suggestion)}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Date Range Section */}
-          <section className="config-section">
-            <div className="section-header">
-              <Calendar size={20} />
-              <h2>Vigencia</h2>
-            </div>
-
-            <div className="date-controls">
-              <div className="date-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={hasStartDate}
-                    onChange={(e) => setHasStartDate(e.target.checked)}
-                  />
-                  <span>Fecha de inicio</span>
-                </label>
-                {hasStartDate && (
-                  <input
-                    type="datetime-local"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="input-field"
-                  />
-                )}
-              </div>
-
-              <div className="date-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={hasEndDate}
-                    onChange={(e) => setHasEndDate(e.target.checked)}
-                  />
-                  <span>Fecha de fin</span>
-                </label>
-                {hasEndDate && (
-                  <input
-                    type="datetime-local"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="input-field"
-                  />
-                )}
-              </div>
-            </div>
-
-            {!hasStartDate && !hasEndDate && (
-              <div className="info-box">
-                <span>✓ Sin vencimiento - el badge estará siempre activo</span>
-              </div>
-            )}
-          </section>
-
-          {/* Rule Configuration */}
-          <section className="config-section">
-            <div className="section-header">
-              <RuleIcon size={20} />
-              <h2>Configuración de Regla</h2>
-            </div>
-
-            {ruleType === 'new_products' && (
-              <div className="form-group">
-                <label>Días para considerar "nuevo"</label>
-                <input
-                  type="number"
-                  value={daysToShowAsNew}
-                  onChange={(e) => setDaysToShowAsNew(e.target.value)}
-                  min="1"
-                  max="90"
-                  className="input-field"
-                />
-                <span className="input-hint">Productos creados en los últimos {daysToShowAsNew} días</span>
-              </div>
-            )}
-
-            {ruleType === 'manual' && (
-              <div className="products-selector">
-                <label>Buscar productos</label>
-                <div className="search-box">
-                  <Search size={18} />
-                  <input
-                    type="text"
-                    value={productSearch}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    placeholder="Buscar por nombre o SKU..."
-                    className="search-input"
-                  />
-                  {searchingProducts && <div className="mini-spinner"></div>}
-                </div>
-
-                {searchResults.length > 0 && (
-                  <div className="search-results">
-                    {searchResults.map(product => (
-                      <div key={product.id} className="search-result-item" onClick={() => addProduct(product)}>
-                        {product.images && product.images.length > 0 && (
-                          <img src={product.images[0]?.src || 'https://via.placeholder.com/48'} alt={product.name?.es || product.name} />
-                        )}
-                        {(!product.images || product.images.length === 0) && (
-                          <div style={{ width: 48, height: 48, background: '#f3f4f6', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>📦</div>
-                        )}
-                        <div>
-                          <div className="product-name">{product.name?.es || product.name}</div>
-                          <div className="product-price">${product.variants?.[0]?.price || product.price || '0'}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {selectedProducts.length > 0 && (
-                  <div className="selected-products">
-                    <label>Productos seleccionados ({selectedProducts.length})</label>
-                    <div className="selected-list">
-                      {selectedProducts.map(product => (
-                        <div key={product.id} className="selected-item">
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            {product.image && (
-                              <img src={product.image} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover' }} />
-                            )}
-                            <span>{product.name}</span>
-                          </div>
-                          <button onClick={() => removeProduct(product.id)}>
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {ruleType === 'price_range' && (
-              <div className="price-range-config">
-                <div className="form-group">
-                  <label>Precio mínimo ($)</label>
-                  <input
-                    type="number"
-                    value={minPrice}
-                    onChange={(e) => setMinPrice(e.target.value)}
-                    placeholder="0"
-                    className="input-field"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Precio máximo ($)</label>
-                  <input
-                    type="number"
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    placeholder="99999"
-                    className="input-field"
-                  />
-                </div>
-                <span className="input-hint">
-                  {minPrice && maxPrice ? `Productos entre $${minPrice} y $${maxPrice}` :
-                   minPrice ? `Productos desde $${minPrice}` :
-                   maxPrice ? `Productos hasta $${maxPrice}` :
-                   'Configura el rango de precios'}
-                </span>
-              </div>
-            )}
-
-            {ruleType === 'discount' && (
-              <div className="form-group">
-                <label>Descuento mínimo (%)</label>
-                <div className="slider-group">
-                  <input
-                    type="range"
-                    value={minDiscount}
-                    onChange={(e) => setMinDiscount(e.target.value)}
-                    min="5"
-                    max="90"
-                    step="5"
-                    className="range-slider"
-                  />
-                  <span className="slider-value">{minDiscount}%</span>
-                </div>
-                <span className="input-hint">Productos con descuento del {minDiscount}% o más</span>
-              </div>
-            )}
-
-            {ruleType === 'stock' && (
-              <div className="form-group">
-                <label>Stock máximo (últimas unidades)</label>
-                <input
-                  type="number"
-                  value={maxStock}
-                  onChange={(e) => setMaxStock(e.target.value)}
-                  min="1"
-                  max="20"
-                  className="input-field"
-                />
-                <span className="input-hint">Productos con {maxStock} unidades o menos en stock</span>
-              </div>
-            )}
-
-            {ruleType === 'category' && (
-              <div className="categories-selector">
-                <label>Selecciona categorías</label>
-                {loadingCategories ? (
-                  <div className="mini-spinner"></div>
-                ) : categories.length === 0 ? (
-                  <button onClick={loadCategories} className="btn-load">Cargar categorías</button>
-                ) : (
-                  <div className="categories-list">
-                    {categories.map(cat => (
-                      <label key={cat.id} className="checkbox-label category-item">
-                        <input
-                          type="checkbox"
-                          checked={selectedCategories.includes(cat.id)}
-                          onChange={() => toggleCategory(cat.id)}
-                        />
-                        <span>{cat.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* Design Section */}
-          <section className="config-section">
-            <div className="section-header">
-              <Sparkles size={20} />
-              <h2>Diseño y Estilo</h2>
-            </div>
-
-            {/* Position */}
             <div className="form-group">
-              <label>Posición del Badge</label>
-              <div className="position-grid">
-                {['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(pos => (
-                  <button
-                    key={pos}
-                    className={`position-btn ${position === pos ? 'active' : ''}`}
-                    onClick={() => setPosition(pos)}
-                    title={pos.replace(/-/g, ' ')}
-                  >
-                    <div className={`position-indicator ${pos}`}></div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Shape */}
-            <div className="form-group">
-              <label>Forma</label>
-              <div className="shape-buttons">
-                <button
-                  className={`shape-btn ${shape === 'rectangle' ? 'active' : ''}`}
-                  onClick={() => setShape('rectangle')}
-                >
-                  <Square size={20} />
-                  <span>Rectángulo</span>
-                </button>
-                <button
-                  className={`shape-btn ${shape === 'rounded' ? 'active' : ''}`}
-                  onClick={() => setShape('rounded')}
-                >
-                  <Maximize2 size={20} />
-                  <span>Redondeado</span>
-                </button>
-                <button
-                  className={`shape-btn ${shape === 'circle' ? 'active' : ''}`}
-                  onClick={() => setShape('circle')}
-                >
-                  <Circle size={20} />
-                  <span>Círculo</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Colors */}
-            <div className="colors-row">
-              <div className="form-group">
-                <label>Color de fondo</label>
-                <input
-                  type="color"
-                  value={backgroundColor}
-                  onChange={(e) => setBackgroundColor(e.target.value)}
-                  className="color-picker"
-                />
-              </div>
-              <div className="form-group">
-                <label>Color de texto</label>
-                <input
-                  type="color"
-                  value={textColor}
-                  onChange={(e) => setTextColor(e.target.value)}
-                  className="color-picker"
-                />
-              </div>
-            </div>
-
-            {/* Text Format */}
-            <div className="form-group">
-              <label>Formato de texto</label>
-              <div className="text-format-buttons">
-                <button
-                  className={`format-btn ${textTransform === 'uppercase' ? 'active' : ''}`}
-                  onClick={() => setTextTransform('uppercase')}
-                  title="Mayúsculas"
-                >
-                  A↑
-                </button>
-                <button
-                  className={`format-btn ${textTransform === 'lowercase' ? 'active' : ''}`}
-                  onClick={() => setTextTransform('lowercase')}
-                  title="Minúsculas"
-                >
-                  A↓
-                </button>
-                <button
-                  className={`format-btn ${textTransform === 'capitalize' ? 'active' : ''}`}
-                  onClick={() => setTextTransform('capitalize')}
-                  title="Capitalizar"
-                >
-                  Aa
-                </button>
-                <button
-                  className={`format-btn ${fontWeight === 'bold' ? 'active' : ''}`}
-                  onClick={() => setFontWeight(fontWeight === 'bold' ? 'normal' : 'bold')}
-                  title="Negrita"
-                >
-                  <strong>B</strong>
-                </button>
-              </div>
-            </div>
-
-            {/* Font Size */}
-            <div className="form-group">
-              <label>Tamaño de fuente</label>
-              <div className="slider-group">
-                <input
-                  type="range"
-                  value={fontSize}
-                  onChange={(e) => setFontSize(e.target.value)}
-                  min="8"
-                  max="24"
-                  className="range-slider"
-                />
-                <span className="slider-value">{fontSize}px</span>
-              </div>
-            </div>
-
-            {/* Animation */}
-            <div className="form-group">
-              <label>Animación</label>
+              <label>Tipo de Regla</label>
               <select
-                value={animation}
-                onChange={(e) => setAnimation(e.target.value)}
+                value={ruleType}
+                onChange={(e) => setRuleType(e.target.value)}
                 className="select-field"
               >
-                <option value="none">Sin animación</option>
-                <option value="pulse">Pulso</option>
-                <option value="bounce">Rebote</option>
-                <option value="shake">Vibración</option>
-                <option value="glow">Brillo</option>
+                <option value="all_products">👁️ Todos los Productos (Todos lo Verán)</option>
+                <option value="new_products">🆕 Productos Nuevos</option>
+                <option value="manual">✋ Selección Manual</option>
+                <option value="price_min">💰 Precio Mínimo</option>
+                <option value="price_max">💰 Precio Máximo</option>
+                <option value="discount">📉 Descuento Mínimo</option>
+                <option value="stock_low">📦 Stock Bajo</option>
+                <option value="category">📂 Por Categoría</option>
               </select>
             </div>
 
-            {/* Icon */}
+            {renderRuleConfig()}
+
             <div className="form-group">
               <label className="checkbox-label">
                 <input
                   type="checkbox"
-                  checked={showIcon}
-                  onChange={(e) => setShowIcon(e.target.checked)}
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
                 />
-                <span>Incluir emoji/icono</span>
+                <span>Badge activo</span>
               </label>
-              {showIcon && (
-                <input
-                  type="text"
-                  value={icon}
-                  onChange={(e) => setIcon(e.target.value)}
-                  className="input-field"
-                  placeholder="⭐"
-                  maxLength="2"
-                  style={{ marginTop: '8px' }}
-                />
-              )}
+              <small>Desactiva el badge para ocultarlo sin eliminarlo</small>
             </div>
-          </section>
-        </div>
+          </div>
+        )}
 
-        {/* Right Panel - Preview */}
-        <div className="preview-panel">
-          <div className="preview-sticky">
-            <div className="section-header">
-              <Eye size={20} />
-              <h2>Vista Previa</h2>
-            </div>
-            
-            <div className="preview-container">
-              <div className="product-mockup">
-                <img src="https://via.placeholder.com/300x300?text=Producto" alt="Preview" />
-                <div 
-                  className={`badge-preview ${position} ${animation}`}
+        {activeTab === 'design' && (
+          <div className="design-tab">
+            <div className="design-preview">
+              <h3>Vista Previa</h3>
+              <div className="preview-product" style={{position: 'relative', display: 'inline-block', width: '300px', height: '300px'}}>
+                <div
+                  className={`badge-preview badge-${shape} badge-${position} badge-animation-${animation}`}
                   style={{
+                    position: 'absolute',
                     backgroundColor,
                     color: textColor,
                     fontSize: `${fontSize}px`,
                     fontWeight,
-                    textTransform,
-                    borderRadius: shape === 'circle' ? '50%' : 
-                                 shape === 'rounded' ? '12px' : 
-                                 `${borderRadius}px`,
-                    padding: shape === 'circle' ? '12px' : '6px 14px'
+                    padding: '8px 12px',
+                    borderRadius: shape === 'circle' ? '50%' : `${borderRadius}px`,
+                    zIndex: 10,
+                    ...(position === 'top-left' && { top: '10px', left: '10px' }),
+                    ...(position === 'top-right' && { top: '10px', right: '10px' }),
+                    ...(position === 'bottom-left' && { bottom: '10px', left: '10px' }),
+                    ...(position === 'bottom-right' && { bottom: '10px', right: '10px' })
                   }}
                 >
-                  {showIcon && <span style={{ marginRight: '4px' }}>{icon}</span>}
-                  {badgeText || 'TEXTO'}
+                  {showIcon && <span className="badge-icon">{icon}</span>}
+                  {badgeText || 'BADGE'}
+                </div>
+                <img
+                  src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300&h=300&fit=crop"
+                  alt="Producto de ejemplo"
+                  className="preview-product-image"
+                  style={{width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px'}}
+                  onError={(e) => {
+                    e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="300" height="300"%3E%3Crect fill="%23ddd" width="300" height="300"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" font-size="16"%3EProducto de ejemplo%3C/text%3E%3C/svg%3E';
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="design-controls">
+              <div className="form-group">
+                <label>Forma</label>
+                <div className="radio-group">
+                  <label>
+                    <input
+                      type="radio"
+                      value="rectangle"
+                      checked={shape === 'rectangle'}
+                      onChange={(e) => setShape(e.target.value)}
+                    />
+                    Rectángulo
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      value="rounded"
+                      checked={shape === 'rounded'}
+                      onChange={(e) => setShape(e.target.value)}
+                    />
+                    Redondeado
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      value="circle"
+                      checked={shape === 'circle'}
+                      onChange={(e) => setShape(e.target.value)}
+                    />
+                    Círculo
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      value="flag"
+                      checked={shape === 'flag'}
+                      onChange={(e) => setShape(e.target.value)}
+                    />
+                    Bandera
+                  </label>
                 </div>
               </div>
-            </div>
 
-            <div className="preview-info">
-              <div className="info-item">
-                <span className="info-label">Regla:</span>
-                <span className="info-value">{ruleInfo?.title}</span>
+              <div className="form-group">
+                <label>Posición</label>
+                <div className="radio-group">
+                  <label>
+                    <input
+                      type="radio"
+                      value="top-left"
+                      checked={position === 'top-left'}
+                      onChange={(e) => setPosition(e.target.value)}
+                    />
+                    Arriba Izquierda
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      value="top-right"
+                      checked={position === 'top-right'}
+                      onChange={(e) => setPosition(e.target.value)}
+                    />
+                    Arriba Derecha
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      value="bottom-left"
+                      checked={position === 'bottom-left'}
+                      onChange={(e) => setPosition(e.target.value)}
+                    />
+                    Abajo Izquierda
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      value="bottom-right"
+                      checked={position === 'bottom-right'}
+                      onChange={(e) => setPosition(e.target.value)}
+                    />
+                    Abajo Derecha
+                  </label>
+                </div>
               </div>
-              <div className="info-item">
-                <span className="info-label">Posición:</span>
-                <span className="info-value">{position.replace(/-/g, ' ')}</span>
+
+              <div className="form-group">
+                <label>Color de Fondo</label>
+                <div className="color-picker-group">
+                  <input
+                    type="color"
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    className="color-picker"
+                  />
+                  <input
+                    type="text"
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    className="color-text"
+                  />
+                </div>
               </div>
-              <div className="info-item">
-                <span className="info-label">Estado:</span>
-                <span className={`status-badge ${isActive ? 'active' : 'inactive'}`}>
-                  {isActive ? 'Activo' : 'Inactivo'}
-                </span>
+
+              <div className="form-group">
+                <label>Color de Texto</label>
+                <div className="color-picker-group">
+                  <input
+                    type="color"
+                    value={textColor}
+                    onChange={(e) => setTextColor(e.target.value)}
+                    className="color-picker"
+                  />
+                  <input
+                    type="text"
+                    value={textColor}
+                    onChange={(e) => setTextColor(e.target.value)}
+                    className="color-text"
+                  />
+                </div>
               </div>
+
+              <div className="form-group">
+                <label>Tamaño de Fuente ({fontSize}px)</label>
+                <input
+                  type="range"
+                  min="8"
+                  max="24"
+                  value={fontSize}
+                  onChange={(e) => setFontSize(e.target.value)}
+                  className="range-slider"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Peso de Fuente</label>
+                <select
+                  value={fontWeight}
+                  onChange={(e) => setFontWeight(e.target.value)}
+                  className="select-field"
+                >
+                  <option value="normal">Normal</option>
+                  <option value="bold">Negrita</option>
+                  <option value="bolder">Extra Negrita</option>
+                </select>
+              </div>
+
+              {shape !== 'circle' && (
+                <div className="form-group">
+                  <label>Radio del Borde ({borderRadius}px)</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="20"
+                    value={borderRadius}
+                    onChange={(e) => setBorderRadius(e.target.value)}
+                    className="range-slider"
+                  />
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>Animación</label>
+                <select
+                  value={animation}
+                  onChange={(e) => setAnimation(e.target.value)}
+                  className="select-field"
+                >
+                  <option value="none">Sin animación</option>
+                  <option value="pulse">Pulso</option>
+                  <option value="bounce">Rebote</option>
+                  <option value="shake">Vibración</option>
+                  <option value="glow">Brillo</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={showIcon}
+                    onChange={(e) => setShowIcon(e.target.checked)}
+                  />
+                  <span>Mostrar icono</span>
+                </label>
+              </div>
+
+              {showIcon && (
+                <div className="form-group">
+                  <label>Icono (emoji)</label>
+                  <input
+                    type="text"
+                    value={icon}
+                    onChange={(e) => setIcon(e.target.value)}
+                    className="input-field"
+                    placeholder="⭐"
+                    maxLength="2"
+                  />
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Footer Actions */}
-      <footer className="config-footer">
-        <button className="btn-cancel" onClick={() => navigate('/badges')}>
+      <div className="config-footer">
+        <button
+          onClick={() => navigate('/badges')}
+          className="btn-cancel"
+        >
           Cancelar
         </button>
-        <button className="btn-save" onClick={handleSave} disabled={saving}>
-          <Save size={18} />
-          {saving ? 'Guardando...' : badgeId ? 'Actualizar Badge' : 'Crear Badge'}
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="btn-save"
+        >
+          {saving ? 'Guardando...' : 'Guardar Badge'}
         </button>
-      </footer>
+      </div>
     </div>
   );
 }
