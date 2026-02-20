@@ -20,15 +20,15 @@
 
 .btn-back {
   padding: 0.75rem;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--gl-bg-card);
+  border: 1px solid var(--gl-border);
   border-radius: 0.5rem;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-back:hover {
-  background: #f9fafb;
+  background: rgba(255, 255, 255, 0.05);
   transform: translateX(-2px);
 }
 
@@ -36,12 +36,12 @@
   margin: 0;
   font-size: 1.875rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--gl-text-primary);
 }
 
 .page-header p {
   margin: 0.25rem 0 0 0;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
   font-size: 0.875rem;
 }
 
@@ -61,9 +61,9 @@
 
 /* Form Section */
 .form-section {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gl-border);
   padding: 2rem;
 }
 
@@ -75,7 +75,7 @@
 }
 
 .alert-error {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.15);
   color: #991b1b;
   border: 1px solid #fecaca;
 }
@@ -89,7 +89,7 @@
   align-items: center;
   gap: 0.5rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--gl-text-primary);
   margin-bottom: 0.5rem;
   font-size: 0.875rem;
 }
@@ -103,12 +103,12 @@
 .form-group select {
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gl-border);
   border-radius: 0.5rem;
   font-size: 0.875rem;
   transition: all 0.2s;
-  color: #1f2937;
-  background-color: #ffffff;
+  color: var(--gl-text-primary);
+  background-color: var(--gl-bg-input);
 }
 
 .form-group input:focus,
@@ -117,7 +117,7 @@
   outline: none;
   border-color: #7C7CFF;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-  color: #1f2937;
+  color: var(--gl-text-primary);
 }
 
 .form-group textarea {
@@ -147,8 +147,8 @@
 
 .preset-btn {
   padding: 0.5rem 1rem;
-  background: white;
-  border: 2px solid #e5e7eb;
+  background: var(--gl-bg-card);
+  border: 2px solid var(--gl-border);
   border-radius: 0.5rem;
   font-weight: 600;
   font-size: 0.875rem;
@@ -180,13 +180,13 @@
   gap: 0.75rem !important;
   cursor: pointer;
   padding: 1rem;
-  background: #f9fafb;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 0.5rem;
   transition: all 0.2s;
 }
 
 .checkbox-label:hover {
-  background: #f3f4f6;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -197,19 +197,19 @@
 
 .checkbox-label span {
   font-weight: 600;
-  color: #374151;
+  color: var(--gl-text-primary);
 }
 
 .form-hint {
   margin: 0.5rem 0 0 0;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
 }
 
 /* Product Fields */
 .product-fields {
   padding: 1.5rem;
-  background: #f0f9ff;
+  background: rgba(59, 130, 246, 0.1);
   border: 2px dashed #0ea5e9;
   border-radius: 0.75rem;
   margin-bottom: 1rem;
@@ -229,14 +229,14 @@
   gap: 1rem;
   margin-top: 2rem;
   padding-top: 1.5rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--gl-border);
 }
 
 .btn-secondary {
   flex: 1;
   padding: 0.875rem 1.5rem;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--gl-bg-card);
+  border: 1px solid var(--gl-border);
   border-radius: 0.5rem;
   font-weight: 600;
   cursor: pointer;
@@ -244,8 +244,8 @@
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #f9fafb;
-  border-color: #d1d5db;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--gl-text-muted);
 }
 
 .btn-primary {
@@ -298,13 +298,13 @@
   margin: 0 0 1rem 0;
   font-size: 1.125rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--gl-text-primary);
 }
 
 .giftcard-preview {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gl-border);
   padding: 2rem;
   margin-bottom: 1rem;
 }
@@ -380,7 +380,7 @@
 }
 
 .preview-info {
-  background: #f0f9ff;
+  background: rgba(59, 130, 246, 0.1);
   border: 1px solid #bae6fd;
   border-radius: 0.5rem;
   padding: 1rem;
@@ -410,11 +410,11 @@
   flex-direction: column;
   gap: 8px;
   cursor: pointer;
-  border: 3px solid #e5e7eb;
+  border: 3px solid var(--gl-border);
   border-radius: 12px;
   overflow: hidden;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  background: white;
+  background: var(--gl-bg-card);
   position: relative;
 }
 
@@ -426,7 +426,7 @@
 
 .template-option.selected {
   border-color: #7C7CFF;
-  background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(99, 102, 241, 0.15) 100%);
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2), 0 8px 16px rgba(102, 126, 234, 0.2);
   transform: translateY(-2px);
 }
@@ -456,7 +456,7 @@
   background-size: cover;
   background-position: center;
   position: relative;
-  border-bottom: 2px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.3);
 }
 
 .default-label {
@@ -478,7 +478,7 @@
   padding: 10px;
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--gl-text-primary);
   text-align: center;
   word-wrap: break-word;
   line-height: 1.3;
@@ -498,12 +498,12 @@
 }
 
 .template-card-simple {
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--gl-border);
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
   transition: all 0.2s;
-  background: white;
+  background: var(--gl-bg-card);
 }
 
 .template-card-simple:hover {
@@ -563,13 +563,13 @@
 
 .template-info strong {
   font-size: 15px;
-  color: #111827;
+  color: var(--gl-text-primary);
 }
 
 .category-badge {
   display: inline-block;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--gl-text-secondary);
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 12px;
@@ -583,15 +583,15 @@
 }
 
 .template-card-item {
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--gl-bg-card);
+  border: 1px solid var(--gl-border);
   border-radius: 12px;
   overflow: hidden;
   transition: all 0.2s;
 }
 
 .template-card-item:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   transform: translateY(-2px);
 }
 
@@ -634,7 +634,7 @@
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: #111827;
+  color: var(--gl-text-primary);
 }
 
 .category-pill {
@@ -650,31 +650,31 @@
   display: flex;
   gap: 8px;
   padding-top: 12px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--gl-border);
 }
 
 .btn-action {
   flex: 1;
   padding: 10px;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--gl-bg-card);
+  border: 1px solid var(--gl-border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
 }
 
 .btn-action:hover {
-  background: #f9fafb;
+  background: rgba(255, 255, 255, 0.05);
   border-color: #7C7CFF;
   color: #7C7CFF;
 }
 
 .btn-action.btn-danger:hover {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.15);
   border-color: #ef4444;
   color: #ef4444;
 }
@@ -694,7 +694,7 @@
 }
 
 .modal-content {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
   max-width: 90vw;
   max-height: 90vh;

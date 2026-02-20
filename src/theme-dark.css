@@ -1,0 +1,603 @@
+/* ============================================
+   GLOWLAB DARK THEME - Unified Design System
+   ============================================ */
+
+/* ---- CSS Variables ---- */
+:root {
+  --gl-bg-primary: #0a0a0f;
+  --gl-bg-secondary: #1a1a2e;
+  --gl-bg-tertiary: #16213e;
+  --gl-bg-card: rgba(26, 26, 46, 0.8);
+  --gl-bg-card-solid: #1a1a2e;
+  --gl-bg-input: rgba(255, 255, 255, 0.05);
+  --gl-bg-hover: rgba(255, 255, 255, 0.08);
+
+  --gl-border: rgba(124, 124, 255, 0.2);
+  --gl-border-hover: rgba(0, 217, 255, 0.5);
+  --gl-border-input: rgba(124, 124, 255, 0.3);
+
+  --gl-text-primary: rgba(255, 255, 255, 0.95);
+  --gl-text-secondary: rgba(255, 255, 255, 0.7);
+  --gl-text-muted: rgba(255, 255, 255, 0.5);
+  --gl-text-accent: #00D9FF;
+
+  --gl-accent-cyan: #00D9FF;
+  --gl-accent-purple: #7C7CFF;
+  --gl-accent-gradient: linear-gradient(135deg, #00D9FF 0%, #7C7CFF 100%);
+  --gl-accent-purple-gradient: linear-gradient(135deg, #7C7CFF 0%, #6969FF 100%);
+
+  --gl-shadow-card: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --gl-shadow-glow: 0 0 20px rgba(0, 217, 255, 0.15);
+  --gl-shadow-input: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+  --gl-radius-sm: 8px;
+  --gl-radius-md: 12px;
+  --gl-radius-lg: 16px;
+  --gl-radius-xl: 20px;
+}
+
+/* ---- Page Backgrounds ---- */
+.style-config-container,
+.countdown-config-container,
+.countdown-container,
+.coupons-list-container,
+.create-coupon-container,
+.spin-wheel-container,
+.spin-config-container,
+.spin-analytics,
+.badge-config-container,
+.badges-container,
+.new-badge-config-container,
+.giftcards-list-container,
+.gift-cards-main,
+.gift-card-products-page,
+.promotions-list-container,
+.create-promotion-container,
+.integrations-container,
+.create-giftcard-container,
+.page-container,
+.sold-gift-cards-page,
+.use-giftcard-page,
+.coupon-analytics-container,
+.giftcard-detail-container {
+  background: linear-gradient(135deg, var(--gl-bg-primary) 0%, var(--gl-bg-secondary) 50%, var(--gl-bg-tertiary) 100%) !important;
+  min-height: 100vh;
+  color: var(--gl-text-primary);
+}
+
+/* ---- Headers (sticky top bars) ---- */
+.config-header,
+.coupons-header-modern,
+.create-coupon-header,
+.page-header,
+.badge-config-header,
+.integrations-header,
+.main-header,
+.promotions-header,
+.analytics-header,
+.giftcards-header-modern {
+  background: rgba(10, 10, 15, 0.85) !important;
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--gl-border) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
+}
+
+.config-header h1,
+.config-header h2,
+.config-header p,
+.page-header h1,
+.page-header h2,
+.page-header p,
+.page-header span,
+.badge-config-header h1,
+.coupons-header-modern h1,
+.coupons-header-modern h2,
+.create-coupon-header h1,
+.integrations-header h1,
+.integrations-header h2,
+.main-header h1,
+.main-header h2,
+.promotions-header h1,
+.analytics-header h1,
+.analytics-header h2,
+.giftcards-header-modern h1,
+.giftcards-header-modern h2,
+.header-left h1,
+.header-left h2,
+.header-left p {
+  color: var(--gl-text-primary) !important;
+}
+
+/* Header subtitle/description text */
+.config-header p,
+.page-header p,
+.header-left p,
+.header-subtitle {
+  color: var(--gl-text-secondary) !important;
+}
+
+/* ---- Back Buttons ---- */
+.btn-back,
+.btn-back-modern,
+.back-button {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: var(--gl-text-primary) !important;
+  border: 1px solid var(--gl-border) !important;
+  border-radius: var(--gl-radius-sm) !important;
+  transition: all 0.3s !important;
+}
+
+.btn-back:hover,
+.btn-back-modern:hover,
+.back-button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: var(--gl-border-hover) !important;
+  color: var(--gl-accent-cyan) !important;
+  transform: translateX(-2px);
+}
+
+/* ---- Save / Primary Action Buttons ---- */
+.btn-save,
+.btn-save-header,
+.btn-save-modern,
+.btn-primary,
+.btn-create,
+.btn-install {
+  background: var(--gl-accent-gradient) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: var(--gl-radius-md) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 15px rgba(0, 217, 255, 0.3) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.btn-save:hover:not(:disabled),
+.btn-save-header:hover:not(:disabled),
+.btn-save-modern:hover:not(:disabled),
+.btn-primary:hover:not(:disabled),
+.btn-create:hover:not(:disabled),
+.btn-install:hover:not(:disabled) {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 25px rgba(0, 217, 255, 0.5) !important;
+}
+
+.btn-save:disabled,
+.btn-save-header:disabled,
+.btn-save-modern:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+/* ---- Cards / Sections ---- */
+.config-section,
+.config-content,
+.form-section,
+.form-card,
+.card,
+.detail-card,
+.stat-card,
+.badge-card-modern,
+.coupon-card,
+.coupon-card-modern,
+.countdown-card,
+.info-card,
+.wheel-card,
+.template-card,
+.giftcard-card,
+.search-card,
+.chart-section,
+.analytics-card,
+.install-banner-countdown,
+.install-banner {
+  background: var(--gl-bg-card) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--gl-border) !important;
+  border-radius: var(--gl-radius-lg) !important;
+  box-shadow: var(--gl-shadow-card) !important;
+  color: var(--gl-text-primary) !important;
+}
+
+.config-section:hover,
+.card:hover,
+.badge-card-modern:hover,
+.coupon-card:hover,
+.coupon-card-modern:hover,
+.countdown-card:hover,
+.wheel-card:hover,
+.stat-card:hover,
+.template-card:hover,
+.giftcard-card:hover {
+  border-color: var(--gl-border-hover) !important;
+  box-shadow: var(--gl-shadow-card), var(--gl-shadow-glow) !important;
+}
+
+/* ---- Section Headers inside cards ---- */
+.section-header {
+  border-bottom: 1px solid var(--gl-border) !important;
+}
+
+.section-header h2,
+.section-header h3,
+.section-title {
+  color: var(--gl-text-primary) !important;
+}
+
+/* ---- Form Elements ---- */
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="password"],
+input[type="url"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="search"],
+input[type="tel"],
+input[type="color"],
+textarea,
+select,
+.form-control {
+  background: var(--gl-bg-input) !important;
+  border: 1px solid var(--gl-border-input) !important;
+  color: var(--gl-text-primary) !important;
+  border-radius: var(--gl-radius-sm) !important;
+  transition: all 0.3s !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+.form-control:focus {
+  border-color: var(--gl-accent-cyan) !important;
+  box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.15) !important;
+  outline: none !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--gl-text-muted) !important;
+}
+
+/* ---- Labels ---- */
+label,
+.form-label,
+.field-label,
+.input-label {
+  color: var(--gl-text-secondary) !important;
+  font-weight: 600;
+}
+
+/* ---- Tabs ---- */
+.tab-button,
+.tab-item,
+.nav-tab {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: var(--gl-text-secondary) !important;
+  border: 1px solid var(--gl-border) !important;
+  transition: all 0.3s !important;
+}
+
+.tab-button:hover,
+.tab-item:hover,
+.nav-tab:hover {
+  border-color: var(--gl-accent-purple) !important;
+  color: var(--gl-accent-purple) !important;
+  background: rgba(124, 124, 255, 0.1) !important;
+}
+
+.tab-button.active,
+.tab-item.active,
+.nav-tab.active {
+  background: var(--gl-accent-purple-gradient) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 12px rgba(124, 124, 255, 0.4) !important;
+}
+
+/* ---- Tables ---- */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+table th {
+  background: rgba(124, 124, 255, 0.1) !important;
+  color: var(--gl-text-primary) !important;
+  border-bottom: 1px solid var(--gl-border) !important;
+  font-weight: 600;
+}
+
+table td {
+  color: var(--gl-text-primary) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+table tr:hover td {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* ---- Toggle Switches ---- */
+.toggle-switch input:checked + .slider {
+  background: var(--gl-accent-purple) !important;
+}
+
+.slider {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.slider::before,
+.slider:before,
+.toggle-slider::before,
+.toggle-slider:before,
+.toggle-dot,
+.toggle-dot-small {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+}
+
+/* ---- Badges / Tags ---- */
+.status-badge,
+.badge,
+.tag {
+  font-weight: 600;
+  border-radius: 20px;
+}
+
+/* ---- Empty States ---- */
+.empty-state,
+.no-data,
+.no-results {
+  color: var(--gl-text-muted) !important;
+}
+
+/* ---- Modals ---- */
+.modal-overlay {
+  background: rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(8px);
+}
+
+.modal-content,
+.modal-body,
+.modal {
+  background: var(--gl-bg-card-solid) !important;
+  border: 1px solid var(--gl-border) !important;
+  border-radius: var(--gl-radius-xl) !important;
+  color: var(--gl-text-primary) !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5) !important;
+}
+
+.modal-content h2,
+.modal-content h3,
+.modal h2,
+.modal h3 {
+  color: var(--gl-text-primary) !important;
+}
+
+.modal-content p,
+.modal p {
+  color: var(--gl-text-secondary) !important;
+}
+
+/* ---- Delete / Danger Buttons ---- */
+.btn-delete,
+.btn-danger {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #f87171 !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+  border-radius: var(--gl-radius-sm) !important;
+  transition: all 0.3s !important;
+}
+
+.btn-delete:hover,
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.25) !important;
+  border-color: rgba(239, 68, 68, 0.6) !important;
+}
+
+/* ---- Secondary / Cancel Buttons ---- */
+.btn-secondary,
+.btn-cancel {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: var(--gl-text-primary) !important;
+  border: 1px solid var(--gl-border) !important;
+  border-radius: var(--gl-radius-sm) !important;
+  transition: all 0.3s !important;
+}
+
+.btn-secondary:hover,
+.btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: var(--gl-border-hover) !important;
+}
+
+/* ---- Scrollbars ---- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gl-bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 124, 255, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 124, 255, 0.5);
+}
+
+/* ---- Stats / Numbers ---- */
+.stat-number,
+.stat-value,
+.analytics-number {
+  color: var(--gl-accent-cyan) !important;
+  font-weight: 700;
+}
+
+.stat-label,
+.stat-text,
+.analytics-label {
+  color: var(--gl-text-muted) !important;
+}
+
+/* ---- Dividers / Borders ---- */
+hr,
+.divider {
+  border-color: var(--gl-border) !important;
+  opacity: 0.5;
+}
+
+/* ---- Links ---- */
+a {
+  color: var(--gl-accent-cyan);
+}
+
+a:hover {
+  color: var(--gl-accent-purple);
+}
+
+/* ---- Tooltips ---- */
+.tooltip {
+  background: var(--gl-bg-card-solid) !important;
+  border: 1px solid var(--gl-border) !important;
+  color: var(--gl-text-primary) !important;
+}
+
+/* ---- Search / Filter inputs ---- */
+.search-input,
+.filter-input,
+.search-box {
+  background: var(--gl-bg-input) !important;
+  border: 1px solid var(--gl-border-input) !important;
+  color: var(--gl-text-primary) !important;
+  border-radius: var(--gl-radius-md) !important;
+}
+
+/* ---- Color Pickers stay visible ---- */
+input[type="color"] {
+  background: transparent !important;
+  border: 2px solid var(--gl-border) !important;
+  border-radius: var(--gl-radius-sm) !important;
+  cursor: pointer;
+}
+
+/* ---- Checkbox & Radio ---- */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--gl-accent-purple);
+}
+
+/* ---- Page Titles (gradient text) ---- */
+.page-title,
+.module-title {
+  background: var(--gl-accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 700;
+}
+
+/* ---- Loading States ---- */
+.loading-container {
+  background: linear-gradient(135deg, var(--gl-bg-primary) 0%, var(--gl-bg-secondary) 100%) !important;
+}
+
+.loading-container p {
+  color: var(--gl-text-secondary) !important;
+}
+
+.spinner-large {
+  border-color: rgba(124, 124, 255, 0.2) !important;
+  border-top-color: var(--gl-accent-purple) !important;
+}
+
+/* ---- Alerts / Notifications ---- */
+.alert-success,
+.success-message {
+  background: rgba(16, 185, 129, 0.15) !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+  color: #34d399 !important;
+}
+
+.alert-error,
+.error-message {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+  color: #f87171 !important;
+}
+
+.alert-warning,
+.warning-message {
+  background: rgba(245, 158, 11, 0.15) !important;
+  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+  color: #fbbf24 !important;
+}
+
+.alert-info,
+.info-message {
+  background: rgba(0, 217, 255, 0.15) !important;
+  border: 1px solid rgba(0, 217, 255, 0.3) !important;
+  color: var(--gl-accent-cyan) !important;
+}
+
+/* ---- Pagination ---- */
+.pagination button,
+.pagination a {
+  background: var(--gl-bg-input) !important;
+  color: var(--gl-text-primary) !important;
+  border: 1px solid var(--gl-border) !important;
+}
+
+.pagination button.active,
+.pagination a.active {
+  background: var(--gl-accent-purple-gradient) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+}
+
+/* ---- Style Config specific: config-content sections ---- */
+.style-config-container .config-content {
+  color: var(--gl-text-primary);
+}
+
+/* ---- General text color overrides for all content ---- */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--gl-text-primary);
+}
+
+p {
+  color: var(--gl-text-secondary);
+}
+
+/* ---- Ensure dropdown/select options are readable ---- */
+select option {
+  background: var(--gl-bg-card-solid);
+  color: var(--gl-text-primary);
+}
+
+/* ---- File Upload Areas ---- */
+.upload-area,
+.dropzone,
+.file-upload {
+  background: var(--gl-bg-input) !important;
+  border: 2px dashed var(--gl-border) !important;
+  border-radius: var(--gl-radius-lg) !important;
+  color: var(--gl-text-secondary) !important;
+  transition: all 0.3s !important;
+}
+
+.upload-area:hover,
+.dropzone:hover,
+.file-upload:hover {
+  border-color: var(--gl-accent-cyan) !important;
+  background: rgba(0, 217, 255, 0.05) !important;
+}
+
+/* ---- Transition for smooth theme ---- */
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 0s;
+}

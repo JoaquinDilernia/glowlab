@@ -831,17 +831,281 @@ function SpinWheelConfig() {
         )}
       </div>
 
-      {/* Preview Modal (placeholder) */}
+      {/* Preview Modal - Popup real */}
       {showPreview && (
-        <div className="preview-overlay" onClick={() => setShowPreview(false)}>
-          <div className="preview-content" onClick={(e) => e.stopPropagation()}>
-            <button className="btn-close-preview" onClick={() => setShowPreview(false)}>
-              ✕
+        <div 
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowPreview(false);
+          }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: config.overlayColor || 'rgba(0, 0, 0, 0.92)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 999999,
+            animation: 'pnFadeIn 0.3s ease-out',
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+          }}
+        >
+          <div 
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              background: `linear-gradient(135deg, ${config.primaryColor} 0%, ${config.secondaryColor} 100%)`,
+              padding: '40px 30px',
+              borderRadius: '24px',
+              maxWidth: '480px',
+              width: '90%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              color: config.textColor || '#FFFFFF',
+              textAlign: 'center',
+              position: 'relative',
+              animation: 'pnSlideUp 0.4s ease-out',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.4)'
+            }}
+          >
+            {/* Botón cerrar */}
+            <button 
+              onClick={() => setShowPreview(false)}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: 'transparent',
+                border: 'none',
+                color: '#1a1a1a',
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                cursor: 'pointer',
+                fontSize: '28px',
+                lineHeight: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              ×
             </button>
-            <div className="preview-placeholder">
-              <h3>🎡 Vista Previa Interactiva</h3>
-              <p>La ruleta completa con animación se mostrará aquí</p>
-              <small>(Próximamente)</small>
+
+            {/* Logo */}
+            {config.showLogo && config.logoUrl && (
+              <img 
+                src={config.logoUrl} 
+                alt="Logo" 
+                style={{ maxWidth: '200px', marginBottom: '20px' }} 
+                onError={(e) => e.target.style.display = 'none'} 
+              />
+            )}
+
+            {/* Título */}
+            <h1 style={{
+              fontSize: '32px',
+              margin: '0 0 8px',
+              fontWeight: 800,
+              textShadow: '0 2px 10px rgba(0, 0, 0, 0.2)',
+              lineHeight: 1.2,
+              color: config.textColor || '#FFFFFF'
+            }}>
+              {config.title}
+            </h1>
+
+            {/* Subtítulo */}
+            <p style={{
+              fontSize: '16px',
+              margin: '0 0 24px',
+              opacity: 0.95,
+              lineHeight: 1.4,
+              color: config.textColor || '#FFFFFF'
+            }}>
+              {config.subtitle}
+            </p>
+
+            {/* Ruleta SVG */}
+            <div style={{
+              position: 'relative',
+              width: '300px',
+              height: '300px',
+              margin: '0 auto 24px'
+            }}>
+              {/* Puntero */}
+              <div style={{
+                position: 'absolute',
+                top: '-20px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 0,
+                height: 0,
+                borderLeft: '20px solid transparent',
+                borderRight: '20px solid transparent',
+                borderTop: '35px solid #FF0040',
+                filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4))',
+                zIndex: 10
+              }} />
+
+              <div style={{ position: 'relative' }}>
+                <svg 
+                  viewBox="0 0 320 320" 
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: '50%',
+                    border: '10px solid rgba(255, 255, 255, 0.95)',
+                    boxShadow: '0 0 0 3px rgba(0, 0, 0, 0.1), 0 0 32px rgba(0, 0, 0, 0.2) inset, 0 16px 48px rgba(0, 0, 0, 0.3)',
+                    background: config.backgroundColor || '#FFFFFF'
+                  }}
+                >
+                  <g>
+                    {(() => {
+                      const totalSegs = config.segments.length;
+                      let fontSize = 16;
+                      let maxLabelLen = 12;
+                      let textRadius = 100;
+                      if (totalSegs <= 5) { fontSize = 16; maxLabelLen = 12; textRadius = 100; }
+                      else if (totalSegs <= 7) { fontSize = 13; maxLabelLen = 10; textRadius = 95; }
+                      else if (totalSegs <= 9) { fontSize = 11; maxLabelLen = 8; textRadius = 90; }
+                      else { fontSize = 9; maxLabelLen = 7; textRadius = 85; }
+                      return config.segments.map((segment, index) => {
+                        const segmentAngle = 360 / totalSegs;
+                        const startAngle = index * segmentAngle - 90;
+                        const endAngle = startAngle + segmentAngle;
+                        const startRad = startAngle * Math.PI / 180;
+                        const endRad = endAngle * Math.PI / 180;
+                        const x1 = 160 + 150 * Math.cos(startRad);
+                        const y1 = 160 + 150 * Math.sin(startRad);
+                        const x2 = 160 + 150 * Math.cos(endRad);
+                        const y2 = 160 + 150 * Math.sin(endRad);
+                        const largeArc = segmentAngle > 180 ? 1 : 0;
+                        const textAngle = startAngle + (segmentAngle / 2);
+                        const textRad = textAngle * Math.PI / 180;
+                        const textX = 160 + textRadius * Math.cos(textRad);
+                        const textY = 160 + textRadius * Math.sin(textRad);
+                        const displayLabel = segment.label.length > maxLabelLen
+                          ? segment.label.substring(0, maxLabelLen) + '…'
+                          : segment.label;
+
+                        return (
+                          <g key={segment.id}>
+                            <path
+                              d={`M 160 160 L ${x1} ${y1} A 150 150 0 ${largeArc} 1 ${x2} ${y2} Z`}
+                              fill={segment.color}
+                              stroke="white"
+                              strokeWidth="2"
+                            />
+                            <text
+                              x={textX}
+                              y={textY}
+                              fill="white"
+                              fontSize={fontSize}
+                              fontWeight="bold"
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              transform={`rotate(${textAngle + 90}, ${textX}, ${textY})`}
+                              style={{ pointerEvents: 'none', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
+                            >
+                              {displayLabel}
+                            </text>
+                          </g>
+                        );
+                      });
+                    })()}
+                  </g>
+                </svg>
+
+                {/* Centro de la ruleta */}
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '72px',
+                  height: '72px',
+                  background: 'linear-gradient(135deg, #FFFFFF 0%, #F5F5F5 100%)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '32px',
+                  boxShadow: '0 0 0 4px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.3)',
+                  zIndex: 10,
+                  fontWeight: 'bold',
+                  border: '3px solid rgba(255, 255, 255, 0.9)'
+                }}>
+                  🎁
+                </div>
+              </div>
+            </div>
+
+            {/* Campo de email */}
+            {config.showEmailField !== false && (
+              <input
+                type="email"
+                placeholder={config.emailPlaceholder || 'tu@email.com'}
+                disabled
+                style={{
+                  width: '100%',
+                  padding: '16px',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontSize: '16px',
+                  marginBottom: '12px',
+                  textAlign: 'center',
+                  boxSizing: 'border-box',
+                  background: 'rgba(255, 255, 255, 0.95)',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                  color: '#999',
+                  fontWeight: 500
+                }}
+              />
+            )}
+
+            {/* Botón girar */}
+            <button
+              disabled
+              style={{
+                background: config.buttonColor || 'white',
+                color: config.buttonTextColor || config.primaryColor,
+                border: 'none',
+                padding: '18px 32px',
+                borderRadius: '12px',
+                fontSize: '18px',
+                fontWeight: 700,
+                cursor: 'default',
+                width: '100%',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                opacity: 0.9
+              }}
+            >
+              {config.buttonText}
+            </button>
+
+            <p style={{
+              fontSize: '12px',
+              opacity: 0.7,
+              marginTop: '16px',
+              color: config.textColor || '#FFFFFF'
+            }}>
+              {config.termsText}
+            </p>
+
+            <div style={{
+              marginTop: '16px',
+              padding: '10px',
+              background: 'rgba(255,255,255,0.1)',
+              borderRadius: '8px',
+              fontSize: '12px',
+              opacity: 0.7
+            }}>
+              👆 Esta es una vista previa. Así se verá el popup en tu tienda.
             </div>
           </div>
         </div>

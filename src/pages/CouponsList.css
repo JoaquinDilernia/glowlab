@@ -1,15 +1,15 @@
 /* Modern Coupons List Redesign */
 .coupons-list-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+  background: var(--gl-bg-primary);
   padding-bottom: 60px;
 }
 
 /* Modern Header */
 .coupons-header-modern {
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--gl-bg-card);
+  border-bottom: 1px solid var(--gl-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -33,10 +33,10 @@
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  background: #f3f4f6;
+  background: rgba(255, 255, 255, 0.05);
   border: none;
   border-radius: 10px;
-  color: #374151;
+  color: var(--gl-text-primary);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -44,7 +44,7 @@
 }
 
 .btn-back-modern:hover {
-  background: #e5e7eb;
+  background: rgba(255, 255, 255, 0.1);
   transform: translateX(-2px);
 }
 
@@ -58,10 +58,10 @@
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: white;
-  border: 2px solid #e5e7eb;
+  background: var(--gl-bg-card);
+  border: 2px solid var(--gl-border);
   border-radius: 10px;
-  color: #374151;
+  color: var(--gl-text-primary);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -69,8 +69,8 @@
 }
 
 .btn-secondary-modern:hover:not(:disabled) {
-  background: #f9fafb;
-  border-color: #d1d5db;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--gl-text-muted);
   transform: translateY(-1px);
 }
 
@@ -107,14 +107,14 @@
 .page-title-modern {
   font-size: 32px;
   font-weight: 800;
-  color: #1f2937;
+  color: var(--gl-text-primary);
   margin: 0 0 8px;
   line-height: 1.2;
 }
 
 .page-subtitle-modern {
   font-size: 16px;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
   margin: 0;
   font-weight: 500;
 }
@@ -141,18 +141,18 @@
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  color: #9ca3af;
+  color: var(--gl-text-muted);
 }
 
 .search-input-modern {
   width: 100%;
   padding: 14px 48px 14px 48px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--gl-border);
   border-radius: 12px;
   font-size: 15px;
-  background: white;
+  background: var(--gl-bg-card);
   transition: all 0.2s;
-  color: #1f2937;
+  color: var(--gl-text-primary);
 }
 
 .search-input-modern:focus {
@@ -171,17 +171,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f3f4f6;
+  background: rgba(255, 255, 255, 0.05);
   border: none;
   border-radius: 50%;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .clear-search:hover {
-  background: #e5e7eb;
-  color: #374151;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--gl-text-primary);
 }
 
 .filters-bar-modern {
@@ -192,20 +192,20 @@
 
 .filter-select-modern {
   padding: 12px 16px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--gl-border);
   border-radius: 10px;
-  background: white;
+  background: var(--gl-bg-card);
   font-size: 14px;
   font-weight: 600;
-  color: #374151;
+  color: var(--gl-text-primary);
   cursor: pointer;
   transition: all 0.2s;
   min-width: 180px;
 }
 
 .filter-select-modern:hover {
-  border-color: #d1d5db;
-  background: #f9fafb;
+  border-color: var(--gl-text-muted);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .filter-select-modern:focus {
@@ -226,11 +226,11 @@
 }
 
 .coupon-card {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  border: 2px solid #f3f4f6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--gl-border);
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   cursor: pointer;
   position: relative;
@@ -251,7 +251,7 @@
 
 .coupon-card:hover {
   transform: translateY(-6px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
   border-color: #7C7CFF;
 }
 
@@ -308,26 +308,26 @@
 }
 
 .badge-inactive {
-  background: #f3f4f6;
-  color: #6b7280;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--gl-text-secondary);
 }
 
 .badge-expired {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.15);
   color: #991b1b;
 }
 
 .coupon-value {
   font-size: 36px;
   font-weight: 900;
-  color: #1f2937;
+  color: var(--gl-text-primary);
   margin: 16px 0;
   line-height: 1;
 }
 
 .coupon-description {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
   margin: 0 0 16px;
   line-height: 1.5;
 }
@@ -350,13 +350,13 @@
 }
 
 .smart-badge.tope {
-  background: #fef3c7;
+  background: rgba(245, 158, 11, 0.15);
   color: #92400e;
 }
 
 .smart-badge.email {
   background: #dbeafe;
-  color: #1e40af;
+  color: #93c5fd;
 }
 
 .smart-badge.gift {
@@ -369,7 +369,7 @@
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
   padding: 16px 0;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--gl-border);
   margin-top: 16px;
 }
 
@@ -381,7 +381,7 @@
 
 .stat-label {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--gl-text-muted);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -390,7 +390,7 @@
 .stat-value {
   font-size: 20px;
   font-weight: 800;
-  color: #1f2937;
+  color: var(--gl-text-primary);
 }
 
 .coupon-actions {
@@ -398,7 +398,7 @@
   gap: 8px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--gl-border);
 }
 
 .btn-action {
@@ -427,16 +427,16 @@
 }
 
 .btn-action.secondary {
-  background: #f3f4f6;
-  color: #374151;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--gl-text-primary);
 }
 
 .btn-action.secondary:hover {
-  background: #e5e7eb;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .btn-action.danger {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.15);
   color: #991b1b;
 }
 
@@ -456,20 +456,20 @@
 }
 
 .empty-state svg {
-  color: #d1d5db;
+  color: var(--gl-text-muted);
   margin-bottom: 20px;
 }
 
 .empty-state h3 {
   font-size: 24px;
   font-weight: 700;
-  color: #374151;
+  color: var(--gl-text-primary);
   margin: 0 0 8px;
 }
 
 .empty-state p {
   font-size: 16px;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
   margin: 0 0 24px;
 }
 
@@ -509,7 +509,7 @@
 .spinner {
   width: 48px;
   height: 48px;
-  border: 4px solid #f3f4f6;
+  border: 4px solid var(--gl-border);
   border-top: 4px solid #7C7CFF;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;

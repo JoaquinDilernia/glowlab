@@ -20,12 +20,12 @@
   align-items: center;
   gap: 6px;
   padding: 10px 16px;
-  background: white;
-  border: 2px solid #e5e7eb;
+  background: var(--gl-bg-card);
+  border: 2px solid var(--gl-border);
   border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
@@ -51,7 +51,7 @@
 }
 
 .config-section {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
   padding: 32px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
@@ -69,7 +69,7 @@
 .section-header h2 {
   margin: 0;
   font-size: 24px;
-  color: #1f2937;
+  color: var(--gl-text-primary);
 }
 
 .toggle-switch {
@@ -104,7 +104,7 @@
   width: 22px;
   left: 4px;
   bottom: 4px;
-  background-color: white;
+  background-color: #ffffff;
   transition: 0.3s;
   border-radius: 50%;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -133,7 +133,7 @@
 
 .form-group label {
   font-weight: 600;
-  color: #1f2937 !important;
+  color: var(--gl-text-secondary) !important;
   font-size: 14px;
 }
 
@@ -142,21 +142,21 @@
 .form-group input[type="url"],
 .form-group select {
   padding: 12px 16px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--gl-border-input);
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.2s;
-  color: #1f2937 !important;
-  background-color: #ffffff !important;
-  -webkit-text-fill-color: #1f2937 !important;
+  color: var(--gl-text-primary) !important;
+  background-color: var(--gl-bg-input) !important;
+  -webkit-text-fill-color: var(--gl-text-primary) !important;
 }
 
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #7C7CFF;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-  color: #1f2937 !important;
+  border-color: var(--gl-accent-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.15);
+  color: var(--gl-text-primary) !important;
 }
 
 .color-input-group {
@@ -168,7 +168,7 @@
 .color-input-group input[type="color"] {
   width: 60px;
   height: 44px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--gl-border-input);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -176,27 +176,27 @@
 .color-input-group input[type="text"] {
   flex: 1;
   padding: 12px 16px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--gl-border-input);
   border-radius: 8px;
   font-family: 'Courier New', monospace;
   font-size: 14px;
-  color: #1f2937 !important;
-  background-color: #ffffff !important;
-  -webkit-text-fill-color: #1f2937 !important;
+  color: var(--gl-text-primary) !important;
+  background-color: var(--gl-bg-input) !important;
+  -webkit-text-fill-color: var(--gl-text-primary) !important;
 }
 
 .preview-box {
   margin-top: 30px;
   padding: 24px;
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  background: rgba(255, 255, 255, 0.03);
   border-radius: 12px;
-  border: 2px dashed #d1d5db;
+  border: 2px dashed var(--gl-border);
 }
 
 .preview-box h3 {
   margin: 0 0 20px 0;
   font-size: 16px;
-  color: #6b7280;
+  color: var(--gl-text-muted);
   font-weight: 600;
 }
 
@@ -204,7 +204,7 @@
   display: flex;
   justify-content: flex-end;
   padding: 40px;
-  background: white;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
 }
 
@@ -222,16 +222,16 @@
 
 .menu-item-config {
   padding: 20px;
-  background: #f9fafb;
+  background: rgba(255, 255, 255, 0.03);
   border-radius: 12px;
   margin-bottom: 16px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--gl-border);
   transition: all 0.2s;
 }
 
 .menu-item-config:hover {
-  border-color: #d1d5db;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  border-color: var(--gl-border-hover);
+  box-shadow: 0 2px 8px rgba(0, 217, 255, 0.1);
 }
 
 .menu-item-config .item-header {
@@ -240,7 +240,7 @@
   gap: 12px;
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 2px solid #e5e7eb;
+  border-bottom: 2px solid var(--gl-border);
 }
 
 .menu-item-config .item-position {
@@ -293,10 +293,10 @@
 
 .info-box {
   padding: 16px 20px;
-  background: #eff6ff;
-  border-left: 4px solid #3b82f6;
+  background: rgba(0, 217, 255, 0.08);
+  border-left: 4px solid var(--gl-accent-cyan);
   border-radius: 8px;
-  color: #1e40af;
+  color: var(--gl-accent-cyan);
   font-size: 14px;
   line-height: 1.6;
 }
@@ -310,8 +310,8 @@
 
 .position-option {
   padding: 16px;
-  background: white;
-  border: 2px solid #e5e7eb;
+  background: var(--gl-bg-input);
+  border: 2px solid var(--gl-border);
   border-radius: 8px;
   text-align: center;
   cursor: pointer;
@@ -319,26 +319,26 @@
 }
 
 .position-option:hover {
-  border-color: #7C7CFF;
+  border-color: var(--gl-accent-purple);
   transform: translateY(-2px);
 }
 
 .position-option.selected {
-  border-color: #7C7CFF;
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  border-color: var(--gl-accent-purple);
+  background: rgba(124, 124, 255, 0.15);
 }
 
 .position-option strong {
-  color: #1f2937;
+  color: var(--gl-text-primary);
   font-size: 14px;
 }
 
 .button-config-card {
   padding: 20px;
-  background: #f9fafb;
+  background: rgba(255, 255, 255, 0.03);
   border-radius: 12px;
   margin-bottom: 16px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--gl-border);
 }
 
 .button-config-card .card-header {
@@ -350,18 +350,18 @@
 
 .button-config-card h4 {
   margin: 0;
-  color: #1f2937;
+  color: var(--gl-text-primary);
   font-size: 16px;
 }
 
 .button-preview {
   margin-top: 20px;
   padding: 20px;
-  background: white;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   display: flex;
   justify-content: center;
-  border: 1px dashed #d1d5db;
+  border: 1px dashed var(--gl-border);
 }
 
 .button-preview button {
@@ -401,10 +401,10 @@
   }
 }
 
-/* CRITICAL FIX: Asegurar que TODOS los inputs y labels sean legibles */
+/* Dark Theme: inputs and labels */
 .config-section label,
 .config-section .form-group label {
-  color: #1f2937 !important;
+  color: var(--gl-text-secondary) !important;
 }
 
 .config-section input[type="text"],
@@ -413,14 +413,14 @@
 .config-section input[type="email"],
 .config-section textarea,
 .config-section select {
-  color: #1f2937 !important;
-  background-color: #ffffff !important;
-  -webkit-text-fill-color: #1f2937 !important;
+  color: var(--gl-text-primary) !important;
+  background-color: var(--gl-bg-input) !important;
+  -webkit-text-fill-color: var(--gl-text-primary) !important;
 }
 
 .config-section input::placeholder,
 .config-section textarea::placeholder {
-  color: #9ca3af !important;
+  color: var(--gl-text-muted) !important;
   opacity: 1 !important;
 }
 

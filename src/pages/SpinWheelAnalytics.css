@@ -16,7 +16,7 @@
 .analytics-header h1 {
   margin: 0 0 5px;
   font-size: 32px;
-  color: #2c3e50;
+  color: var(--gl-text-primary);
 }
 
 .analytics-subtitle {
@@ -77,20 +77,20 @@
 }
 
 .metric-card {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 12px;
   padding: 24px;
   display: flex;
   align-items: center;
   gap: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: all 0.3s;
   border: 2px solid transparent;
 }
 
 .metric-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
 .metric-card.highlight {
@@ -133,7 +133,7 @@
   font-weight: 800;
   margin: 0 0 4px;
   line-height: 1;
-  color: #2c3e50;
+  color: var(--gl-text-primary);
 }
 
 .metric-card.highlight .metric-value,
@@ -154,17 +154,17 @@
 
 /* Analytics Sections */
 .analytics-section {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 12px;
   padding: 30px;
   margin-bottom: 30px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .analytics-section h2 {
   margin: 0 0 24px;
   font-size: 24px;
-  color: #2c3e50;
+  color: var(--gl-text-primary);
 }
 
 /* Prize Distribution */
@@ -188,7 +188,7 @@
 
 .prize-name {
   font-weight: 600;
-  color: #2c3e50;
+  color: var(--gl-text-primary);
 }
 
 .prize-count {
@@ -197,7 +197,7 @@
 
 .prize-progress {
   height: 32px;
-  background: #f0f2f5;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   overflow: hidden;
   position: relative;
@@ -252,7 +252,7 @@
 .bar-value {
   font-size: 14px;
   font-weight: 700;
-  color: #2c3e50;
+  color: var(--gl-text-primary);
 }
 
 /* Recent Spins Table */
@@ -266,7 +266,7 @@
 }
 
 .recent-spins-table thead {
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
   border-bottom: 2px solid #e9ecef;
 }
 
@@ -277,7 +277,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #495057;
+  color: var(--gl-text-primary);
 }
 
 .recent-spins-table td {
@@ -287,7 +287,7 @@
 }
 
 .recent-spins-table tbody tr:hover {
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
 }
 
 .email-cell {
@@ -297,7 +297,7 @@
 
 .prize-cell {
   font-weight: 600;
-  color: #2c3e50;
+  color: var(--gl-text-primary);
 }
 
 .coupon-cell code {
@@ -306,7 +306,7 @@
   border-radius: 6px;
   font-family: 'Courier New', monospace;
   font-size: 13px;
-  color: #495057;
+  color: var(--gl-text-primary);
   font-weight: 600;
 }
 
@@ -316,7 +316,7 @@
 }
 
 .date-cell {
-  color: #6c757d;
+  color: var(--gl-text-secondary);
   font-size: 13px;
 }
 
@@ -339,7 +339,7 @@
 }
 
 .badge-pending {
-  background: #fef3c7;
+  background: rgba(245, 158, 11, 0.15);
   color: #92400e;
 }
 
@@ -385,7 +385,7 @@
   align-items: center;
   gap: 16px;
   padding: 16px;
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
   border-radius: 12px;
   border: 2px solid #e9ecef;
   transition: all 0.3s;
@@ -419,7 +419,7 @@
 }
 
 .coupon-code {
-  background: white;
+  background: var(--gl-bg-card);
   padding: 4px 12px;
   border-radius: 6px;
   font-family: 'Courier New', monospace;
@@ -432,7 +432,7 @@
 
 .coupon-email {
   font-size: 13px;
-  color: #6c757d;
+  color: var(--gl-text-secondary);
 }
 
 .coupon-stats {

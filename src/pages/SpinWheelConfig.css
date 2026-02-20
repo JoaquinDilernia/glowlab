@@ -1,18 +1,18 @@
 /* Spin Wheel Configuration Page */
 .spin-config-container {
   min-height: 100vh;
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
   padding-bottom: 40px;
 }
 
 /* Header */
 .config-header {
-  background: white;
+  background: var(--gl-bg-card);
   padding: 20px 30px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -27,7 +27,7 @@
 .header-left h1 {
   margin: 0;
   font-size: 24px;
-  color: #2c3e50;
+  color: var(--gl-text-primary);
 }
 
 .header-left p {
@@ -37,7 +37,7 @@
 }
 
 .btn-back {
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
   border: none;
   width: 40px;
   height: 40px;
@@ -91,7 +91,7 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: white;
+  background: var(--gl-bg-card);
   transition: all 0.3s;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
@@ -107,7 +107,7 @@
   border-radius: 12px;
   background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
   border-left: 4px solid #7C7CFF;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .install-banner .banner-content {
@@ -128,19 +128,19 @@
 .install-banner .banner-text h3 {
   margin: 0 0 10px;
   font-size: 18px;
-  color: #1f2937;
+  color: var(--gl-text-primary);
   font-weight: 700;
 }
 
 .install-banner .banner-text p {
   margin: 0 0 15px;
   font-size: 14px;
-  color: #374151;
+  color: var(--gl-text-primary);
   line-height: 1.5;
 }
 
 .script-code-wrapper {
-  background: rgba(0,0,0,0.05);
+  background: rgba(0, 0, 0, 0.3);
   padding: 12px 16px;
   border-radius: 8px;
   display: flex;
@@ -155,7 +155,7 @@
 
 .script-code-wrapper code {
   flex: 1;
-  color: #1f2937;
+  color: var(--gl-text-primary);
   word-break: break-all;
 }
 
@@ -200,12 +200,12 @@
 .install-steps li {
   margin-bottom: 8px;
   font-size: 13px;
-  color: #374151;
+  color: var(--gl-text-primary);
   line-height: 1.6;
 }
 
 .install-steps code {
-  background: rgba(0,0,0,0.1);
+  background: rgba(0, 0, 0, 0.4);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'Courier New', monospace;
@@ -217,7 +217,7 @@
   margin: 20px 30px;
   padding: 20px 30px;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .auto-install-banner.success {
@@ -244,14 +244,14 @@
 .auto-install-banner .banner-text h3 {
   margin: 0 0 8px;
   font-size: 18px;
-  color: #1f2937;
+  color: var(--gl-text-primary);
   font-weight: 700;
 }
 
 .auto-install-banner .banner-text p {
   margin: 0;
   font-size: 14px;
-  color: #374151;
+  color: var(--gl-text-primary);
   line-height: 1.5;
 }
 
@@ -337,15 +337,15 @@
   gap: 8px;
   font-size: 15px;
   font-weight: 500;
-  color: #6c757d;
+  color: var(--gl-text-secondary);
   border-bottom: 3px solid transparent;
   transition: all 0.2s;
   margin-bottom: -2px;
 }
 
 .tab:hover {
-  color: #495057;
-  background: #f8f9fa;
+  color: var(--gl-text-primary);
+  background: var(--gl-bg-primary);
 }
 
 .tab.active {
@@ -362,16 +362,16 @@
 }
 
 .config-section {
-  background: white;
+  background: var(--gl-bg-card);
   padding: 30px;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .config-section h2 {
   margin: 0 0 25px;
   font-size: 22px;
-  color: #2c3e50;
+  color: var(--gl-text-primary);
 }
 
 .section-header {
@@ -400,7 +400,7 @@
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
-  color: #495057;
+  color: var(--gl-text-primary);
   font-size: 14px;
   display: flex;
   align-items: center;
@@ -416,8 +416,8 @@
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.2s;
-  background-color: #ffffff;
-  color: #212529;
+  background-color: var(--gl-bg-input);
+  color: var(--gl-text-primary);
 }
 
 .form-group input:focus,
@@ -451,7 +451,7 @@
   display: block;
   margin-top: 6px;
   font-size: 12px;
-  color: #6c757d;
+  color: var(--gl-text-secondary);
   line-height: 1.4;
 }
 
@@ -459,7 +459,7 @@
   display: block;
   margin-top: 6px;
   font-size: 12px;
-  color: #6c757d;
+  color: var(--gl-text-secondary);
   font-style: italic;
 }
 
@@ -467,7 +467,7 @@
 .logo-preview {
   margin-top: 12px;
   padding: 16px;
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
   border-radius: 8px;
   text-align: center;
 }
@@ -514,7 +514,7 @@
 }
 
 .probability-alert.warning {
-  background: #fef3c7;
+  background: rgba(245, 158, 11, 0.15);
   color: #92400e;
 }
 
@@ -566,7 +566,7 @@
 }
 
 .btn-remove {
-  background: #fee;
+  background: rgba(239, 68, 68, 0.1);
   border: 1px solid #fcc;
   color: #c33;
   width: 36px;
@@ -627,8 +627,8 @@
   border: 2px solid #e9ecef;
   border-radius: 8px;
   font-family: 'Courier New', monospace;
-  background-color: #ffffff;
-  color: #212529;
+  background-color: var(--gl-bg-input);
+  color: var(--gl-text-primary);
 }
 
 /* Style Preview */
@@ -662,7 +662,7 @@
 }
 
 .info-box li {
-  color: #495057;
+  color: var(--gl-text-primary);
   margin-bottom: 6px;
   font-size: 14px;
 }
@@ -699,13 +699,13 @@
 }
 
 .btn-secondary {
-  background: white;
+  background: var(--gl-bg-card);
   border: 2px solid #e9ecef;
-  color: #495057;
+  color: var(--gl-text-primary);
 }
 
 .btn-secondary:hover {
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
   border-color: #dee2e6;
 }
 
@@ -713,7 +713,7 @@
   padding: 10px 20px;
   border-radius: 8px;
   border: 2px solid #7C7CFF;
-  background: white;
+  background: var(--gl-bg-card);
   color: #7C7CFF;
   font-weight: 600;
   font-size: 14px;
@@ -757,7 +757,7 @@
 }
 
 .preview-content {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
   padding: 40px;
   max-width: 500px;
@@ -771,11 +771,27 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
+@keyframes pnFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pnSlideUp {
+  from {
+    transform: translateY(60px) scale(0.85);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
 .btn-close-preview {
   position: absolute;
   top: 15px;
   right: 15px;
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
   border: none;
   width: 36px;
   height: 36px;
@@ -793,7 +809,7 @@
 .preview-placeholder {
   text-align: center;
   padding: 60px 20px;
-  color: #6c757d;
+  color: var(--gl-text-secondary);
 }
 
 .preview-placeholder h3 {
@@ -812,8 +828,8 @@
 
 /* Integration Styles */
 .integration-card {
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--gl-bg-card);
+  border: 1px solid var(--gl-border);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 20px;
@@ -833,23 +849,23 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .integration-header h3 {
   margin: 0;
   font-size: 20px;
-  color: #1f2937;
+  color: var(--gl-text-primary);
 }
 
 .integration-header p {
   margin: 4px 0 0;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
   font-size: 14px;
 }
 
 .tags-info, .custom-fields-info {
-  background: #f9fafb;
+  background: rgba(255, 255, 255, 0.05);
   padding: 16px;
   border-radius: 8px;
   margin-top: 20px;
@@ -858,7 +874,7 @@
 .tags-info strong, .custom-fields-info strong {
   display: block;
   margin-bottom: 12px;
-  color: #374151;
+  color: var(--gl-text-primary);
   font-size: 14px;
 }
 
@@ -884,12 +900,12 @@
 
 .custom-fields-info li {
   margin-bottom: 8px;
-  color: #4b5563;
+  color: var(--gl-text-primary);
   font-size: 14px;
 }
 
 .custom-fields-info code {
-  background: #e5e7eb;
+  background: rgba(255, 255, 255, 0.1);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'Courier New', monospace;
@@ -912,7 +928,7 @@
 }
 
 .info-box {
-  background: #f0f9ff;
+  background: rgba(59, 130, 246, 0.1);
   border: 1px solid #0ea5e9;
   border-radius: 8px;
   padding: 16px;
@@ -936,7 +952,7 @@
 }
 
 .section-description {
-  color: #6b7280;
+  color: var(--gl-text-secondary);
   font-size: 15px;
   margin-bottom: 24px;
   line-height: 1.6;

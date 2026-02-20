@@ -65,6 +65,7 @@ function StyleConfig() {
       fontWeight: 500,
       fontFamily: 'system-ui',
       padding: 11,
+      visibility: 'both', // 'both', 'desktop', 'mobile'
       messages: [
         { text: '🎉 Envío gratis en compras mayores a $50.000', link: '' },
         { text: '💳 Hasta 12 cuotas sin interés', link: '' },
@@ -89,6 +90,7 @@ function StyleConfig() {
       fontWeight: 500,
       fontFamily: 'system-ui',
       padding: 11,
+      visibility: 'both', // 'both', 'desktop', 'mobile'
       messages: [
         { text: '🔥 Black Friday: hasta 50% OFF', link: '' },
         { text: '🚚 Envío gratis en compras +$50.000', link: '' },
@@ -420,6 +422,8 @@ function StyleConfig() {
       borderRadius: '8px',
       fontSize: '16px',
       fontWeight: '700',
+      fontFamily: 'system-ui',
+      width: 'auto',
       shadow: '0 4px 12px rgba(0,0,0,0.2)',
       hoverShadow: '0 6px 20px rgba(0,0,0,0.3)',
       borderWidth: '0px',
@@ -818,10 +822,10 @@ function StyleConfig() {
                           borderRadius: '12px',
                           border: '2px dashed #f093fb'
                         }}>
-                          <h4 style={{fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: '#1f2937'}}>
+                          <h4 style={{fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: 'rgba(255, 255, 255, 0.95)'}}>
                             🖼️ Imagen del Dropdown
                           </h4>
-                          <p style={{fontSize: '13px', color: '#6b7280', marginBottom: '15px'}}>
+                          <p style={{fontSize: '13px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '15px'}}>
                             Esta imagen aparecerá dentro del dropdown cuando se haga hover en este menú
                           </p>
 
@@ -841,7 +845,7 @@ function StyleConfig() {
                                   cursor: 'pointer',
                                   padding: '10px 16px',
                                   background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                                  color: 'white',
+                                  color: '#ffffff',
                                   borderRadius: '8px',
                                   display: 'flex',
                                   alignItems: 'center',
@@ -865,7 +869,7 @@ function StyleConfig() {
                                 }}
                               />
                             </div>
-                            <small style={{color: '#6b7280', fontSize: '12px', display: 'block', marginTop: '6px'}}>
+                            <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', display: 'block', marginTop: '6px'}}>
                               💡 Desktop: aparece dentro del dropdown | Mobile: aparece abajo de las subcategorías
                             </small>
                           </div>
@@ -879,7 +883,7 @@ function StyleConfig() {
                                   maxWidth: '100%',
                                   maxHeight: '200px',
                                   borderRadius: '8px',
-                                  border: '2px solid #e5e7eb',
+                                  border: '2px solid rgba(124, 124, 255, 0.2)',
                                   display: 'block'
                                 }}
                                 onError={(e) => {
@@ -894,7 +898,7 @@ function StyleConfig() {
                         <div style={{
                           marginTop: '20px',
                           padding: '15px',
-                          background: 'white',
+                          background: 'rgba(26, 26, 46, 0.8)',
                           borderRadius: '8px',
                           border: '1px solid #ddd'
                         }}>
@@ -966,7 +970,7 @@ function StyleConfig() {
                         padding: '25px',
                         borderRadius: '16px',
                         marginBottom: '25px',
-                        border: '2px solid #e5e7eb'
+                        border: '2px solid rgba(124, 124, 255, 0.2)'
                       }}>
                         <div style={{
                           display: 'flex',
@@ -1240,7 +1244,50 @@ function StyleConfig() {
 
                               <div className="form-row">
                                 <div className="form-group">
-                                  <label>📏 Grosor de Borde</label>
+                                  <label>� Tipografía</label>
+                                  <select
+                                    value={button.fontFamily || 'system-ui'}
+                                    onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'fontFamily', e.target.value)}
+                                    style={{width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd'}}
+                                  >
+                                    <option value="system-ui">System UI (predeterminada)</option>
+                                    <option value="'Poppins', sans-serif">Poppins</option>
+                                    <option value="'Montserrat', sans-serif">Montserrat</option>
+                                    <option value="'Roboto', sans-serif">Roboto</option>
+                                    <option value="'Open Sans', sans-serif">Open Sans</option>
+                                    <option value="'Lato', sans-serif">Lato</option>
+                                    <option value="'Raleway', sans-serif">Raleway</option>
+                                    <option value="'Playfair Display', serif">Playfair Display</option>
+                                    <option value="'Merriweather', serif">Merriweather</option>
+                                    <option value="Arial, sans-serif">Arial</option>
+                                    <option value="'Georgia', serif">Georgia</option>
+                                    <option value="'Oswald', sans-serif">Oswald</option>
+                                    <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
+                                  </select>
+                                </div>
+                                <div className="form-group">
+                                  <label>↔️ Ancho del Botón</label>
+                                  <select
+                                    value={button.width || 'auto'}
+                                    onChange={(e) => updateButtonInSlide(slideKey, buttonIndex, 'width', e.target.value)}
+                                    style={{width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd'}}
+                                  >
+                                    <option value="auto">Automático (según texto)</option>
+                                    <option value="100%">100% (ancho completo)</option>
+                                    <option value="80%">80%</option>
+                                    <option value="60%">60%</option>
+                                    <option value="50%">50%</option>
+                                    <option value="200px">200px</option>
+                                    <option value="250px">250px</option>
+                                    <option value="300px">300px</option>
+                                    <option value="350px">350px</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div className="form-row">
+                                <div className="form-group">
+                                  <label>�📏 Grosor de Borde</label>
                                   <input
                                     type="text"
                                     value={button.borderWidth || '0px'}
@@ -1293,6 +1340,8 @@ function StyleConfig() {
                                     border: `${button.borderWidth || '0px'} ${button.borderStyle || 'solid'} ${button.borderColor || '#000000'}`,
                                     fontSize: button.fontSize || '16px',
                                     fontWeight: button.fontWeight || '700',
+                                    fontFamily: button.fontFamily || 'system-ui',
+                                    width: button.width || 'auto',
                                     cursor: 'pointer',
                                     boxShadow: button.shadow || '0 4px 12px rgba(0,0,0,0.2)',
                                     textTransform: button.textTransform || 'uppercase'
@@ -1410,7 +1459,7 @@ function StyleConfig() {
                       width: '100%',
                       padding: '12px',
                       borderRadius: '8px',
-                      border: '2px solid #e5e7eb',
+                      border: '2px solid rgba(124, 124, 255, 0.2)',
                       fontSize: '14px'
                     }}
                   >
@@ -1440,7 +1489,7 @@ function StyleConfig() {
                       width: '100%',
                       padding: '12px',
                       borderRadius: '8px',
-                      border: '2px solid #e5e7eb',
+                      border: '2px solid rgba(124, 124, 255, 0.2)',
                       fontSize: '14px'
                     }}
                   >
@@ -1455,8 +1504,8 @@ function StyleConfig() {
                   <h3 style={{fontSize: '16px', fontWeight: '600', marginBottom: '16px'}}>📋 Items del Header</h3>
                   {(config.topHeader.items || []).map((item, index) => (
                     <div key={index} style={{
-                      background: item.active ? '#f0fdf4' : 'white',
-                      border: item.active ? '2px solid #10b981' : '2px solid #e5e7eb',
+                      background: item.active ? 'rgba(16, 185, 129, 0.1)' : 'rgba(26, 26, 46, 0.8)',
+                      border: item.active ? '2px solid #10b981' : '2px solid rgba(124, 124, 255, 0.2)',
                       borderRadius: '12px',
                       padding: '20px',
                       marginBottom: '16px'
@@ -1468,8 +1517,8 @@ function StyleConfig() {
                           gap: '8px',
                           cursor: 'pointer',
                           padding: '8px 12px',
-                          background: item.active ? '#10b981' : '#f3f4f6',
-                          color: item.active ? 'white' : '#374151',
+                          background: item.active ? '#10b981' : 'rgba(255, 255, 255, 0.05)',
+                          color: item.active ? 'white' : 'rgba(255, 255, 255, 0.7)',
                           borderRadius: '8px',
                           fontWeight: '500',
                           fontSize: '13px'
@@ -1503,7 +1552,7 @@ function StyleConfig() {
                           style={{
                             padding: '8px 12px',
                             borderRadius: '8px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             fontSize: '13px'
                           }}
                         >
@@ -1681,7 +1730,7 @@ function StyleConfig() {
                       width: '100%',
                       padding: '12px',
                       borderRadius: '8px',
-                      border: '2px solid #e5e7eb',
+                      border: '2px solid rgba(124, 124, 255, 0.2)',
                       fontSize: '14px'
                     }}
                   >
@@ -1726,7 +1775,7 @@ function StyleConfig() {
                         width: '100%',
                         padding: '12px',
                         borderRadius: '8px',
-                        border: '2px solid #e5e7eb',
+                        border: '2px solid rgba(124, 124, 255, 0.2)',
                         fontSize: '14px'
                       }}
                     >
@@ -1751,6 +1800,31 @@ function StyleConfig() {
                       }))}
                     />
                   </div>
+                </div>
+
+                <div className="form-group" style={{marginBottom: '24px'}}>
+                  <label>📱 Visibilidad por Dispositivo</label>
+                  <select
+                    value={config.topAnnouncementBar.visibility || 'both'}
+                    onChange={(e) => setConfig(prev => ({
+                      ...prev,
+                      topAnnouncementBar: { ...prev.topAnnouncementBar, visibility: e.target.value }
+                    }))}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '2px solid rgba(124, 124, 255, 0.2)',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="both">📱🖥️ Ambos (Desktop y Mobile)</option>
+                    <option value="desktop">🖥️ Solo Desktop</option>
+                    <option value="mobile">📱 Solo Mobile</option>
+                  </select>
+                  <small style={{color: '#666', fontSize: '12px', display: 'block', marginTop: '6px'}}>
+                    Elegí en qué dispositivos se muestra esta barra
+                  </small>
                 </div>
 
                 {/* Configuración de Bordes */}
@@ -1836,7 +1910,7 @@ function StyleConfig() {
                               width: '100%',
                               padding: '12px',
                               borderRadius: '8px',
-                              border: '2px solid #e5e7eb',
+                              border: '2px solid rgba(124, 124, 255, 0.2)',
                               fontSize: '14px'
                             }}
                           >
@@ -1893,8 +1967,8 @@ function StyleConfig() {
                   <h3 style={{fontSize: '16px', fontWeight: '600', marginBottom: '16px'}}>💬 Mensajes</h3>
                   {(config.topAnnouncementBar.messages || []).map((msg, index) => (
                     <div key={index} style={{
-                      background: 'white',
-                      border: '2px solid #e5e7eb',
+                      background: 'rgba(26, 26, 46, 0.8)',
+                      border: '2px solid rgba(124, 124, 255, 0.2)',
                       borderRadius: '12px',
                       padding: '16px',
                       marginBottom: '12px'
@@ -2070,7 +2144,7 @@ function StyleConfig() {
                       width: '100%',
                       padding: '12px',
                       borderRadius: '8px',
-                      border: '2px solid #e5e7eb',
+                      border: '2px solid rgba(124, 124, 255, 0.2)',
                       fontSize: '14px'
                     }}
                   >
@@ -2115,7 +2189,7 @@ function StyleConfig() {
                         width: '100%',
                         padding: '12px',
                         borderRadius: '8px',
-                        border: '2px solid #e5e7eb',
+                        border: '2px solid rgba(124, 124, 255, 0.2)',
                         fontSize: '14px'
                       }}
                     >
@@ -2140,6 +2214,31 @@ function StyleConfig() {
                       }))}
                     />
                   </div>
+                </div>
+
+                <div className="form-group" style={{marginBottom: '24px'}}>
+                  <label>📱 Visibilidad por Dispositivo</label>
+                  <select
+                    value={config.announcementBar.visibility || 'both'}
+                    onChange={(e) => setConfig(prev => ({
+                      ...prev,
+                      announcementBar: { ...prev.announcementBar, visibility: e.target.value }
+                    }))}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '2px solid rgba(124, 124, 255, 0.2)',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="both">📱🖥️ Ambos (Desktop y Mobile)</option>
+                    <option value="desktop">🖥️ Solo Desktop</option>
+                    <option value="mobile">📱 Solo Mobile</option>
+                  </select>
+                  <small style={{color: '#666', fontSize: '12px', display: 'block', marginTop: '6px'}}>
+                    Elegí en qué dispositivos se muestra esta barra
+                  </small>
                 </div>
 
                 {/* Configuración de Bordes */}
@@ -2225,7 +2324,7 @@ function StyleConfig() {
                               width: '100%',
                               padding: '12px',
                               borderRadius: '8px',
-                              border: '2px solid #e5e7eb',
+                              border: '2px solid rgba(124, 124, 255, 0.2)',
                               fontSize: '14px'
                             }}
                           >
@@ -2282,8 +2381,8 @@ function StyleConfig() {
                   <h3 style={{fontSize: '16px', fontWeight: '600', marginBottom: '16px'}}>💬 Mensajes</h3>
                   {(config.announcementBar.messages || []).map((msg, index) => (
                     <div key={index} style={{
-                      background: 'white',
-                      border: '2px solid #e5e7eb',
+                      background: 'rgba(26, 26, 46, 0.8)',
+                      border: '2px solid rgba(124, 124, 255, 0.2)',
                       borderRadius: '12px',
                       padding: '20px',
                       marginBottom: '16px'
@@ -2353,7 +2452,7 @@ function StyleConfig() {
                 </div>
 
                 <div style={{
-                  background: '#fffbeb',
+                  background: 'rgba(245, 158, 11, 0.15)',
                   border: '2px solid #fef3c7',
                   borderRadius: '12px',
                   padding: '16px',
@@ -2440,7 +2539,7 @@ function StyleConfig() {
                 </div>
 
                 <div style={{marginBottom: '30px'}}>
-                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#1f2937'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255, 255, 255, 0.95)'}}>
                     ⚙️ Configuración del Botón
                   </h3>
 
@@ -2457,12 +2556,12 @@ function StyleConfig() {
                         placeholder="Ej: Ver:, Cambiar a:, Mostrar:"
                         style={{
                           padding: '12px',
-                          border: '2px solid #e5e7eb',
+                          border: '2px solid rgba(124, 124, 255, 0.2)',
                           borderRadius: '8px',
                           fontSize: '14px'
                         }}
                       />
-                      <small style={{color: '#6b7280', fontSize: '12px', display: 'block', marginTop: '6px'}}>
+                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', display: 'block', marginTop: '6px'}}>
                         Texto que aparece antes de las opciones (Ej: "Ver: Prendida / Apagada")
                       </small>
                     </div>
@@ -2478,7 +2577,7 @@ function StyleConfig() {
                         style={{
                           width: '100%',
                           padding: '12px',
-                          border: '2px solid #e5e7eb',
+                          border: '2px solid rgba(124, 124, 255, 0.2)',
                           borderRadius: '8px',
                           fontSize: '14px'
                         }}
@@ -2497,12 +2596,12 @@ function StyleConfig() {
                       {(!config.lightToggle?.categoryUrls || config.lightToggle.categoryUrls.length === 0) ? (
                         <div style={{
                           padding: '20px',
-                          background: '#f9fafb',
+                          background: 'rgba(255, 255, 255, 0.05)',
                           borderRadius: '8px',
                           border: '2px dashed #d1d5db',
                           textAlign: 'center'
                         }}>
-                          <p style={{margin: 0, color: '#6b7280', fontSize: '14px'}}>
+                          <p style={{margin: 0, color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px'}}>
                             Sin URLs específicas - Aparecerá en TODOS los productos
                           </p>
                         </div>
@@ -2525,7 +2624,7 @@ function StyleConfig() {
                                 style={{
                                   flex: 1,
                                   padding: '12px',
-                                  border: '2px solid #e5e7eb',
+                                  border: '2px solid rgba(124, 124, 255, 0.2)',
                                   borderRadius: '8px',
                                   fontSize: '14px'
                                 }}
@@ -2541,7 +2640,7 @@ function StyleConfig() {
                                 style={{
                                   padding: '12px 16px',
                                   background: '#ef4444',
-                                  color: 'white',
+                                  color: '#ffffff',
                                   border: 'none',
                                   borderRadius: '8px',
                                   cursor: 'pointer',
@@ -2571,7 +2670,7 @@ function StyleConfig() {
                           marginTop: '10px',
                           padding: '12px 20px',
                           background: '#10b981',
-                          color: 'white',
+                          color: '#ffffff',
                           border: 'none',
                           borderRadius: '8px',
                           cursor: 'pointer',
@@ -2590,10 +2689,10 @@ function StyleConfig() {
                 </div>
 
                 <div style={{marginBottom: '30px'}}>
-                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#1f2937'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255, 255, 255, 0.95)'}}>
                     🎨 Etiquetas de las Vistas
                   </h3>
-                  <p style={{fontSize: '14px', color: '#6b7280', marginBottom: '16px'}}>
+                  <p style={{fontSize: '14px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '16px'}}>
                     Personaliza los nombres que aparecerán en el botón según tu rubro:
                   </p>
 
@@ -2610,7 +2709,7 @@ function StyleConfig() {
                         placeholder="Ej: Apagada, Solo, Frontal, Antes"
                         style={{
                           padding: '12px',
-                          border: '2px solid #e5e7eb',
+                          border: '2px solid rgba(124, 124, 255, 0.2)',
                           borderRadius: '8px',
                           fontSize: '14px'
                         }}
@@ -2629,7 +2728,7 @@ function StyleConfig() {
                         placeholder="Ej: Prendida, Outfit, Posterior, Después"
                         style={{
                           padding: '12px',
-                          border: '2px solid #e5e7eb',
+                          border: '2px solid rgba(124, 124, 255, 0.2)',
                           borderRadius: '8px',
                           fontSize: '14px'
                         }}
@@ -2650,7 +2749,7 @@ function StyleConfig() {
                   </h4>
                   
                   <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px'}}>
-                    <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
+                    <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
                       <div style={{fontSize: '24px', marginBottom: '8px'}}>💡</div>
                       <div style={{fontWeight: '600', color: '#166534', marginBottom: '4px'}}>Iluminación/Deco</div>
                       <div style={{fontSize: '13px', color: '#15803d'}}>
@@ -2659,7 +2758,7 @@ function StyleConfig() {
                       </div>
                     </div>
 
-                    <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
+                    <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
                       <div style={{fontSize: '24px', marginBottom: '8px'}}>👗</div>
                       <div style={{fontWeight: '600', color: '#166534', marginBottom: '4px'}}>Moda/Ropa</div>
                       <div style={{fontSize: '13px', color: '#15803d'}}>
@@ -2668,7 +2767,7 @@ function StyleConfig() {
                       </div>
                     </div>
 
-                    <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
+                    <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
                       <div style={{fontSize: '24px', marginBottom: '8px'}}>👙</div>
                       <div style={{fontWeight: '600', color: '#166534', marginBottom: '4px'}}>Ropa de Baño</div>
                       <div style={{fontSize: '13px', color: '#15803d'}}>
@@ -2677,7 +2776,7 @@ function StyleConfig() {
                       </div>
                     </div>
 
-                    <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
+                    <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
                       <div style={{fontSize: '24px', marginBottom: '8px'}}>🎨</div>
                       <div style={{fontWeight: '600', color: '#166534', marginBottom: '4px'}}>Belleza/Cosmética</div>
                       <div style={{fontSize: '13px', color: '#15803d'}}>
@@ -2686,7 +2785,7 @@ function StyleConfig() {
                       </div>
                     </div>
 
-                    <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
+                    <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
                       <div style={{fontSize: '24px', marginBottom: '8px'}}>🪑</div>
                       <div style={{fontWeight: '600', color: '#166534', marginBottom: '4px'}}>Muebles</div>
                       <div style={{fontSize: '13px', color: '#15803d'}}>
@@ -2695,7 +2794,7 @@ function StyleConfig() {
                       </div>
                     </div>
 
-                    <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
+                    <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #86efac'}}>
                       <div style={{fontSize: '24px', marginBottom: '8px'}}>📦</div>
                       <div style={{fontWeight: '600', color: '#166534', marginBottom: '4px'}}>General</div>
                       <div style={{fontSize: '13px', color: '#15803d'}}>
@@ -2749,21 +2848,21 @@ function StyleConfig() {
                 </div>
 
                 <div style={{marginBottom: '30px'}}>
-                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#1f2937'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255, 255, 255, 0.95)'}}>
                     📝 Búsquedas Populares
                   </h3>
 
                   {(config.enhancedSearch?.popularSearches || []).map((search, index) => (
                     <div key={index} style={{
-                      background: 'white',
+                      background: 'rgba(26, 26, 46, 0.8)',
                       padding: '20px',
                       borderRadius: '12px',
                       marginBottom: '16px',
-                      border: '2px solid #e5e7eb'
+                      border: '2px solid rgba(124, 124, 255, 0.2)'
                     }}>
                       <div style={{display: 'flex', gap: '12px', alignItems: 'flex-start'}}>
                         <div style={{flex: 1}}>
-                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                             Texto de Búsqueda
                           </label>
                           <input
@@ -2781,7 +2880,7 @@ function StyleConfig() {
                             style={{
                               width: '100%',
                               padding: '10px 12px',
-                              border: '2px solid #e5e7eb',
+                              border: '2px solid rgba(124, 124, 255, 0.2)',
                               borderRadius: '8px',
                               fontSize: '14px'
                             }}
@@ -2789,7 +2888,7 @@ function StyleConfig() {
                         </div>
                         
                         <div style={{flex: 1}}>
-                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                             Link (opcional)
                           </label>
                           <input
@@ -2807,12 +2906,12 @@ function StyleConfig() {
                             style={{
                               width: '100%',
                               padding: '10px 12px',
-                              border: '2px solid #e5e7eb',
+                              border: '2px solid rgba(124, 124, 255, 0.2)',
                               borderRadius: '8px',
                               fontSize: '14px'
                             }}
                           />
-                          <small style={{color: '#6b7280', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                          <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
                             Dejá vacío para buscar en tu tienda
                           </small>
                         </div>
@@ -2827,7 +2926,7 @@ function StyleConfig() {
                           }}
                           style={{
                             background: '#ef4444',
-                            color: 'white',
+                            color: '#ffffff',
                             border: 'none',
                             borderRadius: '8px',
                             padding: '10px 16px',
@@ -2852,7 +2951,7 @@ function StyleConfig() {
                     }}
                     style={{
                       background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                      color: 'white',
+                      color: '#ffffff',
                       border: 'none',
                       borderRadius: '8px',
                       padding: '12px 24px',
@@ -2866,13 +2965,13 @@ function StyleConfig() {
                 </div>
 
                 <div style={{marginBottom: '30px'}}>
-                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#1f2937'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255, 255, 255, 0.95)'}}>
                     🎨 Personalización del Dropdown
                   </h3>
 
                   <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px'}}>
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Color Principal (Borde, Iconos, Hover)
                       </label>
                       <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
@@ -2886,7 +2985,7 @@ function StyleConfig() {
                           style={{
                             width: '60px',
                             height: '50px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             cursor: 'pointer'
                           }}
@@ -2902,20 +3001,20 @@ function StyleConfig() {
                           style={{
                             flex: 1,
                             padding: '12px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             fontSize: '14px',
                             fontFamily: 'monospace'
                           }}
                         />
                       </div>
-                      <small style={{color: '#6b7280', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
                         Se usa para el borde del dropdown, iconos y efectos de hover
                       </small>
                     </div>
 
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Color del Texto
                       </label>
                       <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
@@ -2929,7 +3028,7 @@ function StyleConfig() {
                           style={{
                             width: '60px',
                             height: '50px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             cursor: 'pointer'
                           }}
@@ -2945,14 +3044,14 @@ function StyleConfig() {
                           style={{
                             flex: 1,
                             padding: '12px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             fontSize: '14px',
                             fontFamily: 'monospace'
                           }}
                         />
                       </div>
-                      <small style={{color: '#6b7280', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
                         Color del texto de las búsquedas populares
                       </small>
                     </div>
@@ -2960,7 +3059,7 @@ function StyleConfig() {
 
                   <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Color de Fondo del Dropdown
                       </label>
                       <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
@@ -2974,7 +3073,7 @@ function StyleConfig() {
                           style={{
                             width: '60px',
                             height: '50px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             cursor: 'pointer'
                           }}
@@ -2990,20 +3089,20 @@ function StyleConfig() {
                           style={{
                             flex: 1,
                             padding: '12px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             fontSize: '14px',
                             fontFamily: 'monospace'
                           }}
                         />
                       </div>
-                      <small style={{color: '#6b7280', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
                         Fondo principal del dropdown
                       </small>
                     </div>
 
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Máximo de Resultados
                       </label>
                       <input
@@ -3018,12 +3117,12 @@ function StyleConfig() {
                         style={{
                           width: '100%',
                           padding: '12px',
-                          border: '2px solid #e5e7eb',
+                          border: '2px solid rgba(124, 124, 255, 0.2)',
                           borderRadius: '8px',
                           fontSize: '14px'
                         }}
                       />
-                      <small style={{color: '#6b7280', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
                         Cantidad de búsquedas a mostrar (3-12)
                       </small>
                     </div>
@@ -3067,12 +3166,12 @@ function StyleConfig() {
                 </div>
 
                 <div style={{marginBottom: '30px'}}>
-                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#1f2937'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255, 255, 255, 0.95)'}}>
                     ✏️ Textos
                   </h3>
 
                   <div style={{marginBottom: '20px'}}>
-                    <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                    <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                       Título del Modal
                     </label>
                     <input
@@ -3086,18 +3185,18 @@ function StyleConfig() {
                       style={{
                         width: '100%',
                         padding: '12px',
-                        border: '2px solid #e5e7eb',
+                        border: '2px solid rgba(124, 124, 255, 0.2)',
                         borderRadius: '8px',
                         fontSize: '14px'
                       }}
                     />
-                    <small style={{color: '#6b7280', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                    <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
                       Título grande que aparece arriba del buscador
                     </small>
                   </div>
 
                   <div style={{marginBottom: '20px'}}>
-                    <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                    <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                       Placeholder del Input
                     </label>
                     <input
@@ -3111,18 +3210,18 @@ function StyleConfig() {
                       style={{
                         width: '100%',
                         padding: '12px',
-                        border: '2px solid #e5e7eb',
+                        border: '2px solid rgba(124, 124, 255, 0.2)',
                         borderRadius: '8px',
                         fontSize: '14px'
                       }}
                     />
-                    <small style={{color: '#6b7280', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                    <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
                       Texto dentro del campo de búsqueda
                     </small>
                   </div>
 
                   <div style={{marginBottom: '20px'}}>
-                    <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                    <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                       Texto del Botón
                     </label>
                     <input
@@ -3136,7 +3235,7 @@ function StyleConfig() {
                       style={{
                         width: '100%',
                         padding: '12px',
-                        border: '2px solid #e5e7eb',
+                        border: '2px solid rgba(124, 124, 255, 0.2)',
                         borderRadius: '8px',
                         fontSize: '14px'
                       }}
@@ -3145,13 +3244,13 @@ function StyleConfig() {
                 </div>
 
                 <div style={{marginBottom: '30px'}}>
-                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#1f2937'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255, 255, 255, 0.95)'}}>
                     🎨 Diseño y Estilo
                   </h3>
 
                   <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px'}}>
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Posición del Título
                       </label>
                       <select
@@ -3163,10 +3262,10 @@ function StyleConfig() {
                         style={{
                           width: '100%',
                           padding: '12px',
-                          border: '2px solid #e5e7eb',
+                          border: '2px solid rgba(124, 124, 255, 0.2)',
                           borderRadius: '8px',
                           fontSize: '14px',
-                          background: 'white'
+                          background: 'rgba(26, 26, 46, 0.8)'
                         }}
                       >
                         <option value="top">Arriba</option>
@@ -3175,7 +3274,7 @@ function StyleConfig() {
                     </div>
 
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Tamaño del Título (px)
                       </label>
                       <input
@@ -3190,7 +3289,7 @@ function StyleConfig() {
                         style={{
                           width: '100%',
                           padding: '12px',
-                          border: '2px solid #e5e7eb',
+                          border: '2px solid rgba(124, 124, 255, 0.2)',
                           borderRadius: '8px',
                           fontSize: '14px'
                         }}
@@ -3200,7 +3299,7 @@ function StyleConfig() {
 
                   <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px'}}>
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Color de Fondo del Overlay
                       </label>
                       <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
@@ -3214,7 +3313,7 @@ function StyleConfig() {
                           style={{
                             width: '60px',
                             height: '50px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             cursor: 'pointer'
                           }}
@@ -3230,7 +3329,7 @@ function StyleConfig() {
                           style={{
                             flex: 1,
                             padding: '12px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             fontSize: '14px',
                             fontFamily: 'monospace'
@@ -3240,7 +3339,7 @@ function StyleConfig() {
                     </div>
 
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Opacidad del Fondo (0-1)
                       </label>
                       <input
@@ -3256,12 +3355,12 @@ function StyleConfig() {
                         style={{
                           width: '100%',
                           padding: '12px',
-                          border: '2px solid #e5e7eb',
+                          border: '2px solid rgba(124, 124, 255, 0.2)',
                           borderRadius: '8px',
                           fontSize: '14px'
                         }}
                       />
-                      <small style={{color: '#6b7280', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
                         0 = Transparente, 1 = Opaco
                       </small>
                     </div>
@@ -3269,7 +3368,7 @@ function StyleConfig() {
 
                   <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Color del Título
                       </label>
                       <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
@@ -3283,7 +3382,7 @@ function StyleConfig() {
                           style={{
                             width: '60px',
                             height: '50px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             cursor: 'pointer'
                           }}
@@ -3299,7 +3398,7 @@ function StyleConfig() {
                           style={{
                             flex: 1,
                             padding: '12px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             fontSize: '14px',
                             fontFamily: 'monospace'
@@ -3309,7 +3408,7 @@ function StyleConfig() {
                     </div>
 
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Color del Botón
                       </label>
                       <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
@@ -3323,7 +3422,7 @@ function StyleConfig() {
                           style={{
                             width: '60px',
                             height: '50px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             cursor: 'pointer'
                           }}
@@ -3339,7 +3438,7 @@ function StyleConfig() {
                           style={{
                             flex: 1,
                             padding: '12px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             fontSize: '14px',
                             fontFamily: 'monospace'
@@ -3349,7 +3448,7 @@ function StyleConfig() {
                     </div>
 
                     <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                         Color del Botón Cerrar (X)
                       </label>
                       <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
@@ -3363,7 +3462,7 @@ function StyleConfig() {
                           style={{
                             width: '60px',
                             height: '50px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             cursor: 'pointer'
                           }}
@@ -3379,14 +3478,14 @@ function StyleConfig() {
                           style={{
                             flex: 1,
                             padding: '12px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             fontSize: '14px',
                             fontFamily: 'monospace'
                           }}
                         />
                       </div>
-                      <small style={{color: '#6b7280', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
                         Color del ícono X para cerrar el modal
                       </small>
                     </div>
@@ -3394,7 +3493,7 @@ function StyleConfig() {
                 </div>
 
                 <div style={{marginBottom: '30px'}}>
-                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#1f2937'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255, 255, 255, 0.95)'}}>
                     🖼️ Logo (Opcional)
                   </h3>
 
@@ -3416,7 +3515,7 @@ function StyleConfig() {
                   {config.searchBar?.showLogo && (
                     <>
                       <div style={{marginBottom: '20px'}}>
-                        <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                        <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                           Logo
                         </label>
                         
@@ -3424,9 +3523,9 @@ function StyleConfig() {
                           <div style={{
                             marginBottom: '12px',
                             padding: '12px',
-                            background: '#f9fafb',
+                            background: 'rgba(255, 255, 255, 0.05)',
                             borderRadius: '8px',
-                            border: '1px solid #e5e7eb',
+                            border: '1px solid rgba(124, 124, 255, 0.2)',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '12px'
@@ -3449,7 +3548,7 @@ function StyleConfig() {
                               style={{
                                 padding: '6px 12px',
                                 background: '#ef4444',
-                                color: 'white',
+                                color: '#ffffff',
                                 border: 'none',
                                 borderRadius: '6px',
                                 cursor: 'pointer',
@@ -3521,9 +3620,9 @@ function StyleConfig() {
                         </div>
                         
                         <div style={{display: 'flex', alignItems: 'center', gap: '8px', margin: '12px 0'}}>
-                          <div style={{flex: 1, height: '1px', background: '#e5e7eb'}}></div>
-                          <span style={{color: '#6b7280', fontSize: '12px'}}>o ingresar URL</span>
-                          <div style={{flex: 1, height: '1px', background: '#e5e7eb'}}></div>
+                          <div style={{flex: 1, height: '1px', background: 'rgba(124, 124, 255, 0.2)'}}></div>
+                          <span style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px'}}>o ingresar URL</span>
+                          <div style={{flex: 1, height: '1px', background: 'rgba(124, 124, 255, 0.2)'}}></div>
                         </div>
                         
                         <input
@@ -3537,7 +3636,7 @@ function StyleConfig() {
                           style={{
                             width: '100%',
                             padding: '12px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             fontSize: '14px'
                           }}
@@ -3545,7 +3644,7 @@ function StyleConfig() {
                       </div>
 
                       <div style={{marginBottom: '20px'}}>
-                        <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                        <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                           Tamaño del Logo (px)
                         </label>
                         <input
@@ -3560,7 +3659,7 @@ function StyleConfig() {
                           style={{
                             width: '100%',
                             padding: '12px',
-                            border: '2px solid #e5e7eb',
+                            border: '2px solid rgba(124, 124, 255, 0.2)',
                             borderRadius: '8px',
                             fontSize: '14px'
                           }}
@@ -3571,11 +3670,11 @@ function StyleConfig() {
                 </div>
 
                 <div style={{marginBottom: '30px'}}>
-                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#1f2937'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255, 255, 255, 0.95)'}}>
                     🖼️ Sugerencias Visuales
                   </h3>
 
-                  <div className="info-box" style={{marginBottom: '20px', background: '#f0fdf4', borderColor: '#86efac'}}>
+                  <div className="info-box" style={{marginBottom: '20px', background: 'rgba(16, 185, 129, 0.1)', borderColor: '#86efac'}}>
                     <p style={{margin: 0, fontSize: '13px', color: '#166534'}}>
                       💡 Muestra imágenes clickeables abajo del buscador, como "Te puede interesar"
                     </p>
@@ -3583,11 +3682,11 @@ function StyleConfig() {
 
                   {(config.searchBar?.suggestions || []).map((suggestion, index) => (
                     <div key={index} style={{
-                      background: 'white',
+                      background: 'rgba(26, 26, 46, 0.8)',
                       padding: '20px',
                       borderRadius: '12px',
                       marginBottom: '16px',
-                      border: '2px solid #e5e7eb'
+                      border: '2px solid rgba(124, 124, 255, 0.2)'
                     }}>
                       {/* Preview de la imagen */}
                       {suggestion.imageUrl && (
@@ -3600,7 +3699,7 @@ function StyleConfig() {
                               height: '200px',
                               objectFit: 'cover',
                               borderRadius: '8px',
-                              border: '2px solid #e5e7eb'
+                              border: '2px solid rgba(124, 124, 255, 0.2)'
                             }}
                           />
                         </div>
@@ -3609,7 +3708,7 @@ function StyleConfig() {
                       <div style={{display: 'grid', gap: '12px'}}>
                         {/* Upload de imagen */}
                         <div>
-                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                             📁 Subir Imagen
                           </label>
                           <input
@@ -3694,10 +3793,10 @@ function StyleConfig() {
                             style={{
                               width: '100%',
                               padding: '12px',
-                              border: '2px solid #e5e7eb',
+                              border: '2px solid rgba(124, 124, 255, 0.2)',
                               borderRadius: '8px',
                               fontSize: '14px',
-                              background: 'white',
+                              background: 'rgba(26, 26, 46, 0.8)',
                               cursor: 'pointer'
                             }}
                             disabled={suggestion.uploading}
@@ -3711,7 +3810,7 @@ function StyleConfig() {
 
                         {/* O URL manual */}
                         <div>
-                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                             🔗 O pegar URL de imagen
                           </label>
                           <input
@@ -3729,7 +3828,7 @@ function StyleConfig() {
                             style={{
                               width: '100%',
                               padding: '10px 12px',
-                              border: '2px solid #e5e7eb',
+                              border: '2px solid rgba(124, 124, 255, 0.2)',
                               borderRadius: '8px',
                               fontSize: '14px'
                             }}
@@ -3738,7 +3837,7 @@ function StyleConfig() {
                         
                         {/* Link de destino */}
                         <div>
-                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#374151'}}>
+                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
                             🎯 Link de Destino
                           </label>
                           <input
@@ -3756,7 +3855,7 @@ function StyleConfig() {
                             style={{
                               width: '100%',
                               padding: '10px 12px',
-                              border: '2px solid #e5e7eb',
+                              border: '2px solid rgba(124, 124, 255, 0.2)',
                               borderRadius: '8px',
                               fontSize: '14px'
                             }}
@@ -3774,7 +3873,7 @@ function StyleConfig() {
                           }}
                           style={{
                             background: '#ef4444',
-                            color: 'white',
+                            color: '#ffffff',
                             border: 'none',
                             borderRadius: '8px',
                             padding: '10px 16px',
@@ -3799,7 +3898,7 @@ function StyleConfig() {
                     }}
                     style={{
                       background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                      color: 'white',
+                      color: '#ffffff',
                       border: 'none',
                       borderRadius: '8px',
                       padding: '12px 24px',

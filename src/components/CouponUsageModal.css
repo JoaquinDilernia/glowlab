@@ -13,7 +13,7 @@
 }
 
 .modal-content {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 20px;
   max-width: 1000px;
   width: 100%;
@@ -48,7 +48,7 @@
   margin: 0 0 8px 0;
   font-size: 28px;
   font-weight: 700;
-  color: #1a202c;
+  color: var(--gl-text-primary);
 }
 
 .coupon-code-modal {
@@ -56,7 +56,7 @@
   font-size: 18px;
   font-weight: 700;
   color: #7C7CFF;
-  background: #f0f4ff;
+  background: rgba(99, 102, 241, 0.1);
   padding: 8px 16px;
   border-radius: 8px;
   display: inline-block;
@@ -69,7 +69,7 @@
   border-radius: 50%;
   border: none;
   background: #f1f5f9;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -78,8 +78,8 @@
 }
 
 .btn-close:hover {
-  background: #e2e8f0;
-  color: #1e293b;
+  background: var(--gl-border);
+  color: var(--gl-text-primary);
   transform: rotate(90deg);
 }
 
@@ -96,15 +96,15 @@
   align-items: center;
   gap: 16px;
   padding: 20px;
-  background: white;
+  background: var(--gl-bg-card);
   border: 2px solid #f1f5f9;
   border-radius: 16px;
   transition: all 0.2s;
 }
 
 .stat-card:hover {
-  border-color: #e2e8f0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border-color: var(--gl-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .stat-icon {
@@ -119,7 +119,7 @@
 
 .stat-label {
   font-size: 13px;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   margin: 0 0 4px 0;
   font-weight: 500;
 }
@@ -127,7 +127,7 @@
 .stat-value {
   font-size: 24px;
   font-weight: 700;
-  color: #1a202c;
+  color: var(--gl-text-primary);
   margin: 0;
 }
 
@@ -139,7 +139,7 @@
 .usage-history h3 {
   font-size: 20px;
   font-weight: 700;
-  color: #1a202c;
+  color: var(--gl-text-primary);
   margin: 0 0 20px 0;
 }
 
@@ -163,16 +163,16 @@
   text-align: left;
   font-size: 13px;
   font-weight: 700;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid var(--gl-border);
 }
 
 .usage-table td {
   padding: 16px;
   border-bottom: 1px solid #f1f5f9;
-  color: #334155;
+  color: var(--gl-text-secondary);
   font-size: 14px;
 }
 
@@ -185,7 +185,7 @@
 }
 
 .usage-table tbody tr.row-warning {
-  background: #fef3c7;
+  background: rgba(245, 158, 11, 0.15);
 }
 
 .usage-table tbody tr.row-warning:hover {
@@ -207,7 +207,7 @@
   display: inline-flex;
   align-items: center;
   padding: 4px 8px;
-  background: #fef3c7;
+  background: rgba(245, 158, 11, 0.15);
   color: #92400e;
   border-radius: 4px;
   font-size: 12px;
@@ -218,7 +218,7 @@
   display: inline-flex;
   align-items: center;
   padding: 4px 8px;
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.15);
   color: #991b1b;
   border-radius: 4px;
   font-size: 12px;
@@ -230,7 +230,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #64748b;
+  color: var(--gl-text-secondary);
 }
 
 .table-cell-date svg {
@@ -261,7 +261,7 @@
 
 .table-cell-amount {
   font-weight: 600;
-  color: #1a202c;
+  color: var(--gl-text-primary);
 }
 
 .table-cell-discount {
@@ -273,7 +273,7 @@
 .empty-state-modal {
   text-align: center;
   padding: 60px 20px;
-  color: #64748b;
+  color: var(--gl-text-secondary);
 }
 
 .empty-state-modal svg {
@@ -284,7 +284,7 @@
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 8px 0;
-  color: #475569;
+  color: var(--gl-text-secondary);
 }
 
 .empty-state-modal small {
@@ -316,7 +316,7 @@
 }
 
 .loading-state p {
-  color: #64748b;
+  color: var(--gl-text-secondary);
   font-size: 14px;
   margin: 0;
 }

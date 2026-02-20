@@ -185,37 +185,37 @@ function BadgesList() {
               💡 Tipos de Reglas Disponibles
             </h4>
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px'}}>
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
+              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
                 <div style={{fontSize: '28px', marginBottom: '8px'}}>🆕</div>
                 <strong style={{color: '#0369a1', fontSize: '14px'}}>Productos Nuevos</strong>
                 <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Días desde creación</p>
               </div>
               
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
+              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
                 <div style={{fontSize: '28px', marginBottom: '8px'}}>✋</div>
                 <strong style={{color: '#0369a1', fontSize: '14px'}}>Selección Manual</strong>
                 <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Elige productos específicos</p>
               </div>
 
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
+              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
                 <div style={{fontSize: '28px', marginBottom: '8px'}}>💰</div>
                 <strong style={{color: '#0369a1', fontSize: '14px'}}>Rango de Precio</strong>
                 <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Mayor/menor a precio X</p>
               </div>
 
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
+              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
                 <div style={{fontSize: '28px', marginBottom: '8px'}}>%</div>
                 <strong style={{color: '#0369a1', fontSize: '14px'}}>Descuentos</strong>
                 <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Descuento mínimo %</p>
               </div>
 
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
+              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
                 <div style={{fontSize: '28px', marginBottom: '8px'}}>📦</div>
                 <strong style={{color: '#0369a1', fontSize: '14px'}}>Stock Bajo</strong>
                 <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Últimas unidades</p>
               </div>
 
-              <div style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
+              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
                 <div style={{fontSize: '28px', marginBottom: '8px'}}>📂</div>
                 <strong style={{color: '#0369a1', fontSize: '14px'}}>Por Categoría</strong>
                 <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Toda una categoría</p>

@@ -1,13 +1,13 @@
 .create-coupon-container {
   min-height: 100vh;
-  background: #f7fafc;
+  background: var(--gl-bg-primary);
   padding-bottom: 40px;
 }
 
 .create-coupon-header {
-  background: white;
+  background: var(--gl-bg-card);
   padding: 20px 32px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--gl-border);
   display: flex;
   align-items: center;
   gap: 20px;
@@ -18,24 +18,24 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--gl-bg-card);
+  border: 1px solid var(--gl-border);
   border-radius: 8px;
-  color: #718096;
+  color: var(--gl-text-secondary);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-back:hover {
-  background: #f7fafc;
-  border-color: #cbd5e0;
+  background: var(--gl-bg-primary);
+  border-color: var(--gl-border);
 }
 
 .create-coupon-header h1 {
   font-size: 24px;
   font-weight: 700;
-  color: #1a202c;
+  color: var(--gl-text-primary);
   margin: 0;
 }
 
@@ -59,10 +59,10 @@
   justify-content: center;
   gap: 8px;
   padding: 16px;
-  background: white;
-  border: 2px solid #e2e8f0;
+  background: var(--gl-bg-card);
+  border: 2px solid var(--gl-border);
   border-radius: 12px;
-  color: #718096;
+  color: var(--gl-text-secondary);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -70,7 +70,7 @@
 }
 
 .mode-btn:hover {
-  border-color: #cbd5e0;
+  border-color: var(--gl-border);
 }
 
 .mode-btn.active {
@@ -81,10 +81,10 @@
 
 /* Form */
 .coupon-form {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
   padding: 32px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--gl-border);
 }
 
 .form-group {
@@ -97,7 +97,7 @@
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--gl-text-primary);
   margin-bottom: 8px;
 }
 
@@ -111,12 +111,12 @@
 .form-group textarea {
   width: 100%;
   padding: 12px 16px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--gl-border);
   border-radius: 8px;
   font-size: 15px;
   transition: all 0.2s;
-  color: #1f2937;
-  background-color: #ffffff;
+  color: var(--gl-text-primary);
+  background-color: var(--gl-bg-input);
 }
 
 .form-group input:focus,
@@ -130,7 +130,7 @@
   display: block;
   margin-top: 6px;
   font-size: 13px;
-  color: #718096;
+  color: var(--gl-text-secondary);
 }
 
 .form-group textarea {
@@ -151,17 +151,17 @@
   justify-content: center;
   gap: 8px;
   padding: 12px;
-  background: #f7fafc;
-  border: 2px solid #e2e8f0;
+  background: var(--gl-bg-primary);
+  border: 2px solid var(--gl-border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
   font-weight: 500;
-  color: #2d3748;
+  color: var(--gl-text-primary);
 }
 
 .radio-label:hover {
-  border-color: #cbd5e0;
+  border-color: var(--gl-border);
 }
 
 .radio-label input[type="radio"] {
@@ -185,7 +185,7 @@
 /* Messages */
 .error-message {
   padding: 12px 16px;
-  background: #fff5f5;
+  background: rgba(239, 68, 68, 0.1);
   border: 1px solid #feb2b2;
   border-radius: 8px;
   color: #c53030;
@@ -195,10 +195,10 @@
 
 .success-message {
   padding: 12px 16px;
-  background: #f0fff4;
+  background: rgba(16, 185, 129, 0.1);
   border: 1px solid #9ae6b4;
   border-radius: 8px;
-  color: #22543d;
+  color: #6ee7b7;
   font-size: 14px;
   margin-bottom: 20px;
 }
@@ -246,7 +246,7 @@
 
 /* Sección Avanzada */
 .form-section-advanced {
-  background: #fef3c7;
+  background: rgba(245, 158, 11, 0.15);
   border: 2px solid #fbbf24;
   border-radius: 16px;
   padding: 24px;
@@ -266,7 +266,7 @@
 }
 
 .info-box-advanced {
-  background: white;
+  background: var(--gl-bg-card);
   border: 2px solid #fde68a;
   border-radius: 12px;
   padding: 16px;

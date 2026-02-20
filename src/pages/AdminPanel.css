@@ -1,7 +1,7 @@
 /* Admin Panel - Sistema TiendaNube */
 .admin-login-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--gl-accent-purple), var(--gl-accent-cyan));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -39,12 +39,12 @@
   margin: 0 0 8px 0;
   font-size: 32px;
   font-weight: 800;
-  color: #1f2937;
+  color: var(--gl-text-primary);
 }
 
 .admin-login-card p {
   margin: 0 0 32px 0;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
   font-size: 16px;
 }
 
@@ -56,13 +56,13 @@
 
 .login-form input {
   padding: 16px 20px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--gl-border);
   border-radius: 12px;
   font-size: 15px;
   transition: all 0.3s;
-  color: #1f2937 !important;
-  -webkit-text-fill-color: #1f2937 !important;
-  background: white !important;
+  color: var(--gl-text-primary) !important;
+  -webkit-text-fill-color: var(--gl-text-primary) !important;
+  background: var(--gl-bg-card) !important;
 }
 
 .login-form input:focus {
@@ -73,7 +73,7 @@
 
 .login-form button {
   padding: 16px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--gl-accent-purple), var(--gl-accent-cyan));
   color: white;
   border: none;
   border-radius: 12px;
@@ -378,7 +378,7 @@
 
 .plan-badge.free {
   background: rgba(156, 163, 175, 0.2);
-  color: #d1d5db;
+  color: var(--gl-text-muted);
 }
 
 .plan-badge.pro {

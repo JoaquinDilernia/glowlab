@@ -404,7 +404,7 @@ function GiftCardTemplates() {
                   $50.000
                 </div>
               </div>
-              <p style={{ textAlign: 'center', color: '#6b7280', marginTop: '16px' }}>
+              <p style={{ textAlign: 'center', color: 'rgba(255, 255, 255, 0.7)', marginTop: '16px' }}>
                 Así se verá el monto sobre tu diseño
               </p>
             </div>

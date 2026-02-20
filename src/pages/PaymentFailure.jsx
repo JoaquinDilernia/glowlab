@@ -53,7 +53,7 @@ function PaymentFailure() {
         <button 
           className="btn-return"
           onClick={() => navigate('/dashboard')}
-          style={{ marginTop: '12px', background: '#6B7280' }}
+          style={{ marginTop: '12px', background: 'rgba(255, 255, 255, 0.7)' }}
         >
           <ArrowLeft size={18} />
           Volver al Dashboard

@@ -29,7 +29,7 @@ function PaymentPending() {
           </div>
         </div>
 
-        <div className="result-info" style={{ background: '#FFFBEB', borderColor: '#FDE68A' }}>
+        <div className="result-info" style={{ background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.3)' }}>
           <p style={{ color: '#92400E' }}>
             <Mail size={16} style={{ display: 'inline', marginRight: '8px' }} />
             Te enviaremos un correo cuando se confirme el pago
@@ -46,7 +46,7 @@ function PaymentPending() {
           <ArrowRight size={18} />
         </button>
 
-        <p style={{ marginTop: '24px', fontSize: '14px', color: '#6B7280' }}>
+        <p style={{ marginTop: '24px', fontSize: '14px', color: 'rgba(255, 255, 255, 0.7)' }}>
           Puedes cerrar esta ventana y continuar usando GlowLab
         </p>
       </div>

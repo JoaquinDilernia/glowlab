@@ -46,7 +46,7 @@ export default function EmojiPicker({ value, onChange, placeholder = "😀" }) {
           style={{
             padding: '10px 16px',
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: 'white',
+            color: '#ffffff',
             border: 'none',
             borderRadius: '8px',
             cursor: 'pointer',

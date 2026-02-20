@@ -318,7 +318,7 @@ function CreateGiftCard() {
               </label>
               
               {loadingTemplates ? (
-                <p style={{ color: '#6b7280', fontSize: '14px' }}>Cargando diseños...</p>
+                <p style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px' }}>Cargando diseños...</p>
               ) : templates.length === 0 ? (
                 <div style={{ 
                   background: '#fef3c7', 
@@ -358,7 +358,7 @@ function CreateGiftCard() {
                           margin: '0 0 12px 0', 
                           fontSize: '14px', 
                           fontWeight: '600',
-                          color: '#374151',
+                          color: 'rgba(255, 255, 255, 0.95)',
                           textTransform: 'uppercase',
                           letterSpacing: '0.5px'
                         }}>

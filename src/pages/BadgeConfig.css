@@ -74,20 +74,20 @@
 
 .tab-button:hover {
   color: #333;
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
 }
 
 .tab-button.active {
   color: #007bff;
   border-bottom-color: #007bff;
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
 }
 
 .config-content {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 8px;
   padding: 30px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .form-group {
@@ -126,7 +126,7 @@
 }
 
 .rule-config-section {
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
   padding: 20px;
   border-radius: 8px;
   margin-top: 20px;
@@ -226,7 +226,7 @@
 .selected-products {
   margin-top: 20px;
   padding: 15px;
-  background: white;
+  background: var(--gl-bg-card);
   border: 1px solid #ddd;
   border-radius: 6px;
 }
@@ -247,7 +247,7 @@
   align-items: center;
   gap: 12px;
   padding: 10px;
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
   border-radius: 6px;
 }
 
@@ -308,7 +308,7 @@
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 6px;
-  background: white;
+  background: var(--gl-bg-card);
 }
 
 .category-checkbox {
@@ -322,7 +322,7 @@
 }
 
 .category-checkbox:hover {
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
 }
 
 .category-checkbox input[type="checkbox"] {
@@ -371,7 +371,7 @@
 .preview-product-image {
   width: 100%;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .badge-preview {
@@ -486,7 +486,7 @@
 }
 
 .radio-group label:hover {
-  background: #f8f9fa;
+  background: var(--gl-bg-primary);
 }
 
 .radio-group input[type="radio"] {

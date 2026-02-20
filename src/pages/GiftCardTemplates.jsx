@@ -261,7 +261,7 @@ function GiftCardTemplates() {
           fontSize: '18px', 
           fontWeight: '700', 
           marginBottom: '16px',
-          color: '#1f2937',
+          color: 'rgba(255, 255, 255, 0.95)',
           display: 'flex',
           alignItems: 'center',
           gap: '8px'
@@ -280,7 +280,7 @@ function GiftCardTemplates() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: 'white',
+                  color: '#ffffff',
                   fontSize: '24px',
                   fontWeight: '700',
                   textShadow: '0 2px 4px rgba(0,0,0,0.2)'
@@ -309,7 +309,7 @@ function GiftCardTemplates() {
             fontSize: '18px', 
             fontWeight: '700', 
             marginBottom: '16px',
-            color: '#1f2937',
+            color: 'rgba(255, 255, 255, 0.95)',
             display: 'flex',
             alignItems: 'center',
             gap: '8px'
@@ -324,7 +324,7 @@ function GiftCardTemplates() {
                   className="template-preview"
                   style={{ 
                     backgroundImage: template.imageUrl ? `url(${template.imageUrl})` : 'none',
-                    backgroundColor: template.backgroundColor || '#f3f4f6'
+                    backgroundColor: template.backgroundColor || 'rgba(255, 255, 255, 0.05)'
                   }}
                 >
                   {template.isDefault && (
@@ -382,7 +382,7 @@ function GiftCardTemplates() {
               gap: '12px', 
               marginBottom: '24px',
               padding: '4px',
-              background: '#f3f4f6',
+              background: 'rgba(255, 255, 255, 0.05)',
               borderRadius: '10px'
             }}>
               <button
@@ -393,7 +393,7 @@ function GiftCardTemplates() {
                   border: 'none',
                   borderRadius: '8px',
                   background: createType === 'image' ? '#0ea5e9' : 'transparent',
-                  color: createType === 'image' ? 'white' : '#6b7280',
+                  color: createType === 'image' ? 'white' : 'rgba(255, 255, 255, 0.7)',
                   fontWeight: '600',
                   cursor: 'pointer',
                   display: 'flex',
@@ -414,7 +414,7 @@ function GiftCardTemplates() {
                   border: 'none',
                   borderRadius: '8px',
                   background: createType === 'color' ? '#0ea5e9' : 'transparent',
-                  color: createType === 'color' ? 'white' : '#6b7280',
+                  color: createType === 'color' ? 'white' : 'rgba(255, 255, 255, 0.7)',
                   fontWeight: '600',
                   cursor: 'pointer',
                   display: 'flex',
@@ -489,7 +489,7 @@ function GiftCardTemplates() {
                         top: '8px',
                         right: '8px',
                         background: '#ef4444',
-                        color: 'white',
+                        color: '#ffffff',
                         border: 'none',
                         borderRadius: '8px',
                         padding: '8px 12px',
@@ -516,16 +516,16 @@ function GiftCardTemplates() {
                     style={{
                       width: '80px',
                       height: '80px',
-                      border: '3px solid #e5e7eb',
+                      border: '3px solid rgba(124, 124, 255, 0.2)',
                       borderRadius: '12px',
                       cursor: 'pointer'
                     }}
                   />
                   <div style={{ flex: 1 }}>
-                    <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: '#374151' }}>
+                    <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: 'rgba(255, 255, 255, 0.95)' }}>
                       {newTemplate.backgroundColor}
                     </p>
-                    <p style={{ margin: 0, fontSize: '14px', color: '#6b7280' }}>
+                    <p style={{ margin: 0, fontSize: '14px', color: 'rgba(255, 255, 255, 0.7)' }}>
                       Click para elegir otro color
                     </p>
                   </div>
@@ -539,11 +539,11 @@ function GiftCardTemplates() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: 'white',
+                  color: '#ffffff',
                   fontSize: '32px',
                   fontWeight: '700',
                   textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                  border: '3px solid #e5e7eb'
+                  border: '3px solid rgba(124, 124, 255, 0.2)'
                 }}>
                   🎁 Vista Previa
                 </div>

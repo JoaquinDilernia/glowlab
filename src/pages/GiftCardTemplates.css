@@ -35,16 +35,16 @@
 }
 
 .template-card {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   transition: all 0.3s ease;
   position: relative;
 }
 
 .template-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   transform: translateY(-2px);
 }
 
@@ -105,7 +105,7 @@
   margin: 0 0 8px 0;
   font-size: 16px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--gl-text-primary);
 }
 
 .template-meta {
@@ -119,14 +119,14 @@
   align-items: center;
   gap: 4px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
 }
 
 .template-actions {
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--gl-border);
 }
 
 .btn-action {
@@ -136,10 +136,10 @@
   justify-content: center;
   gap: 6px;
   padding: 10px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--gl-border);
   border-radius: 8px;
-  color: #374151;
+  color: var(--gl-text-primary);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -147,8 +147,8 @@
 }
 
 .btn-action:hover:not(:disabled) {
-  background: #f3f4f6;
-  border-color: #d1d5db;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--gl-text-muted);
 }
 
 .btn-action.btn-danger {
@@ -156,7 +156,7 @@
 }
 
 .btn-action.btn-danger:hover:not(:disabled) {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.15);
   border-color: #fca5a5;
 }
 
@@ -179,13 +179,13 @@
 }
 
 .modal-content {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
   max-width: 600px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
 }
 
 .modal-content.modal-preview {
@@ -194,7 +194,7 @@
 
 .modal-header {
   padding: 24px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gl-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -204,17 +204,17 @@
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--gl-text-primary);
 }
 
 .btn-close {
   width: 32px;
   height: 32px;
   border: none;
-  background: #f3f4f6;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   font-size: 24px;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -223,8 +223,8 @@
 }
 
 .btn-close:hover {
-  background: #e5e7eb;
-  color: #374151;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--gl-text-primary);
 }
 
 .modal-body {
@@ -233,7 +233,7 @@
 
 .modal-actions {
   padding: 16px 24px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--gl-border);
   display: flex;
   gap: 12px;
   justify-content: flex-end;
@@ -251,30 +251,30 @@
   justify-content: center;
   gap: 12px;
   padding: 48px 24px;
-  border: 2px dashed #d1d5db;
+  border: 2px dashed var(--gl-border);
   border-radius: 12px;
-  background: #f9fafb;
+  background: rgba(255, 255, 255, 0.05);
   cursor: pointer;
   transition: all 0.3s;
 }
 
 .upload-box:hover {
   border-color: #7C7CFF;
-  background: #f3f4f6;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .upload-box svg {
-  color: #9ca3af;
+  color: var(--gl-text-muted);
 }
 
 .upload-box span {
   font-weight: 500;
-  color: #374151;
+  color: var(--gl-text-primary);
 }
 
 .upload-box small {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--gl-text-secondary);
 }
 
 .image-preview {
@@ -316,7 +316,7 @@
   position: relative;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .preview-full img {
@@ -364,7 +364,7 @@
 
 /* Nuevos estilos para badges personalizados */
 .category-pill-gold {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.25) 100%);
   color: #92400e;
   padding: 4px 10px;
   border-radius: 12px;

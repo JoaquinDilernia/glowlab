@@ -460,7 +460,7 @@ function NewBadgeConfig() {
                   type="button"
                   className={`style-button ${config.textTransform === 'uppercase' ? 'active' : ''}`}
                   onClick={() => setConfig({ ...config, textTransform: 'uppercase' })}
-                  style={{padding: '10px', border: '2px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', background: config.textTransform === 'uppercase' ? '#6366f1' : 'white', color: config.textTransform === 'uppercase' ? 'white' : '#374151'}}
+                  style={{padding: '10px', border: '2px solid rgba(124, 124, 255, 0.2)', borderRadius: '8px', cursor: 'pointer', background: config.textTransform === 'uppercase' ? '#6366f1' : 'rgba(26, 26, 46, 0.8)', color: config.textTransform === 'uppercase' ? 'white' : 'rgba(255, 255, 255, 0.95)'}}
                 >
                   MAYÚSCULAS
                 </button>
@@ -468,7 +468,7 @@ function NewBadgeConfig() {
                   type="button"
                   className={`style-button ${config.textTransform === 'lowercase' ? 'active' : ''}`}
                   onClick={() => setConfig({ ...config, textTransform: 'lowercase' })}
-                  style={{padding: '10px', border: '2px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', background: config.textTransform === 'lowercase' ? '#6366f1' : 'white', color: config.textTransform === 'lowercase' ? 'white' : '#374151'}}
+                  style={{padding: '10px', border: '2px solid rgba(124, 124, 255, 0.2)', borderRadius: '8px', cursor: 'pointer', background: config.textTransform === 'lowercase' ? '#6366f1' : 'rgba(26, 26, 46, 0.8)', color: config.textTransform === 'lowercase' ? 'white' : 'rgba(255, 255, 255, 0.95)'}}
                 >
                   minúsculas
                 </button>
@@ -476,7 +476,7 @@ function NewBadgeConfig() {
                   type="button"
                   className={`style-button ${config.textTransform === 'capitalize' ? 'active' : ''}`}
                   onClick={() => setConfig({ ...config, textTransform: 'capitalize' })}
-                  style={{padding: '10px', border: '2px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', background: config.textTransform === 'capitalize' ? '#6366f1' : 'white', color: config.textTransform === 'capitalize' ? 'white' : '#374151'}}
+                  style={{padding: '10px', border: '2px solid rgba(124, 124, 255, 0.2)', borderRadius: '8px', cursor: 'pointer', background: config.textTransform === 'capitalize' ? '#6366f1' : 'rgba(26, 26, 46, 0.8)', color: config.textTransform === 'capitalize' ? 'white' : 'rgba(255, 255, 255, 0.95)'}}
                 >
                   Capitalizar
                 </button>
@@ -484,7 +484,7 @@ function NewBadgeConfig() {
                   type="button"
                   className={`style-button ${config.textTransform === 'none' ? 'active' : ''}`}
                   onClick={() => setConfig({ ...config, textTransform: 'none' })}
-                  style={{padding: '10px', border: '2px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', background: config.textTransform === 'none' ? '#6366f1' : 'white', color: config.textTransform === 'none' ? 'white' : '#374151'}}
+                  style={{padding: '10px', border: '2px solid rgba(124, 124, 255, 0.2)', borderRadius: '8px', cursor: 'pointer', background: config.textTransform === 'none' ? '#6366f1' : 'rgba(26, 26, 46, 0.8)', color: config.textTransform === 'none' ? 'white' : 'rgba(255, 255, 255, 0.95)'}}
                 >
                   Normal
                 </button>
@@ -506,7 +506,7 @@ function NewBadgeConfig() {
               </label>
 
               {config.borderEnabled && (
-                <div style={{marginLeft: '28px', padding: '20px', background: '#f9fafb', borderRadius: '12px', border: '2px solid #e5e7eb'}}>
+                <div style={{marginLeft: '28px', padding: '20px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', border: '2px solid rgba(124, 124, 255, 0.2)'}}>
                   <div className="form-row" style={{marginBottom: '16px'}}>
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label>Color del Borde</label>
@@ -564,7 +564,7 @@ function NewBadgeConfig() {
               </label>
 
               {config.shadowEnabled && (
-                <div style={{marginLeft: '28px', padding: '20px', background: '#f9fafb', borderRadius: '12px', border: '2px solid #e5e7eb'}}>
+                <div style={{marginLeft: '28px', padding: '20px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', border: '2px solid rgba(124, 124, 255, 0.2)'}}>
                   <div className="form-group" style={{marginBottom: '16px'}}>
                     <label>Color de Sombra</label>
                     <div className="color-input">

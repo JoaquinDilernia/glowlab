@@ -13,18 +13,18 @@
 }
 
 .stat-card {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 12px;
   padding: 20px;
   display: flex;
   align-items: center;
   gap: 16px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--gl-border);
   transition: all 0.2s;
 }
 
 .stat-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .stat-icon {
@@ -61,14 +61,14 @@
 .stat-value {
   font-size: 28px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--gl-text-primary);
   line-height: 1;
   margin-bottom: 4px;
 }
 
 .stat-label {
   font-size: 13px;
-  color: #64748b;
+  color: var(--gl-text-secondary);
 }
 
 /* Filters */
@@ -79,13 +79,13 @@
 }
 
 .filter-btn {
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--gl-bg-card);
+  border: 1px solid var(--gl-border);
   padding: 10px 20px;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -109,15 +109,15 @@
 }
 
 .gift-card-item {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--gl-border);
   overflow: hidden;
   transition: all 0.2s;
 }
 
 .gift-card-item:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .gift-card-header {
@@ -203,7 +203,7 @@
 
 .info-value {
   font-size: 15px;
-  color: #1e293b;
+  color: var(--gl-text-primary);
   font-weight: 500;
   word-break: break-word;
 }
@@ -215,7 +215,7 @@
 }
 
 .gift-card-footer {
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--gl-border);
   padding-top: 16px;
   display: flex;
   flex-wrap: wrap;
@@ -227,7 +227,7 @@
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--gl-text-secondary);
 }
 
 .footer-item svg {
@@ -236,11 +236,11 @@
 
 /* Empty State */
 .empty-state {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
   padding: 64px 32px;
   text-align: center;
-  border: 2px dashed #e2e8f0;
+  border: 2px dashed var(--gl-border);
 }
 
 .empty-state svg {
@@ -251,17 +251,17 @@
 .empty-state h2 {
   margin: 0 0 8px 0;
   font-size: 24px;
-  color: #1e293b;
+  color: var(--gl-text-primary);
 }
 
 .empty-state p {
   margin: 0;
-  color: #64748b;
+  color: var(--gl-text-secondary);
 }
 
 .loading {
   text-align: center;
   padding: 64px;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   font-size: 18px;
 }

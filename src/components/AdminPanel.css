@@ -11,7 +11,7 @@
 
 /* Auth Card */
 .admin-auth-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--gl-accent-purple), var(--gl-accent-cyan));
   padding: 60px 50px;
   border-radius: 24px;
   box-shadow: 0 20px 60px rgba(102, 126, 234, 0.4);
@@ -75,7 +75,7 @@
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
-  color: #374151;
+  color: var(--gl-text-primary);
   font-size: 14px;
 }
 
@@ -118,7 +118,7 @@
   justify-content: center;
   gap: 10px;
   padding: 16px 24px;
-  background: white;
+  background: var(--gl-bg-card);
   color: #667eea;
   border: none;
   border-radius: 12px;
@@ -126,12 +126,12 @@
   font-weight: 700;
   cursor: pointer;
   transition: all 0.3s;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .btn-auth:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .btn-auth:active {
@@ -163,7 +163,7 @@
 
 .alert-message.error {
   background: rgba(239, 68, 68, 0.2);
-  color: #fee2e2;
+  color: rgba(239, 68, 68, 0.3);
   border: 2px solid rgba(239, 68, 68, 0.4);
 }
 
@@ -191,7 +191,7 @@
 .shield-badge {
   width: 56px;
   height: 56px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--gl-accent-purple), var(--gl-accent-cyan));
   border-radius: 16px;
   display: flex;
   align-items: center;

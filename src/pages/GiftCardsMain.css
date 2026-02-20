@@ -7,9 +7,9 @@
 
 /* Header Simple */
 .main-header {
-  background: white;
+  background: var(--gl-bg-card);
   padding: 24px 32px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--gl-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -19,7 +19,7 @@
   margin: 0;
   font-size: 28px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--gl-text-primary);
 }
 
 .btn-back {
@@ -27,10 +27,10 @@
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--gl-bg-card);
+  border: 1px solid var(--gl-border);
   border-radius: 8px;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -40,7 +40,7 @@
 .btn-back:hover {
   background: #f8fafc;
   border-color: #cbd5e1;
-  color: #475569;
+  color: var(--gl-text-secondary);
 }
 
 .btn-create-primary {
@@ -66,8 +66,8 @@
 
 /* Navegación Simple - 3 Tabs */
 .simple-nav {
-  background: white;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--gl-bg-card);
+  border-bottom: 1px solid var(--gl-border);
   padding: 0 32px;
   display: flex;
   gap: 8px;
@@ -81,7 +81,7 @@
   background: none;
   border: none;
   border-bottom: 3px solid transparent;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
@@ -89,7 +89,7 @@
 }
 
 .nav-tab:hover {
-  color: #475569;
+  color: var(--gl-text-secondary);
   background: #f8fafc;
 }
 
@@ -106,23 +106,23 @@
 
 /* Empty States Limpios */
 .empty-state-clean {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
   padding: 80px 40px;
   text-align: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .empty-state-clean h3 {
   margin: 16px 0 8px 0;
   font-size: 20px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--gl-text-primary);
 }
 
 .empty-state-clean p {
   margin: 0 0 24px 0;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   font-size: 15px;
 }
 
@@ -150,10 +150,10 @@
 /* Tablas Limpias */
 .products-table,
 .coupons-table {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .products-table table,
@@ -173,7 +173,7 @@
   text-align: left;
   font-size: 13px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -183,7 +183,7 @@
   padding: 16px 20px;
   border-top: 1px solid #f1f5f9;
   font-size: 14px;
-  color: #475569;
+  color: var(--gl-text-secondary);
 }
 
 .products-table tbody tr:hover,
@@ -196,12 +196,12 @@
   align-items: center;
   gap: 10px;
   font-weight: 500;
-  color: #1e293b;
+  color: var(--gl-text-primary);
 }
 
 .text-bold {
   font-weight: 600;
-  color: #1e293b;
+  color: var(--gl-text-primary);
 }
 
 .btn-link {
@@ -227,7 +227,7 @@
   font-family: 'Monaco', 'Courier New', monospace;
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: var(--gl-text-secondary);
 }
 
 /* Badges */
@@ -244,8 +244,8 @@
 .badge-used {
   display: inline-block;
   padding: 4px 12px;
-  background: #e2e8f0;
-  color: #475569;
+  background: var(--gl-border);
+  color: var(--gl-text-secondary);
   border-radius: 12px;
   font-size: 12px;
   font-weight: 600;
@@ -254,7 +254,7 @@
 .badge-inactive {
   display: inline-block;
   padding: 4px 12px;
-  background: #fef3c7;
+  background: rgba(245, 158, 11, 0.15);
   color: #92400e;
   border-radius: 12px;
   font-size: 12px;
@@ -269,16 +269,16 @@
 }
 
 .template-card-clean {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transition: all 0.2s;
 }
 
 .template-card-clean:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .template-preview-clean {
@@ -312,14 +312,14 @@
   margin: 0 0 8px 0;
   font-size: 15px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--gl-text-primary);
 }
 
 .category-tag {
   display: inline-block;
   padding: 4px 10px;
   background: #f1f5f9;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
@@ -329,7 +329,7 @@
 .loading {
   text-align: center;
   padding: 60px 20px;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   font-size: 15px;
 }
 

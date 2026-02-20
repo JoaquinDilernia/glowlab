@@ -12,8 +12,8 @@
 }
 
 .back-button {
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--gl-bg-card);
+  border: 1px solid var(--gl-border);
   border-radius: 8px;
   padding: 10px;
   cursor: pointer;
@@ -50,22 +50,22 @@
   margin: 0;
   font-size: 28px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--gl-text-primary);
 }
 
 .header-content p {
   margin: 4px 0 0 0;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   font-size: 14px;
 }
 
 /* Empty State */
 .empty-state {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
   padding: 64px 32px;
   text-align: center;
-  border: 2px dashed #e2e8f0;
+  border: 2px dashed var(--gl-border);
 }
 
 .empty-state svg {
@@ -76,12 +76,12 @@
 .empty-state h2 {
   margin: 0 0 8px 0;
   font-size: 24px;
-  color: #1e293b;
+  color: var(--gl-text-primary);
 }
 
 .empty-state p {
   margin: 0 0 24px 0;
-  color: #64748b;
+  color: var(--gl-text-secondary);
 }
 
 .btn-primary {
@@ -109,15 +109,15 @@
 }
 
 .product-card {
-  background: white;
+  background: var(--gl-bg-card);
   border-radius: 16px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--gl-border);
   overflow: hidden;
   transition: all 0.2s;
 }
 
 .product-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   transform: translateY(-4px);
 }
 
@@ -175,7 +175,7 @@
   margin: 0 0 16px 0;
   font-size: 20px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--gl-text-primary);
 }
 
 .product-details {
@@ -189,7 +189,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   font-size: 14px;
 }
 
@@ -198,11 +198,11 @@
 }
 
 .detail-row strong {
-  color: #1e293b;
+  color: var(--gl-text-primary);
 }
 
 .product-footer {
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--gl-border);
   padding-top: 12px;
 }
 
@@ -214,6 +214,6 @@
 .loading {
   text-align: center;
   padding: 64px;
-  color: #64748b;
+  color: var(--gl-text-secondary);
   font-size: 18px;
 }
