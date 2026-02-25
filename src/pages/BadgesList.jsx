@@ -39,7 +39,8 @@ function BadgesList() {
           minDiscount: ruleConfig.minDiscount,
           maxStock: ruleConfig.maxStock,
           categoryName: ruleConfig.categoryName,
-          categoryId: Array.isArray(ruleConfig.categoryIds) ? ruleConfig.categoryIds[0] : ruleConfig.categoryId
+          categoryId: Array.isArray(ruleConfig.categoryIds) ? ruleConfig.categoryIds[0] : ruleConfig.categoryId,
+          tags: ruleConfig.tags
         } : null);
 
         return {
@@ -124,6 +125,8 @@ function BadgesList() {
         return `📦 Stock bajo (≤ ${rule.maxStock || 10} unidades)`;
       case 'category':
         return `📂 Categoría: ${rule.categoryName || rule.categoryId || 'Sin nombre'}`;
+      case 'tags':
+        return `🏷️ Tags: ${rule.tags?.join(', ') || 'Sin tags'}`;
       default:
         return `❓ ${rule.type}`;
     }

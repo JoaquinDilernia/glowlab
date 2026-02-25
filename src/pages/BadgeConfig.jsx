@@ -24,6 +24,8 @@ function BadgeConfig() {
   const [minDiscount, setMinDiscount] = useState('');
   const [maxStock, setMaxStock] = useState('');
   const [selectedCategories, setSelectedCategories] = useState([]);
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [tagInput, setTagInput] = useState('');
   
   // Design config
   const [shape, setShape] = useState('rectangle');
@@ -76,6 +78,7 @@ function BadgeConfig() {
         setMinDiscount(data.ruleConfig.minDiscount || '');
         setMaxStock(data.ruleConfig.maxStock || '');
         setSelectedCategories(data.ruleConfig.categoryIds || []);
+        setSelectedTags(data.ruleConfig.tags || []);
       }
       
       // Design
@@ -157,6 +160,18 @@ function BadgeConfig() {
     }
   };
 
+  const addTag = () => {
+    const tag = tagInput.trim().toLowerCase();
+    if (tag && !selectedTags.includes(tag)) {
+      setSelectedTags([...selectedTags, tag]);
+    }
+    setTagInput('');
+  };
+
+  const removeTag = (tag) => {
+    setSelectedTags(selectedTags.filter(t => t !== tag));
+  };
+
   const handleSave = async () => {
     if (!badgeName.trim()) {
       alert('Por favor ingresa un nombre para el badge');
@@ -198,7 +213,12 @@ function BadgeConfig() {
       alert('Por favor selecciona al menos una categoría');
       return;
     }
-    
+
+    if (ruleType === 'tags' && selectedTags.length === 0) {
+      alert('Por favor ingresa al menos un tag');
+      return;
+    }
+
     setSaving(true);
     try {
       const storeId = localStorage.getItem('promonube_store_id');
@@ -219,6 +239,8 @@ function BadgeConfig() {
         ruleConfig.maxStock = parseInt(maxStock);
       } else if (ruleType === 'category') {
         ruleConfig.categoryIds = selectedCategories;
+      } else if (ruleType === 'tags') {
+        ruleConfig.tags = selectedTags;
       }
       
       const badgeData = {
@@ -530,7 +552,60 @@ function BadgeConfig() {
             </div>
           </div>
         );
-      
+
+      case 'tags':
+        return (
+          <div className="rule-config-section">
+            <h3>🏷️ Configuración: Por Tag (Etiqueta)</h3>
+            <p className="rule-description">
+              Se mostrará el badge en productos que tengan alguno de los tags indicados en TiendaNube
+            </p>
+
+            <div className="form-group">
+              <label>Tags de productos</label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+                  placeholder="Ej: oferta, destacado, liquidacion"
+                  className="input-field"
+                  style={{ flex: 1 }}
+                />
+                <button type="button" onClick={addTag} className="btn-secondary">
+                  Agregar
+                </button>
+              </div>
+              {selectedTags.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {selectedTags.map(tag => (
+                    <span key={tag} style={{
+                      background: '#e0e0e0',
+                      borderRadius: '12px',
+                      padding: '2px 10px',
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => removeTag(tag)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', lineHeight: 1 }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <small>Los tags deben coincidir exactamente con los tags en TiendaNube (no distingue mayúsculas)</small>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -617,6 +692,7 @@ function BadgeConfig() {
                 <option value="discount">📉 Descuento Mínimo</option>
                 <option value="stock_low">📦 Stock Bajo</option>
                 <option value="category">📂 Por Categoría</option>
+                <option value="tags">🏷️ Por Tag (Etiqueta)</option>
               </select>
             </div>
 

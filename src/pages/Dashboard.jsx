@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, LogOut, Tag, CreditCard, Sparkles, Clock, Palette, Lock, Settings, Shield, BadgeCheck } from 'lucide-react';
+import { Zap, LogOut, Tag, CreditCard, Sparkles, Clock, Palette, Lock, Settings, Shield, BadgeCheck, Bell } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useSubscription } from '../hooks/useSubscription';
 import UpgradeModal from '../components/UpgradeModal';
@@ -129,6 +129,16 @@ function Dashboard() {
       moduleName: 'giftcards',
       available: hasAccess('giftcards'),
       blocked: isModuleBlocked('giftcards')
+    },
+    {
+      icon: Bell,
+      title: 'Pop-ups',
+      description: 'Mostrá ofertas y capturá emails con pop-ups personalizados. Targeting por página, exit intent, delay y más triggers. Aumentá conversiones desde el primer día.',
+      path: '/popups',
+      moduleName: 'popups',
+      available: hasAccess('popups'),
+      blocked: isModuleBlocked('popups'),
+      badge: '✨ Nuevo'
     }
   ];
 

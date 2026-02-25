@@ -102,14 +102,15 @@ function getPlanPrice(currency = 'ARS') {
 }
 
 // MÃ³dulos incluidos en el plan PRO (todos activos)
-const ALL_MODULES = ['coupons', 'giftcards', 'spinWheel', 'style', 'countdown'];
+const ALL_MODULES = ['coupons', 'giftcards', 'spinWheel', 'style', 'countdown', 'popups'];
 
 const MODULES = {
   coupons: { name: 'Cupones Inteligentes', included: true },
   giftcards: { name: 'Gift Cards', included: true },
   spinWheel: { name: 'Ruleta de Premios', included: true },
   style: { name: 'Style Pro', included: true },
-  countdown: { name: 'Cuenta Regresiva', included: true }
+  countdown: { name: 'Cuenta Regresiva', included: true },
+  popups: { name: 'Pop-ups', included: true }
 };
 
 // Plan Ãºnico PRO con todo incluido
@@ -253,7 +254,8 @@ async function initializeStoreSubscription(storeId) {
           giftcards: false,
           spinWheel: true,
           style: true,
-          countdown: true
+          countdown: true,
+          popups: true
         },
         createdAt: FieldValue.serverTimestamp(),
         trialEndsAt: null,
@@ -973,14 +975,15 @@ app.get("/auth/callback", async (req, res) => {
       await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
         plan: 'trial',
         status: "active",
-        modules: { 
+        modules: {
           coupons: true,
           giftCards: true,
           spinWheel: true,
           countdown: true,
           badges: true,
           style: true,
-          integrations: true
+          integrations: true,
+          popups: true
         },
         isDemoAccount: true,
         demoStartDate: FieldValue.serverTimestamp(),
@@ -2378,10 +2381,22 @@ app.post("/webhook/order-paid", async (req, res) => {
     // Actualizar contador de usos
     await db.collection("promonube_coupons").doc(couponDoc.id).update({
       currentUses: FieldValue.increment(1),
-      lastUsedAt: FieldValue.serverTimestamp()
+      lastUsedAt: FieldValue.serverTimestamp(),
+      ...(couponData.source === 'spin_wheel' ? { used: true, usedAt: FieldValue.serverTimestamp() } : {})
     });
 
-    console.log("âœ… Uso de cupÃ³n registrado:", usageId);
+    // Si es cupón de ruleta, marcar spin_wheel_results como usado
+    if (couponData.source === 'spin_wheel' && couponCode) {
+      const spinResultsQuery = await db.collection('spin_wheel_results')
+        .where('couponCode', '==', couponCode)
+        .limit(1)
+        .get();
+      if (!spinResultsQuery.empty) {
+        await spinResultsQuery.docs[0].ref.update({ couponUsed: true });
+      }
+    }
+
+    console.log("✅ Uso de cupón registrado:", usageId);
 
     res.json({
       success: true,
@@ -3441,8 +3456,12 @@ app.get("/api/giftcards/:code/balance", async (req, res) => {
 
     const giftCard = snapshot.docs[0].data();
 
-    // Verificar si estÃ¡ vencida
+    // Verificar si está vencida
     if (giftCard.expiresAt && giftCard.expiresAt.toDate() < new Date()) {
+      // Actualizar status en Firestore si todavía no fue marcada como expirada
+      if (giftCard.status !== 'expired') {
+        await snapshot.docs[0].ref.update({ status: 'expired' });
+      }
       return res.json({
         success: false,
         message: "Gift card vencida",
@@ -3495,7 +3514,7 @@ app.get("/api/giftcards/:code/balance", async (req, res) => {
 // Canjear/usar gift card
 // ============================================
 app.post("/api/giftcards/redeem", async (req, res) => {
-  const { code, amount, orderId } = req.body;
+  const { code, amount, orderId, storeId } = req.body;
 
   if (!code || !amount) {
     return res.json({
@@ -3522,8 +3541,16 @@ app.post("/api/giftcards/redeem", async (req, res) => {
     const giftCardDoc = snapshot.docs[0];
     const giftCard = giftCardDoc.data();
 
+    // Validar que pertenece a la tienda (si se envía storeId)
+    if (storeId && giftCard.storeId !== storeId) {
+      return res.json({ success: false, message: "Gift card no pertenece a esta tienda" });
+    }
+
     // Validaciones
     if (giftCard.expiresAt && giftCard.expiresAt.toDate() < new Date()) {
+      if (giftCard.status !== 'expired') {
+        await giftCardDoc.ref.update({ status: 'expired' });
+      }
       return res.json({
         success: false,
         message: "Gift card vencida"
@@ -3545,18 +3572,37 @@ app.post("/api/giftcards/redeem", async (req, res) => {
       });
     }
 
-    // Actualizar balance
-    const newBalance = giftCard.balance - redeemAmount;
-    const newStatus = newBalance <= 0 ? 'used' : 'partially_used';
+    // Actualizar balance con transacción Firestore (evita doble gasto por requests simultáneos)
+    let newBalance, newStatus;
+    try {
+      await db.runTransaction(async (txn) => {
+        const freshDoc = await txn.get(giftCardDoc.ref);
+        const freshData = freshDoc.data();
 
-    await giftCardDoc.ref.update({
-      balance: newBalance,
-      status: newStatus,
-      lastUsedAt: FieldValue.serverTimestamp(),
-      usageCount: FieldValue.increment(1)
-    });
+        if (redeemAmount > freshData.balance) {
+          const err = new Error(`Saldo insuficiente. Disponible: $${freshData.balance}`);
+          err.code = 'INSUFFICIENT_BALANCE';
+          throw err;
+        }
 
-    // Registrar transacciÃ³n
+        newBalance = Math.max(0, parseFloat((freshData.balance - redeemAmount).toFixed(2)));
+        newStatus = newBalance <= 0 ? 'used' : 'partially_used';
+
+        txn.update(giftCardDoc.ref, {
+          balance: newBalance,
+          status: newStatus,
+          lastUsedAt: FieldValue.serverTimestamp(),
+          usageCount: FieldValue.increment(1)
+        });
+      });
+    } catch (txError) {
+      if (txError.code === 'INSUFFICIENT_BALANCE') {
+        return res.json({ success: false, message: txError.message });
+      }
+      throw txError;
+    }
+
+    // Registrar transacción
     const transactionId = `tx_${Date.now()}`;
     await db.collection("giftcard_transactions").doc(transactionId).set({
       transactionId,
@@ -3571,7 +3617,7 @@ app.post("/api/giftcards/redeem", async (req, res) => {
       createdAt: FieldValue.serverTimestamp()
     });
 
-    console.log("âœ… Gift card canjeada. Nuevo saldo:", newBalance);
+    console.log("✅ Gift card canjeada. Nuevo saldo:", newBalance);
 
     res.json({
       success: true,
@@ -3627,8 +3673,7 @@ app.post("/api/giftcards/:id/reload", async (req, res) => {
 
     await giftCardDoc.ref.update({
       balance: newBalance,
-      status: 'active',
-      initialAmount: FieldValue.increment(reloadAmount)
+      status: 'active'
     });
 
     // Registrar transacciÃ³n
@@ -3921,13 +3966,25 @@ app.post("/api/webhooks/order", async (req, res) => {
 
         console.log(`âœ… Registro de uso guardado: ${usageId}`);
         
-        // Actualizar contador de usos en el cupÃ³n (si existe el campo)
+        // Actualizar contador de usos en el cupón (si existe el campo)
         if (typeof couponData.currentUses === 'number') {
           await db.collection("promonube_coupons").doc(couponDoc.id).update({
             currentUses: FieldValue.increment(1),
-            lastUsedAt: FieldValue.serverTimestamp()
+            lastUsedAt: FieldValue.serverTimestamp(),
+            ...(couponData.source === 'spin_wheel' ? { used: true, usedAt: FieldValue.serverTimestamp() } : {})
           });
-          console.log(`ðŸ“Š Contador de usos actualizado para ${couponCode}`);
+          console.log(`📊 Contador de usos actualizado para ${couponCode}`);
+
+          // Si es cupón de ruleta, marcar spin_wheel_results como usado
+          if (couponData.source === 'spin_wheel' && couponCode) {
+            const spinResultsQuery = await db.collection('spin_wheel_results')
+              .where('couponCode', '==', couponCode)
+              .limit(1)
+              .get();
+            if (!spinResultsQuery.empty) {
+              await spinResultsQuery.docs[0].ref.update({ couponUsed: true });
+            }
+          }
         }
       } else {
         console.log(`â„¹ï¸ CupÃ³n ${couponCode} no encontrado en PromoNube (puede ser cupÃ³n nativo de TiendaNube)`);
@@ -4658,9 +4715,18 @@ app.get("/api/subscription/:storeId/status", async (req, res) => {
       .doc("current")
       .get();
 
-    const subscription = subscriptionDoc.exists 
-      ? subscriptionDoc.data() 
+    const subscription = subscriptionDoc.exists
+      ? subscriptionDoc.data()
       : { plan: 'free', status: 'inactive', modules: { coupons: true } };
+
+    // Para planes pro/trial, asegurar que los módulos nuevos estén incluidos
+    const storedModules = subscription.modules || {};
+    if (subscription.plan === 'trial' || subscription.plan === 'pro' || subscription.isDemoAccount) {
+      for (const mod of ALL_MODULES) {
+        if (storedModules[mod] === undefined) storedModules[mod] = true;
+      }
+      subscription.modules = storedModules;
+    }
 
     // Obtener Ãºltimo cargo
     const chargesSnapshot = await db.collection("app_charges")
@@ -4746,7 +4812,7 @@ app.get("/api/subscription/:storeId/charge/:chargeId", async (req, res) => {
 // ============================================
 app.post("/api/giftcards/resend-email", async (req, res) => {
   try {
-    const { code, recipientEmail } = req.body;
+    const { code, recipientEmail, storeId } = req.body;
 
     if (!code) {
       return res.status(400).json({ success: false, message: "code es requerido" });
@@ -4766,6 +4832,11 @@ app.post("/api/giftcards/resend-email", async (req, res) => {
 
     const giftCardDoc = giftCardSnapshot.docs[0];
     const giftCard = giftCardDoc.data();
+
+    // Validar que la gift card pertenece a la tienda solicitante
+    if (storeId && giftCard.storeId !== storeId) {
+      return res.status(403).json({ success: false, message: "Acceso denegado" });
+    }
 
     // Determinar email destino
     const emailTo = recipientEmail || giftCard.recipientEmail;
@@ -4966,12 +5037,6 @@ app.post("/api/giftcard-templates/create", async (req, res) => {
       success: true,
       message: "Template creado exitosamente",
       templateId,
-      template: templateData
-    });
-
-    res.json({
-      success: true,
-      message: "Template creado exitosamente",
       template: templateData
     });
 
@@ -5950,8 +6015,8 @@ app.get("/api/spin-wheel/:wheelId/analytics", async (req, res) => {
       // Comparar con couponCode (campo correcto en coupon_usage)
       if (wheelCouponCodes.includes(usage.couponCode)) {
         couponsUsed++;
-        totalRevenue += usage.total || 0;
-        totalDiscount += usage.discountValue || 0;
+        totalRevenue += usage.total || usage.orderTotal || 0;
+        totalDiscount += usage.discountValue || usage.discountAmount || 0;
       }
     });
 
@@ -8566,8 +8631,15 @@ app.get("/api/badges-script.js", async (req, res) => {
 
       case 'category': {
         if (!productData.categories) return false;
-        return ruleConfig.categoryIds?.some(catId => 
+        return ruleConfig.categoryIds?.some(catId =>
           productData.categories.includes(catId)
+        );
+      }
+
+      case 'tags': {
+        if (!productData.tags || !ruleConfig.tags || ruleConfig.tags.length === 0) return false;
+        return ruleConfig.tags.some(tag =>
+          productData.tags.map(t => t.toLowerCase()).includes(tag.toLowerCase())
         );
       }
 
@@ -8844,6 +8916,7 @@ app.get("/api/products/metadata", async (req, res) => {
         compare_at_price: product.variants?.[0]?.compare_at_price || null,
         created_at: product.created_at,
         categories: product.categories?.map(cat => cat.id) || [],
+        tags: product.tags || [],
         stock: totalStock
       };
     });
@@ -14063,6 +14136,658 @@ app.post("/api/auth/nubecategories/login", async (req, res) => {
 });
 
 // ============================================
+// MÓDULO POPUPS - CRUD
+// ============================================
+
+// GET /api/popups?storeId=xxx - Listar popups de una tienda
+app.get("/api/popups", async (req, res) => {
+  try {
+    const { storeId } = req.query;
+    if (!storeId) return res.json({ success: false, message: "storeId requerido" });
+
+    const snapshot = await db.collection("promonube_popups")
+      .where("storeId", "==", storeId)
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const popups = snapshot.docs.map(doc => ({ popupId: doc.id, ...doc.data() }));
+    res.json({ success: true, popups });
+  } catch (error) {
+    console.error("Error listando popups:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/popups - Crear popup
+app.post("/api/popups", async (req, res) => {
+  try {
+    const { storeId, name, type, trigger, targeting, content, design, active } = req.body;
+    if (!storeId || !name) return res.json({ success: false, message: "storeId y name requeridos" });
+
+    const newPopup = {
+      storeId,
+      name,
+      type: type || "modal",           // modal | banner | slide_in
+      active: active !== undefined ? active : false,
+      trigger: trigger || {
+        event: "delay",                 // onLoad | delay | exitIntent | scroll
+        delaySeconds: 5,
+        scrollPercent: 50
+      },
+      targeting: targeting || {
+        pages: "all",                   // all | home | product | cart | checkout
+        devices: "all",                 // all | desktop | mobile
+        showOnce: true,
+        frequency: "once"              // once | every_visit
+      },
+      content: content || {
+        popupType: "promo",             // promo | email_capture | announcement
+        title: "¡Oferta exclusiva!",
+        subtitle: "Solo por tiempo limitado",
+        body: "",
+        imageUrl: "",
+        ctaText: "Ver oferta",
+        ctaUrl: "",
+        ctaStyle: "primary",
+        showEmailField: false,
+        emailPlaceholder: "Tu email...",
+        emailButtonText: "Suscribirme",
+        discountCode: "",
+        discountValue: ""
+      },
+      design: design || {
+        position: "center",             // center | top | bottom | bottom-right | bottom-left
+        width: "480px",
+        backgroundColor: "#ffffff",
+        textColor: "#1a1a1a",
+        accentColor: "#7C7CFF",
+        buttonColor: "#7C7CFF",
+        buttonTextColor: "#ffffff",
+        overlayColor: "rgba(0,0,0,0.7)",
+        borderRadius: "16px",
+        animation: "fadeInUp",          // fadeInUp | fadeIn | slideInRight | slideInBottom | bounce
+        fontFamily: "inherit",
+        showCloseButton: true,
+        closeAfterSeconds: 0            // 0 = no auto-close
+      },
+      analytics: {
+        views: 0,
+        clicks: 0,
+        closes: 0,
+        emailCaptures: 0,
+        lastViewedAt: null
+      },
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    };
+
+    const docRef = await db.collection("promonube_popups").add(newPopup);
+    res.json({ success: true, popupId: docRef.id, message: "Popup creado" });
+  } catch (error) {
+    console.error("Error creando popup:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/popups/:popupId - Obtener popup por ID
+app.get("/api/popups/:popupId", async (req, res) => {
+  try {
+    const { popupId } = req.params;
+    const { storeId } = req.query;
+
+    const doc = await db.collection("promonube_popups").doc(popupId).get();
+    if (!doc.exists) return res.json({ success: false, message: "Popup no encontrado" });
+
+    const data = doc.data();
+    if (storeId && data.storeId !== storeId) {
+      return res.json({ success: false, message: "Acceso denegado" });
+    }
+
+    res.json({ success: true, popup: { popupId: doc.id, ...data } });
+  } catch (error) {
+    console.error("Error obteniendo popup:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// PUT /api/popups/:popupId - Actualizar popup
+app.put("/api/popups/:popupId", async (req, res) => {
+  try {
+    const { popupId } = req.params;
+    const { storeId, ...updates } = req.body;
+
+    const doc = await db.collection("promonube_popups").doc(popupId).get();
+    if (!doc.exists) return res.json({ success: false, message: "Popup no encontrado" });
+
+    const data = doc.data();
+    if (storeId && data.storeId !== storeId) {
+      return res.json({ success: false, message: "Acceso denegado" });
+    }
+
+    await doc.ref.update({ ...updates, updatedAt: FieldValue.serverTimestamp() });
+    res.json({ success: true, message: "Popup actualizado" });
+  } catch (error) {
+    console.error("Error actualizando popup:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /api/popups/:popupId - Eliminar popup
+app.delete("/api/popups/:popupId", async (req, res) => {
+  try {
+    const { popupId } = req.params;
+    const { storeId } = req.query;
+
+    const doc = await db.collection("promonube_popups").doc(popupId).get();
+    if (!doc.exists) return res.json({ success: false, message: "Popup no encontrado" });
+
+    const data = doc.data();
+    if (storeId && data.storeId !== storeId) {
+      return res.json({ success: false, message: "Acceso denegado" });
+    }
+
+    await doc.ref.delete();
+    res.json({ success: true, message: "Popup eliminado" });
+  } catch (error) {
+    console.error("Error eliminando popup:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// PATCH /api/popups/:popupId/toggle - Activar/desactivar popup
+app.patch("/api/popups/:popupId/toggle", async (req, res) => {
+  try {
+    const { popupId } = req.params;
+    const { storeId } = req.body;
+
+    const doc = await db.collection("promonube_popups").doc(popupId).get();
+    if (!doc.exists) return res.json({ success: false, message: "Popup no encontrado" });
+
+    const data = doc.data();
+    if (storeId && data.storeId !== storeId) {
+      return res.json({ success: false, message: "Acceso denegado" });
+    }
+
+    const newActive = !data.active;
+    await doc.ref.update({ active: newActive, updatedAt: FieldValue.serverTimestamp() });
+    res.json({ success: true, active: newActive });
+  } catch (error) {
+    console.error("Error toggling popup:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/popups/:popupId/track - Registrar evento (view/click/close/email)
+app.post("/api/popups/:popupId/track", async (req, res) => {
+  try {
+    const { popupId } = req.params;
+    const { event, storeId, email } = req.body; // event: view | click | close | email_capture
+
+    const doc = await db.collection("promonube_popups").doc(popupId).get();
+    if (!doc.exists) return res.json({ success: false });
+
+    const updates = { updatedAt: FieldValue.serverTimestamp() };
+
+    if (event === "view") {
+      updates["analytics.views"] = FieldValue.increment(1);
+      updates["analytics.lastViewedAt"] = FieldValue.serverTimestamp();
+    } else if (event === "click") {
+      updates["analytics.clicks"] = FieldValue.increment(1);
+    } else if (event === "close") {
+      updates["analytics.closes"] = FieldValue.increment(1);
+    } else if (event === "email_capture") {
+      updates["analytics.emailCaptures"] = FieldValue.increment(1);
+      // Opcionalmente guardar el email en subcolección
+      if (email) {
+        await doc.ref.collection("captured_emails").add({
+          email,
+          storeId,
+          capturedAt: FieldValue.serverTimestamp()
+        });
+      }
+    }
+
+    await doc.ref.update(updates);
+    res.json({ success: true });
+  } catch (error) {
+    // Silenciar errores de tracking para no afectar la experiencia del usuario
+    res.json({ success: false });
+  }
+});
+
+// GET /api/popups/:popupId/analytics - Obtener analytics de un popup
+app.get("/api/popups/:popupId/analytics", async (req, res) => {
+  try {
+    const { popupId } = req.params;
+    const { storeId } = req.query;
+
+    const doc = await db.collection("promonube_popups").doc(popupId).get();
+    if (!doc.exists) return res.json({ success: false, message: "Popup no encontrado" });
+
+    const data = doc.data();
+    if (storeId && data.storeId !== storeId) {
+      return res.json({ success: false, message: "Acceso denegado" });
+    }
+
+    const analytics = data.analytics || {};
+    const views = analytics.views || 0;
+    const clicks = analytics.clicks || 0;
+    const closes = analytics.closes || 0;
+    const emailCaptures = analytics.emailCaptures || 0;
+
+    res.json({
+      success: true,
+      analytics: {
+        views,
+        clicks,
+        closes,
+        emailCaptures,
+        ctr: views > 0 ? ((clicks / views) * 100).toFixed(1) : "0.0",
+        closeRate: views > 0 ? ((closes / views) * 100).toFixed(1) : "0.0",
+        conversionRate: views > 0 ? ((emailCaptures / views) * 100).toFixed(1) : "0.0",
+        lastViewedAt: analytics.lastViewedAt || null
+      }
+    });
+  } catch (error) {
+    console.error("Error obteniendo analytics de popup:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/popup-widget.js?store=xxx - Script embebido para tiendas
+app.get("/api/popup-widget.js", async (req, res) => {
+  const { store } = req.query;
+
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300"); // 5 min cache
+
+  try {
+    if (!store) return res.send("// Error: store requerido");
+
+    // Buscar popups activos para esta tienda
+    const snapshot = await db.collection("promonube_popups")
+      .where("storeId", "==", store)
+      .where("active", "==", true)
+      .get();
+
+    if (snapshot.empty) return res.send("// No hay popups activos para esta tienda");
+
+    const popups = snapshot.docs.map(doc => ({ popupId: doc.id, ...doc.data() }));
+
+    const script = `
+/**
+ * PromoNube - Popup Widget
+ * Tienda: ${store}
+ * Popups activos: ${popups.length}
+ */
+(function() {
+  'use strict';
+
+  if (window.__promonubePopupLoaded) return;
+  window.__promonubePopupLoaded = true;
+
+  const POPUPS = ${JSON.stringify(popups)};
+  const API_URL = "https://apipromonube-jlfopowzaq-uc.a.run.app";
+  const STORE_ID = "${store}";
+
+  // ----- UTILIDADES -----
+
+  function getStorageKey(popupId) { return 'pn_popup_' + popupId; }
+
+  function shouldShow(popup) {
+    const targeting = popup.targeting || {};
+    const key = getStorageKey(popup.popupId);
+
+    // Frequency cap
+    if (targeting.showOnce || targeting.frequency === 'once') {
+      if (localStorage.getItem(key)) return false;
+    }
+
+    // Device targeting
+    const isMobile = window.innerWidth < 768;
+    if (targeting.devices === 'desktop' && isMobile) return false;
+    if (targeting.devices === 'mobile' && !isMobile) return false;
+
+    // Page targeting (básico por path)
+    const path = window.location.pathname;
+    if (targeting.pages === 'home' && path !== '/') return false;
+    if (targeting.pages === 'product' && !path.includes('/product') && !path.includes('/produtos') && !path.includes('/productos')) return false;
+    if (targeting.pages === 'cart' && !path.includes('/cart') && !path.includes('/carrito')) return false;
+
+    return true;
+  }
+
+  function markShown(popupId) {
+    try { localStorage.setItem(getStorageKey(popupId), '1'); } catch(e) {}
+  }
+
+  function track(popupId, event, email) {
+    try {
+      fetch(API_URL + '/api/popups/' + popupId + '/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event, storeId: STORE_ID, email: email || undefined })
+      }).catch(function(){});
+    } catch(e) {}
+  }
+
+  // ----- ESTILOS -----
+
+  function injectStyles() {
+    if (document.getElementById('pn-popup-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'pn-popup-styles';
+    style.textContent = \`
+      .pn-overlay {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: var(--pn-overlay, rgba(0,0,0,0.7));
+        z-index: 2147483640;
+        display: flex; align-items: center; justify-content: center;
+        animation: pnFadeIn 0.25s ease-out;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      .pn-overlay.pn-pos-top { align-items: flex-start; }
+      .pn-overlay.pn-pos-bottom, .pn-overlay.pn-pos-bottom-right, .pn-overlay.pn-pos-bottom-left { align-items: flex-end; justify-content: flex-end; padding: 24px; background: transparent; pointer-events: none; }
+      .pn-overlay.pn-pos-bottom-left { justify-content: flex-start; }
+      .pn-overlay.pn-type-banner { align-items: flex-start; justify-content: stretch; background: transparent; pointer-events: none; padding: 0; }
+      .pn-overlay.pn-type-banner-bottom { align-items: flex-end; }
+
+      .pn-popup {
+        background: var(--pn-bg, #ffffff);
+        color: var(--pn-color, #1a1a1a);
+        border-radius: var(--pn-radius, 16px);
+        max-width: var(--pn-width, 480px);
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+        position: relative;
+        pointer-events: all;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+        animation: pnSlideUp 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      .pn-popup.pn-anim-fadeIn { animation: pnFadeIn 0.3s ease-out; }
+      .pn-popup.pn-anim-slideInRight { animation: pnSlideRight 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+      .pn-popup.pn-anim-slideInBottom { animation: pnSlideBottom 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+      .pn-popup.pn-anim-bounce { animation: pnBounce 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+      .pn-popup.pn-type-banner { border-radius: 0; max-width: 100%; width: 100%; }
+      .pn-popup.pn-type-slide_in { max-width: 360px; }
+
+      .pn-close-btn {
+        position: absolute; top: 12px; right: 12px;
+        background: rgba(0,0,0,0.08); border: none; border-radius: 50%;
+        width: 32px; height: 32px; font-size: 18px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: all 0.2s; color: inherit; z-index: 1;
+      }
+      .pn-close-btn:hover { background: rgba(0,0,0,0.15); transform: scale(1.1); }
+
+      .pn-image { width: 100%; max-height: 220px; object-fit: cover; border-radius: var(--pn-radius, 16px) var(--pn-radius, 16px) 0 0; display: block; }
+      .pn-body { padding: 28px 28px 24px; }
+      .pn-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; background: var(--pn-accent, #7C7CFF); color: #fff; }
+      .pn-title { font-size: 24px; font-weight: 800; margin: 0 0 8px; line-height: 1.25; color: var(--pn-color, #1a1a1a); }
+      .pn-subtitle { font-size: 15px; margin: 0 0 8px; opacity: 0.75; font-weight: 500; }
+      .pn-text { font-size: 14px; line-height: 1.6; opacity: 0.8; margin: 0 0 20px; }
+      .pn-code-box { background: rgba(0,0,0,0.05); border: 2px dashed rgba(0,0,0,0.15); border-radius: 10px; padding: 14px 18px; margin: 16px 0; text-align: center; }
+      .pn-code-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.6; display: block; margin-bottom: 4px; }
+      .pn-code-value { font-size: 22px; font-weight: 800; font-family: monospace; color: var(--pn-accent, #7C7CFF); letter-spacing: 3px; }
+      .pn-email-form { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+      .pn-email-input { padding: 14px 16px; border: 2px solid rgba(0,0,0,0.12); border-radius: 10px; font-size: 15px; outline: none; background: rgba(0,0,0,0.03); color: inherit; transition: border-color 0.2s; }
+      .pn-email-input:focus { border-color: var(--pn-accent, #7C7CFF); }
+      .pn-cta-btn { width: 100%; padding: 15px 24px; border: none; border-radius: 12px; background: var(--pn-btn-bg, #7C7CFF); color: var(--pn-btn-color, #ffffff); font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.2s; margin-top: 4px; }
+      .pn-cta-btn:hover { opacity: 0.92; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+      .pn-cta-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+      .pn-success-msg { text-align: center; padding: 8px 0; font-weight: 600; color: #16a34a; font-size: 15px; }
+
+      @keyframes pnFadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes pnSlideUp { from { opacity: 0; transform: translateY(40px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+      @keyframes pnSlideRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+      @keyframes pnSlideBottom { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes pnBounce { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: scale(1); } }
+
+      @media (max-width: 600px) {
+        .pn-popup { max-width: 100% !important; border-radius: 16px 16px 0 0 !important; }
+        .pn-overlay.pn-pos-bottom-right, .pn-overlay.pn-pos-bottom-left { padding: 0; justify-content: stretch; align-items: flex-end; }
+        .pn-body { padding: 22px 18px 20px; }
+        .pn-title { font-size: 20px; }
+      }
+    \`;
+    document.head.appendChild(style);
+  }
+
+  // ----- RENDER POPUP -----
+
+  function renderPopup(popup) {
+    const { content = {}, design = {}, popupId } = popup;
+    const type = popup.type || 'modal';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'pn-overlay pn-type-' + type;
+    if (type === 'banner' && (design.position === 'bottom' || design.position === 'banner-bottom')) {
+      overlay.classList.add('pn-type-banner-bottom');
+    }
+    const posClass = 'pn-pos-' + (design.position || 'center');
+    if (type !== 'banner') overlay.classList.add(posClass);
+
+    const pnEl = document.createElement('div');
+    pnEl.className = 'pn-popup pn-type-' + type + ' pn-anim-' + (design.animation || 'fadeInUp');
+
+    // CSS variables
+    pnEl.style.setProperty('--pn-bg', design.backgroundColor || '#ffffff');
+    pnEl.style.setProperty('--pn-color', design.textColor || '#1a1a1a');
+    pnEl.style.setProperty('--pn-accent', design.accentColor || '#7C7CFF');
+    pnEl.style.setProperty('--pn-btn-bg', design.buttonColor || '#7C7CFF');
+    pnEl.style.setProperty('--pn-btn-color', design.buttonTextColor || '#ffffff');
+    pnEl.style.setProperty('--pn-radius', design.borderRadius || '16px');
+    pnEl.style.setProperty('--pn-width', design.width || '480px');
+    if (design.fontFamily && design.fontFamily !== 'inherit') {
+      pnEl.style.fontFamily = design.fontFamily;
+    }
+    overlay.style.setProperty('--pn-overlay', design.overlayColor || 'rgba(0,0,0,0.7)');
+
+    // Botón cerrar
+    if (design.showCloseButton !== false) {
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'pn-close-btn';
+      closeBtn.innerHTML = '\u00D7';
+      closeBtn.setAttribute('aria-label', 'Cerrar');
+      closeBtn.onclick = function() {
+        track(popupId, 'close');
+        overlay.remove();
+      };
+      pnEl.appendChild(closeBtn);
+    }
+
+    // Imagen
+    if (content.imageUrl) {
+      const img = document.createElement('img');
+      img.src = content.imageUrl;
+      img.className = 'pn-image';
+      img.alt = content.title || '';
+      pnEl.appendChild(img);
+    }
+
+    const body = document.createElement('div');
+    body.className = 'pn-body';
+
+    // Código de descuento destacado (si lo hay)
+    if (content.discountValue) {
+      const badge = document.createElement('div');
+      badge.className = 'pn-badge';
+      badge.textContent = content.discountValue;
+      body.appendChild(badge);
+    }
+
+    // Título
+    if (content.title) {
+      const title = document.createElement('h2');
+      title.className = 'pn-title';
+      title.textContent = content.title;
+      body.appendChild(title);
+    }
+
+    // Subtítulo
+    if (content.subtitle) {
+      const sub = document.createElement('p');
+      sub.className = 'pn-subtitle';
+      sub.textContent = content.subtitle;
+      body.appendChild(sub);
+    }
+
+    // Cuerpo
+    if (content.body) {
+      const bodyText = document.createElement('p');
+      bodyText.className = 'pn-text';
+      bodyText.textContent = content.body;
+      body.appendChild(bodyText);
+    }
+
+    // Código de cupón
+    if (content.discountCode) {
+      const codeBox = document.createElement('div');
+      codeBox.className = 'pn-code-box';
+      codeBox.innerHTML = '<span class="pn-code-label">Usá el código</span><span class="pn-code-value">' + content.discountCode + '</span>';
+      body.appendChild(codeBox);
+    }
+
+    // Captura de email
+    if (content.showEmailField || content.popupType === 'email_capture') {
+      const form = document.createElement('div');
+      form.className = 'pn-email-form';
+
+      const input = document.createElement('input');
+      input.type = 'email';
+      input.className = 'pn-email-input';
+      input.placeholder = content.emailPlaceholder || 'Tu email...';
+      form.appendChild(input);
+
+      const submitBtn = document.createElement('button');
+      submitBtn.className = 'pn-cta-btn';
+      submitBtn.textContent = content.emailButtonText || 'Suscribirme';
+      submitBtn.onclick = function() {
+        const emailVal = input.value.trim();
+        if (!emailVal || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(emailVal)) {
+          input.style.borderColor = '#ef4444';
+          setTimeout(function() { input.style.borderColor = ''; }, 1500);
+          return;
+        }
+        submitBtn.disabled = true;
+        track(popupId, 'email_capture', emailVal);
+        track(popupId, 'click');
+
+        // Mostrar mensaje de éxito
+        form.innerHTML = '<p class="pn-success-msg">\\u2713 \\u00A1Gracias! Te enviamos tu descuento.</p>';
+        markShown(popupId);
+        setTimeout(function() { overlay.remove(); }, 2500);
+      };
+      form.appendChild(submitBtn);
+      body.appendChild(form);
+    } else if (content.ctaText) {
+      // CTA simple
+      const cta = document.createElement('button');
+      cta.className = 'pn-cta-btn';
+      cta.textContent = content.ctaText;
+      cta.onclick = function() {
+        track(popupId, 'click');
+        markShown(popupId);
+        if (content.ctaUrl) {
+          window.location.href = content.ctaUrl;
+        } else {
+          overlay.remove();
+        }
+      };
+      body.appendChild(cta);
+    }
+
+    pnEl.appendChild(body);
+    overlay.appendChild(pnEl);
+
+    // Cerrar click en overlay (solo si es modal)
+    if (type === 'modal') {
+      overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) {
+          track(popupId, 'close');
+          overlay.remove();
+        }
+      });
+    }
+
+    document.body.appendChild(overlay);
+    track(popupId, 'view');
+    markShown(popupId);
+
+    // Auto-cerrar
+    if (design.closeAfterSeconds && design.closeAfterSeconds > 0) {
+      setTimeout(function() {
+        if (document.body.contains(overlay)) {
+          overlay.remove();
+        }
+      }, design.closeAfterSeconds * 1000);
+    }
+  }
+
+  // ----- INICIAR POPUP -----
+
+  function initPopup(popup) {
+    if (!shouldShow(popup)) return;
+
+    const trigger = popup.trigger || {};
+    const event = trigger.event || 'delay';
+
+    if (event === 'onLoad') {
+      renderPopup(popup);
+    } else if (event === 'delay') {
+      const ms = ((trigger.delaySeconds || 5) * 1000);
+      setTimeout(function() { renderPopup(popup); }, ms);
+    } else if (event === 'exitIntent') {
+      let fired = false;
+      document.addEventListener('mouseleave', function handler(e) {
+        if (fired || e.clientY > 20) return;
+        fired = true;
+        document.removeEventListener('mouseleave', handler);
+        renderPopup(popup);
+      });
+    } else if (event === 'scroll') {
+      const threshold = trigger.scrollPercent || 50;
+      let fired = false;
+      window.addEventListener('scroll', function handler() {
+        if (fired) return;
+        const scrolled = (window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)) * 100;
+        if (scrolled >= threshold) {
+          fired = true;
+          window.removeEventListener('scroll', handler);
+          renderPopup(popup);
+        }
+      });
+    }
+  }
+
+  // ----- ARRANCAR -----
+
+  injectStyles();
+
+  function run() {
+    POPUPS.forEach(function(popup) {
+      try { initPopup(popup); } catch(e) { console.warn('[PromoNube Popup] Error:', e); }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+
+})();
+`;
+
+    res.send(script);
+  } catch (error) {
+    console.error("Error generando popup widget:", error);
+    res.send("// Error interno generando popup widget");
+  }
+});
+
+// ============================================
 // EXPORTAR CLOUD FUNCTION
 // ============================================
 exports.apipromonube = functions.https.onRequest({
@@ -14121,7 +14846,7 @@ app.get("/api/test/product-fields/:storeId/:productId", async (req, res) => {
 // =====================================================
 
 // FunciÃ³n programada que se ejecuta cada hora
-exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 6 hours', async (event) => {
+exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 24 hours', async (event) => {
   console.log('ðŸ§¹ Iniciando limpieza de cupones EXPIRADOS DE RULETA...');
   
   try {
@@ -14130,7 +14855,7 @@ exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 6 hours', 
     let errorCount = 0;
     
     // Buscar SOLO cupones de ruleta expirados no usados
-    const expiredCouponsQuery = await db.collection('spin_wheel_coupons')
+    const expiredCouponsQuery = await db.collection('promonube_coupons')
       .where('source', '==', 'spin_wheel')  // ðŸŽ¯ SOLO cupones de ruleta
       .where('used', '==', false)
       .where('expiresAt', '<', now.toISOString())

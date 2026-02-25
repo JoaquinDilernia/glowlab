@@ -25,6 +25,8 @@ import PaymentFailure from './pages/PaymentFailure';
 import PaymentPending from './pages/PaymentPending';
 import PaymentTest from './pages/PaymentTest';
 import AdminPanel from './pages/AdminPanel';
+import PopupsList from './pages/PopupsList';
+import PopupConfig from './pages/PopupConfig';
 import './App.css';
 
 function App() {
@@ -62,6 +64,9 @@ function App() {
         <Route path="/payment-pending" element={<PaymentPending />} />
         <Route path="/payment-test" element={<PaymentTest />} />
         <Route path="/admin" element={<AdminPanel />} />
+        <Route path="/popups" element={<PopupsList />} />
+        <Route path="/popups/create" element={<PopupConfig />} />
+        <Route path="/popups/:popupId/config" element={<PopupConfig />} />
       </Routes>
       <a
         className="whatsapp-float"
