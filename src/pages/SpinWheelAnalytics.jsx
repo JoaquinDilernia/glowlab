@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './SpinWheelAnalytics.css';
-import { apiRequest } from '../config';
+import { apiRequest, API_CONFIG } from '../config';
 
 function SpinWheelAnalytics() {
   const { wheelId } = useParams();
@@ -17,13 +17,13 @@ function SpinWheelAnalytics() {
     try {
       setLoading(true);
       const storeId = localStorage.getItem('promonube_store_id');
-      
+
       console.log('📊 Cargando analytics para wheelId:', wheelId, 'storeId:', storeId);
-      
+
       const response = await apiRequest(`/api/spin-wheel/${wheelId}/analytics?storeId=${storeId}`);
-      
+
       console.log('📊 Respuesta analytics:', response);
-      
+
       if (response.success) {
         setAnalytics(response.analytics);
       } else {
@@ -36,6 +36,12 @@ function SpinWheelAnalytics() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleExport = () => {
+    const storeId = localStorage.getItem('promonube_store_id');
+    const url = `${API_CONFIG.BASE_URL}/api/spin-wheel/${wheelId}/export?storeId=${storeId}`;
+    window.open(url, '_blank');
   };
 
   if (loading) {
@@ -69,9 +75,14 @@ function SpinWheelAnalytics() {
           <h1>📊 Analytics de Ruleta</h1>
           <p className="analytics-subtitle">Estadísticas detalladas de rendimiento</p>
         </div>
-        <button onClick={() => navigate('/spin-wheel')} className="btn-back">
-          ← Volver
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button onClick={handleExport} className="btn-export">
+            📥 Exportar CSV
+          </button>
+          <button onClick={() => navigate('/spin-wheel')} className="btn-back">
+            ← Volver
+          </button>
+        </div>
       </div>
 
       {/* Cards de métricas principales */}

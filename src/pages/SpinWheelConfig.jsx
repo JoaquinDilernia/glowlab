@@ -29,6 +29,7 @@ function SpinWheelConfig() {
     
     // Integraciones
     perfitListId: '', // ID de lista de Perfit donde van los emails
+    centerEmoji: '🎁', // Emoji del centro de la ruleta
     
     // Triggers
     showOnLoad: true,
@@ -399,6 +400,18 @@ function SpinWheelConfig() {
                 />
                 <span>Mostrar logo en el popup</span>
               </label>
+            </div>
+
+            <div className="form-group">
+              <label>Centro de la Ruleta</label>
+              <input
+                type="text"
+                value={config.centerEmoji || '🎁'}
+                onChange={(e) => setConfig({ ...config, centerEmoji: e.target.value })}
+                placeholder="🎁"
+                maxLength={10}
+              />
+              <div className="form-hint">Emoji o texto que aparece en el centro de la rueda. Ej: 🎁 🎯 ⭐ 🔥 o el nombre de tu marca</div>
             </div>
           </div>
         )}
@@ -783,13 +796,13 @@ function SpinWheelConfig() {
                   type="text"
                   value={config.perfitListId || ''}
                   onChange={(e) => setConfig({ ...config, perfitListId: e.target.value })}
-                  placeholder="Ej: lista_abc123"
+                  placeholder="Ej: 12345"
                 />
                 <div className="form-hint">
-                  💡 Los emails capturados en la ruleta se enviarán automáticamente a esta lista de Perfit.
+                  💡 El ID numérico de tu lista en Perfit (ej: 12345). Lo encontrás en Perfit: Listas → seleccioná la lista → el número en la URL. Si lo dejás vacío, se usará la lista por defecto configurada en Integraciones.
                   <br />
                   📝 Configurá primero tus credenciales de Perfit en{' '}
-                  <button 
+                  <button
                     className="link-button"
                     onClick={() => navigate('/integrations')}
                     style={{color: '#667eea', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer'}}
@@ -1038,7 +1051,7 @@ function SpinWheelConfig() {
                   fontWeight: 'bold',
                   border: '3px solid rgba(255, 255, 255, 0.9)'
                 }}>
-                  🎁
+                  {config.centerEmoji || '🎁'}
                 </div>
               </div>
             </div>

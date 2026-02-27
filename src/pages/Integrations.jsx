@@ -113,7 +113,6 @@ function Integrations() {
       setSaving(false);
     }
   };
-
   const testIntegration = async (integration) => {
     const email = prompt('Ingresá un email para probar la integración:');
     if (!email) return;
@@ -133,11 +132,14 @@ function Integrations() {
       if (response.success) {
         alert(`✅ Test exitoso!\nEl contacto "${email}" fue enviado a ${integration}`);
       } else {
-        alert(`❌ Error: ${response.error || 'No se pudo enviar'}`);
+        const detail = response.details
+          ? `\nHTTP ${response.details.status || ''} ${response.details.statusText || ''}\n${response.details.body || ''}`
+          : (response.error ? `\n${response.error}` : '');
+        alert(`❌ Error: ${response.error || response.message || 'No se pudo enviar'}${detail}`);
       }
     } catch (error) {
       console.error('Error probando integración:', error);
-      alert('Error al probar integración');
+      alert('Error al probar integración: ' + error.message);
     } finally {
       setTesting(null);
     }
@@ -221,14 +223,14 @@ function Integrations() {
             </div>
 
             <div className="form-group">
-              <label>Nombre de Lista (opcional)</label>
+              <label>ID de Lista Perfit (opcional)</label>
               <input
                 type="text"
-                placeholder="GlowLab Ruleta"
+                placeholder="Ej: 12345"
                 value={perfitConfig.defaultList}
                 onChange={(e) => setPerfitConfig({...perfitConfig, defaultList: e.target.value})}
               />
-              <small>💡 Si dejás vacío, se creará automáticamente una lista llamada "GlowLab"</small>
+              <small>💡 El ID numérico de tu lista en Perfit. Lo encontrás en Perfit: Listas → seleccionar lista → el número en la URL. Si lo dejás vacío, los contactos se agregan sin lista asignada.</small>
             </div>
 
             <div className="integration-actions">
@@ -239,16 +241,14 @@ function Integrations() {
               >
                 {saving ? 'Guardando...' : '💾 Guardar Configuración'}
               </button>
-              
-              {integrations.perfit.configured && (
-                <button 
-                  onClick={() => testIntegration('perfit')}
-                  disabled={testing === 'perfit'}
-                  className="btn-test"
-                >
-                  {testing === 'perfit' ? 'Probando...' : '🧪 Probar Conexión'}
-                </button>
-              )}
+
+              <button
+                onClick={() => testIntegration('perfit')}
+                disabled={testing === 'perfit'}
+                className="btn-test"
+              >
+                {testing === 'perfit' ? 'Probando...' : '🧪 Probar Conexión'}
+              </button>
             </div>
           </div>
 

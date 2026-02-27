@@ -665,7 +665,7 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
             <td class="header">
               <div class="header-bg"></div>
               <div class="header-content">
-                <div class="emoji">ðŸŽ</div>
+                <div class="emoji">🎁</div>
                 <h1>Â¡Felicitaciones!</h1>
                 <p>Has recibido una Gift Card</p>
               </div>
@@ -733,7 +733,7 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
           email: 'info@techdi.com.ar',
           name: storeName || 'GlowLab'
         },
-        subject: `ðŸŽ Tu Gift Card de $${amount.toLocaleString('es-AR')} estÃ¡ lista`,
+        subject: `🎁 Tu Gift Card de $${amount.toLocaleString('es-AR')} estÃ¡ lista`,
         html: emailHTML,
         text: `Tu cÃ³digo de Gift Card es: ${code}\n\nMonto: $${amount}\n${expiryText}\n\nUsalo en cualquier compra ingresÃ¡ndolo en el campo de cupÃ³n de descuento.`
       };
@@ -2214,7 +2214,7 @@ app.post("/webhook/order-paid", async (req, res) => {
         
         // Detectar si el producto es una gift card por el nombre
         if (productName.includes('gift card') || productName.includes('tarjeta regalo')) {
-          console.log(`ðŸŽ Gift Card detectada en pedido! Producto: ${product.name}`);
+          console.log(`🎁 Gift Card detectada en pedido! Producto: ${product.name}`);
           
           // Buscar metadata del producto
           const productMetadata = await db.collection("giftcard_products")
@@ -2449,7 +2449,7 @@ app.post("/api/promotions/create", async (req, res) => {
   }
 
   try {
-    console.log("ðŸŽ Creando promociÃ³n:", type, "para tienda:", storeId);
+    console.log("🎁 Creando promociÃ³n:", type, "para tienda:", storeId);
 
     // Obtener access token
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -2681,7 +2681,7 @@ app.post("/api/giftcards/create", async (req, res) => {
   }
 
   try {
-    console.log("ðŸŽ Creando gift card:", { storeId, amount, publishAsProduct });
+    console.log("🎁 Creando gift card:", { storeId, amount, publishAsProduct });
 
     // Si es producto, solo crear el producto en TiendaNube
     // Los cÃ³digos se generan cuando alguien compra (vÃ­a webhook)
@@ -2697,7 +2697,7 @@ app.post("/api/giftcards/create", async (req, res) => {
         // Generar descripciÃ³n automÃ¡tica con instrucciones
         const expiryText = expiresInDays ? `VÃ¡lida por ${Math.floor(expiresInDays / 30)} meses desde la compra.` : 'Sin vencimiento';
         const autoDescription = productDescription || `
-ðŸŽ GIFT CARD POR $${amount.toLocaleString('es-AR')}
+🎁 GIFT CARD POR $${amount.toLocaleString('es-AR')}
 
 La manera perfecta de regalar! ComprÃ¡ esta Gift Card y recibÃ­ un cÃ³digo Ãºnico por email que podrÃ¡s usar o regalar.
 
@@ -2772,7 +2772,7 @@ SÃ­, el cÃ³digo funciona como un cupÃ³n y se puede usar junto con otros de
 âœ“ GuardÃ¡ el cÃ³digo en un lugar seguro o compartilo inmediatamente
 âœ“ El cÃ³digo se puede usar desde cualquier dispositivo
 
-ðŸŽ Â¡El regalo perfecto que siempre queda bien!
+🎁 Â¡El regalo perfecto que siempre queda bien!
         `.trim();
         
         // Obtener datos del template si se especificÃ³ uno
@@ -3772,7 +3772,7 @@ app.post("/api/webhooks/order", async (req, res) => {
         const isGiftCard = giftCardProduct.exists;
         
         if (isGiftCard && order.payment_status === 'paid') {
-          console.log(`ðŸŽ Gift Card de PromoNube detectada en orden #${order.number} (Producto ID: ${productId})`);
+          console.log(`🎁 Gift Card de PromoNube detectada en orden #${order.number} (Producto ID: ${productId})`);
           
           try {
             // Calcular monto REAL pagado por este producto
@@ -5896,6 +5896,11 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
     if (email) {
       const store = await getStoreById(wheelData.storeId);
       if (store) {
+        // Determinar la lista Perfit: prioridad lista de la ruleta, luego lista por defecto
+        // Convertir a número si es un ID numérico (Perfit usa IDs numéricos)
+        const rawListId = wheelData.perfitListId || store.perfitDefaultList;
+        const parsedListId = rawListId ? (isNaN(rawListId) ? rawListId : parseInt(rawListId)) : null;
+
         const emailData = {
           tags: [
             'spin_wheel',
@@ -5907,8 +5912,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
             'cupon_codigo': couponCode || '',
             'fecha_giro': new Date().toISOString()
           },
-          // Usar la lista configurada en la ruleta, o la lista por defecto de la tienda
-          lists: wheelData.perfitListId ? [wheelData.perfitListId] : (store.perfitDefaultList ? [store.perfitDefaultList] : [])
+          lists: parsedListId ? [parsedListId] : []
         };
 
         console.log('ðŸ“§ [Spin Wheel] Sincronizando email con integraciones:', {
@@ -6067,6 +6071,59 @@ app.get("/api/spin-wheel/:wheelId/analytics", async (req, res) => {
   }
 });
 
+// GET /api/spin-wheel/:wheelId/export - Exportar lista de participantes como CSV
+app.get("/api/spin-wheel/:wheelId/export", async (req, res) => {
+  const { wheelId } = req.params;
+  const { storeId } = req.query;
+
+  if (!storeId) {
+    return res.json({ success: false, message: "storeId requerido" });
+  }
+
+  try {
+    const wheelDoc = await db.collection("promonube_spin_wheels").doc(wheelId).get();
+    if (!wheelDoc.exists) {
+      return res.json({ success: false, message: "Ruleta no encontrada" });
+    }
+    const wheelData = wheelDoc.data();
+    if (wheelData.storeId !== storeId) {
+      return res.status(403).json({ success: false, message: "Acceso denegado" });
+    }
+
+    const resultsSnapshot = await db.collection("spin_wheel_results")
+      .where("wheelId", "==", wheelId)
+      .get();
+
+    const results = [];
+    resultsSnapshot.forEach(doc => results.push({ id: doc.id, ...doc.data() }));
+    results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // Generar CSV
+    const csvHeader = "Email,Premio,Tipo,Valor,Cupon,Fecha,Cupon Usado";
+    const csvRows = results.map(r => {
+      const email = (r.email || '').replace(/"/g, '""');
+      const prize = (r.prizeLabel || '').replace(/"/g, '""');
+      const type = r.prizeType || '';
+      const value = r.prizeValue || '';
+      const coupon = r.couponCode || '';
+      const date = r.timestamp ? new Date(r.timestamp).toLocaleString('es-AR') : '';
+      const used = r.couponUsed ? 'Si' : 'No';
+      return `"${email}","${prize}","${type}","${value}","${coupon}","${date}","${used}"`;
+    });
+
+    const csv = [csvHeader, ...csvRows].join('\n');
+    const wheelName = (wheelData.name || 'ruleta').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `participantes_${wheelName}_${new Date().toISOString().split('T')[0]}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send('\uFEFF' + csv); // BOM para que Excel lo abra correctamente
+  } catch (error) {
+    console.error("Error exportando participantes:", error);
+    res.status(500).json({ success: false, message: "Error al exportar" });
+  }
+});
+
 // GET /api/spin-wheel-widget.js - Script embebible optimizado para TiendaNube
 app.get("/api/spin-wheel-widget.js", async (req, res) => {
   const { wheelId, store } = req.query;
@@ -6145,7 +6202,8 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     delaySeconds: wheelData.delaySeconds || 3,
     exitIntent: wheelData.exitIntent || false,
     showEmailField: wheelData.showEmailField !== false, // Por defecto true (mostrar campo de email)
-    requireEmail: wheelData.requireEmail !== false // Por defecto true (email obligatorio)
+    requireEmail: wheelData.requireEmail !== false, // Por defecto true (email obligatorio)
+    centerEmoji: wheelData.centerEmoji || '\uD83C\uDF81' // Emoji del centro de la ruleta (🎁)
   }, null, 2)};
   
   const API_URL = "https://apipromonube-jlfopowzaq-uc.a.run.app";
@@ -6232,6 +6290,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       display: flex;
       align-items: center;
       justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
     }
     
     .pn-close:hover {
@@ -6470,34 +6529,32 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         height: 50px;
         font-size: 24px;
       }
-    }
-      }
-      
+
       .pn-input {
         font-size: 15px;
         padding: 14px;
         color: #333333;
       }
-      
+
       .pn-button {
         font-size: 16px;
         padding: 15px 24px;
       }
-      
+
       .pn-coupon {
         font-size: 20px;
         padding: 12px;
         letter-spacing: 2px;
       }
-      
+
       .pn-result {
         font-size: 18px;
       }
-      
+
       #pn-countdown-display {
         font-size: 28px !important;
       }
-      
+
       .pn-hint {
         font-size: 12px;
       }
@@ -6543,52 +6600,63 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     
     // Colores vibrantes predeterminados
     const defaultColors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A8E6CF', '#FF8B94', '#C7CEEA'];
-    
+
+    // Tamaño de texto adaptivo según número de segmentos
+    const numPrizes = prizes.length;
+    let fontSize = 16;
+    let maxLabelLen = 12;
+    let textRadius = 105;
+    if (numPrizes <= 5) { fontSize = 16; maxLabelLen = 12; textRadius = 105; }
+    else if (numPrizes <= 7) { fontSize = 13; maxLabelLen = 10; textRadius = 100; }
+    else if (numPrizes <= 9) { fontSize = 11; maxLabelLen = 8; textRadius = 95; }
+    else { fontSize = 9; maxLabelLen = 7; textRadius = 90; }
+
     // Crear segmentos SVG
     const segmentAngle = 360 / prizes.length;
     let segments = '';
-    
+
     prizes.forEach((prize, index) => {
       const startAngle = index * segmentAngle - 90; // Empezar desde arriba
       const endAngle = startAngle + segmentAngle;
       const color = prize.color || defaultColors[index % defaultColors.length];
-      
-      // Convertir Ã¡ngulos a coordenadas
+
+      // Convertir ángulos a coordenadas
       const startRad = startAngle * Math.PI / 180;
       const endRad = endAngle * Math.PI / 180;
-      
+
       const x1 = 160 + 150 * Math.cos(startRad);
       const y1 = 160 + 150 * Math.sin(startRad);
       const x2 = 160 + 150 * Math.cos(endRad);
       const y2 = 160 + 150 * Math.sin(endRad);
-      
+
       const largeArc = segmentAngle > 180 ? 1 : 0;
-      
+
       // Crear path para el segmento
       segments += \`
-        <path 
+        <path
           d="M 160 160 L \${x1} \${y1} A 150 150 0 \${largeArc} 1 \${x2} \${y2} Z"
           fill="\${color}"
           stroke="white"
           stroke-width="2"
         />
       \`;
-      
+
       // Agregar texto
       const textAngle = startAngle + (segmentAngle / 2);
       const textRad = textAngle * Math.PI / 180;
-      const textX = 160 + 100 * Math.cos(textRad);
-      const textY = 160 + 100 * Math.sin(textRad);
-      const label = prize.label || prize.text || \`\${prize.value}%\`;
-      
+      const textX = 160 + textRadius * Math.cos(textRad);
+      const textY = 160 + textRadius * Math.sin(textRad);
+      const rawLabel = prize.label || prize.text || \`\${prize.value}%\`;
+      const label = rawLabel.length > maxLabelLen ? rawLabel.substring(0, maxLabelLen) + '…' : rawLabel;
+
       segments += \`
-        <text 
-          x="\${textX}" 
-          y="\${textY}" 
-          fill="white" 
-          font-size="18" 
+        <text
+          x="\${textX}"
+          y="\${textY}"
+          fill="white"
+          font-size="\${fontSize}"
           font-weight="bold"
-          text-anchor="middle" 
+          text-anchor="middle"
           dominant-baseline="middle"
           transform="rotate(\${textAngle + 90}, \${textX}, \${textY})"
           style="pointer-events: none; text-shadow: 0 2px 4px rgba(0,0,0,0.5);"
@@ -6605,7 +6673,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
               \${segments}
             </g>
           </svg>
-          <div class="pn-wheel-center">ðŸŽ</div>
+          <div class="pn-wheel-center">\${WHEEL_CONFIG.centerEmoji || '\uD83C\uDF81'}</div>
         </div>
       </div>
     \`;
@@ -6620,7 +6688,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     
     overlay.innerHTML = \`
       <div class="pn-modal">
-        <button class="pn-close" onclick="document.getElementById('pn-wheel-overlay').remove()">Ã—</button>
+        <button class="pn-close" onclick="document.getElementById('pn-wheel-overlay').remove()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         <h1 class="pn-title">\${WHEEL_CONFIG.title}</h1>
         <p class="pn-subtitle">\${WHEEL_CONFIG.subtitle}</p>
         <div id="pn-content">
@@ -6757,13 +6825,13 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       // Crear pantalla de felicitaciones
       overlay.innerHTML = \`
         <div class="pn-modal">
-          <button class="pn-close" onclick="closeCouponModal()">Ã—</button>
+          <button class="pn-close" onclick="closeCouponModal()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
           <div style="text-align: center; padding: 20px 0;">
             <div style="font-size: 48px; margin-bottom: 16px;">ðŸŽ‰</div>
             <h1 class="pn-title" style="font-size: 38px; margin-bottom: 12px;">Â¡FELICITACIONES!</h1>
             <p class="pn-subtitle" style="font-size: 18px; margin-bottom: 8px;">DESBLOQUEASTE</p>
             <div style="font-size: 52px; font-weight: 900; margin: 20px 0; text-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-              \${data.prize && data.prize.label ? data.prize.label : 'ðŸŽ DESCUENTO'}
+              \${data.prize && data.prize.label ? data.prize.label : '🎁 DESCUENTO'}
             </div>
             
             <p class="pn-subtitle" style="font-size: 16px; margin: 24px 0 12px;">TU CUPÃ“N DE DESCUENTO ES:</p>
@@ -6820,7 +6888,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       
       overlay.innerHTML = \`
         <div class="pn-modal">
-          <button class="pn-close" onclick="document.getElementById('pn-wheel-overlay').remove()">Ã—</button>
+          <button class="pn-close" onclick="document.getElementById('pn-wheel-overlay').remove()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
           <div style="text-align: center; padding: 20px 0;">
             <div style="font-size: 48px; margin-bottom: 16px;">\${emoji}</div>
             <h1 class="pn-title">\${title}</h1>
@@ -7008,7 +7076,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       
       <div class="sticky-content">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span>ðŸŽ</span>
+          <span>🎁</span>
           <span style="font-weight: 600;">Tu cupÃ³n:</span>
         </div>
         <div class="sticky-coupon" onclick="copyCoupon('\${couponCode}', this)">
@@ -7020,7 +7088,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         </div>
       </div>
       
-      <button class="sticky-close" onclick="closeStickyBar()" title="Cerrar">Ã—</button>
+      <button class="sticky-close" onclick="closeStickyBar()" title="Cerrar"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
     \`;
     
     document.body.appendChild(stickyBar);
@@ -7597,7 +7665,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
     // BotÃ³n de cerrar opcional
     if (COUNTDOWN_CONFIG.showCloseButton !== false) {
       const closeBtn = document.createElement('button');
-      closeBtn.innerHTML = 'Ã—';
+      closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
       closeBtn.style.cssText = \`
         position: absolute;
         right: 12px;
@@ -12772,13 +12840,69 @@ app.post("/api/integrations/perfit", async (req, res) => {
 
     console.log("âœ… Perfit configurado para store:", storeId);
     
-    res.json({ 
-      success: true, 
-      message: "Perfit configurado correctamente" 
+    res.json({
+      success: true,
+      message: "Perfit configurado correctamente"
     });
   } catch (error) {
     console.error("Error configurando Perfit:", error);
     res.status(500).json({ success: false, message: "Error interno" });
+  }
+});
+
+// POST /api/integrations/perfit/test - Probar conexión con Perfit
+app.post("/api/integrations/perfit/test", async (req, res) => {
+  const { storeId } = req.body;
+  if (!storeId) {
+    return res.status(400).json({ success: false, message: "storeId requerido" });
+  }
+  try {
+    const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
+    if (!storeDoc.exists) {
+      return res.status(404).json({ success: false, message: "Tienda no encontrada" });
+    }
+    const store = storeDoc.data();
+    if (!store.perfitApiKey || !store.perfitAccountId) {
+      return res.json({
+        success: false,
+        message: "Perfit no está configurado. Ingresá tu API Key y Account ID.",
+        details: {
+          hasApiKey: !!store.perfitApiKey,
+          hasAccountId: !!store.perfitAccountId
+        }
+      });
+    }
+    // Probar la conexión haciendo GET de los contacts (para validar credenciales)
+    const testResponse = await fetch(
+      `https://api.perfit.io/v1/accounts/${store.perfitAccountId}/contacts?limit=1`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${store.perfitApiKey}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    if (testResponse.ok) {
+      return res.json({ success: true, message: "Conexión con Perfit exitosa! Las credenciales son correctas." });
+    } else {
+      const errorBody = await testResponse.text();
+      return res.json({
+        success: false,
+        message: `Error de autenticación con Perfit (HTTP ${testResponse.status})`,
+        details: {
+          status: testResponse.status,
+          statusText: testResponse.statusText,
+          body: errorBody.substring(0, 300)
+        }
+      });
+    }
+  } catch (error) {
+    return res.json({
+      success: false,
+      message: "Error de red al conectar con Perfit: " + error.message,
+      details: { error: error.message }
+    });
   }
 });
 
