@@ -47,6 +47,7 @@ function BadgeConfig() {
   // Categories
   const [categories, setCategories] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [categorySearch, setCategorySearch] = useState('');
 
   useEffect(() => {
     if (badgeId) {
@@ -518,7 +519,7 @@ function BadgeConfig() {
             <p className="rule-description">
               Se mostrará el badge en productos de las categorías seleccionadas
             </p>
-            
+
             <div className="form-group">
               <label>Categorías</label>
               {categories.length === 0 && (
@@ -530,22 +531,57 @@ function BadgeConfig() {
                   {loadingCategories ? 'Cargando...' : 'Cargar Categorías'}
                 </button>
               )}
-              
+
               {categories.length > 0 && (
-                <div className="categories-list">
-                  {categories.map(category => (
-                    <label key={category.id} className="category-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={selectedCategories.includes(category.id)}
-                        onChange={() => toggleCategory(category.id)}
-                      />
-                      <span>{category.name.es}</span>
-                    </label>
-                  ))}
-                </div>
+                <>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="Buscar categoría..."
+                      value={categorySearch}
+                      onChange={e => setCategorySearch(e.target.value)}
+                      style={{ flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '13px' }}
+                    />
+                    <button
+                      onClick={() => { setCategories([]); setCategorySearch(''); loadCategories(); }}
+                      disabled={loadingCategories}
+                      className="btn-load-categories"
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      {loadingCategories ? 'Cargando...' : 'Recargar'}
+                    </button>
+                  </div>
+                  <div className="categories-list">
+                    {categories
+                      .filter(cat => {
+                        const name = cat.name?.es || cat.name?.pt || Object.values(cat.name || {})[0] || '';
+                        return name.toLowerCase().includes(categorySearch.toLowerCase());
+                      })
+                      .map(category => {
+                        const name = category.name?.es || category.name?.pt || Object.values(category.name || {})[0] || `Categoría ${category.id}`;
+                        return (
+                          <label key={category.id} className="category-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedCategories.includes(category.id)}
+                              onChange={() => toggleCategory(category.id)}
+                            />
+                            <span>{name}</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                  {categorySearch && (
+                    <small style={{ color: '#888' }}>
+                      {categories.filter(cat => {
+                        const name = cat.name?.es || cat.name?.pt || Object.values(cat.name || {})[0] || '';
+                        return name.toLowerCase().includes(categorySearch.toLowerCase());
+                      }).length} resultado(s)
+                    </small>
+                  )}
+                </>
               )}
-              
+
               {selectedCategories.length > 0 && (
                 <small>{selectedCategories.length} categoría(s) seleccionada(s)</small>
               )}

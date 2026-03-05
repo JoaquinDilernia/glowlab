@@ -6602,14 +6602,18 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     const defaultColors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A8E6CF', '#FF8B94', '#C7CEEA'];
 
     // Tamaño de texto adaptivo según número de segmentos
+    // textRadius: distancia del centro al punto medio del texto (rueda radio=150, hub radio~38)
+    // Espacio disponible: desde ~42px hasta ~145px = 103px. Centro ideal ~93px.
+    // Usamos valores más conservadores para evitar overflow.
     const numPrizes = prizes.length;
-    let fontSize = 16;
-    let maxLabelLen = 12;
-    let textRadius = 105;
-    if (numPrizes <= 5) { fontSize = 16; maxLabelLen = 12; textRadius = 105; }
-    else if (numPrizes <= 7) { fontSize = 13; maxLabelLen = 10; textRadius = 100; }
-    else if (numPrizes <= 9) { fontSize = 11; maxLabelLen = 8; textRadius = 95; }
-    else { fontSize = 9; maxLabelLen = 7; textRadius = 90; }
+    let fontSize = 13;
+    let maxLabelLen = 9;
+    let textRadius = 82;
+    let maxTextPx = 88;
+    if (numPrizes <= 4)      { fontSize = 13; maxLabelLen = 9;  textRadius = 84; maxTextPx = 90; }
+    else if (numPrizes <= 6) { fontSize = 12; maxLabelLen = 8;  textRadius = 80; maxTextPx = 82; }
+    else if (numPrizes <= 8) { fontSize = 11; maxLabelLen = 7;  textRadius = 76; maxTextPx = 74; }
+    else                     { fontSize =  9; maxLabelLen = 6;  textRadius = 72; maxTextPx = 64; }
 
     // Crear segmentos SVG
     const segmentAngle = 360 / prizes.length;
@@ -6648,6 +6652,9 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       const textY = 160 + textRadius * Math.sin(textRad);
       const rawLabel = prize.label || prize.text || \`\${prize.value}%\`;
       const label = rawLabel.length > maxLabelLen ? rawLabel.substring(0, maxLabelLen) + '…' : rawLabel;
+      // Limitar textLength al mínimo entre el máx disponible y el ancho estimado real del texto
+      const estimatedPx = Math.ceil(label.length * fontSize * 0.62);
+      const constrainedLen = Math.min(maxTextPx, estimatedPx);
 
       segments += \`
         <text
@@ -6659,7 +6666,9 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
           text-anchor="middle"
           dominant-baseline="middle"
           transform="rotate(\${textAngle + 90}, \${textX}, \${textY})"
-          style="pointer-events: none; text-shadow: 0 2px 4px rgba(0,0,0,0.5);"
+          textLength="\${constrainedLen}"
+          lengthAdjust="spacingAndGlyphs"
+          style="pointer-events: none;"
         >\${label}</text>
       \`;
     });
@@ -6669,7 +6678,12 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         <div class="pn-wheel-pointer"></div>
         <div style="position: relative;">
           <svg class="pn-wheel" id="pn-wheel" viewBox="0 0 320 320" style="width: 100%; height: 100%;">
-            <g>
+            <defs>
+              <filter id="pn-text-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,0.6)" flood-opacity="1"/>
+              </filter>
+            </defs>
+            <g filter="url(#pn-text-shadow)">
               \${segments}
             </g>
           </svg>
@@ -7855,10 +7869,14 @@ app.post("/api/new-badge-config/:storeId", async (req, res) => {
 
 // GET /api/product-dates/:storeId - Obtiene fechas de creaciÃ³n de productos
 app.get("/api/product-dates/:storeId", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
   const { storeId } = req.params;
 
   try {
-    console.log(`ðŸ“… Obteniendo fechas de productos para store: ${storeId}`);
+    console.log(`📅 Obteniendo fechas de productos para store: ${storeId}`);
     
     // Buscar el store en Firestore para obtener el accessToken
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -8910,6 +8928,10 @@ app.get("/api/badges-script.js", async (req, res) => {
 
 // GET /api/products/metadata - Obtener metadata de productos para evaluaciÃ³n de badges
 app.get("/api/products/metadata", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
   const { storeId } = req.query;
 
   if (!storeId) {
@@ -9076,24 +9098,40 @@ app.get("/api/tiendanube/categories", async (req, res) => {
       return res.status(401).json({ error: "No hay token de acceso" });
     }
 
-    const response = await fetch(
-      `https://api.tiendanube.com/v1/${storeId}/categories`,
-      {
-        headers: {
-          "Authentication": `bearer ${accessToken}`,
-          "User-Agent": "PromoNube App (contacto@promonube.com)"
-        }
-      }
-    );
+    // Paginar para traer TODAS las categorías
+    let allCategories = [];
+    let page = 1;
+    let hasMore = true;
+    const perPage = 200;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Error TiendaNube categories:", response.status, errorText);
-      return res.status(response.status).json({ error: "Error obteniendo categorÃ­as" });
+    while (hasMore) {
+      const response = await fetch(
+        `https://api.tiendanube.com/v1/${storeId}/categories?per_page=${perPage}&page=${page}`,
+        {
+          headers: {
+            "Authentication": `bearer ${accessToken}`,
+            "User-Agent": "PromoNube App (contacto@promonube.com)"
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Error TiendaNube categories:", response.status, errorText);
+        return res.status(response.status).json({ error: "Error obteniendo categorías" });
+      }
+
+      const data = await response.json();
+      if (data.length > 0) {
+        allCategories = allCategories.concat(data);
+        page++;
+        if (data.length < perPage) hasMore = false;
+      } else {
+        hasMore = false;
+      }
     }
 
-    const data = await response.json();
-    res.json(data);
+    res.json(allCategories);
 
   } catch (error) {
     console.error("Error obteniendo categorÃ­as:", error);
