@@ -1,17 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Palette, MessageSquare, Menu as MenuIcon, Eye, Upload, Image } from 'lucide-react';
 import { apiRequest } from '../config';
 import './StyleConfig.css';
 import EmojiPicker from '../components/EmojiPicker';
+import { useToast } from '../context/ToastContext';
 
 function StyleConfig() {
   const navigate = useNavigate();
+  const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
   
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('whatsapp');
+  const [tabSearch, setTabSearch] = useState('');
+  const [lastSaved, setLastSaved] = useState(null);
   const [loadingMenus, setLoadingMenus] = useState(false);
+  const [uploadingIndex, setUploadingIndex] = useState(null);
+  const [uploadMessages, setUploadMessages] = useState({});
+  const fileInputRefs = useRef({});
   const [tiendanubeMenus, setTiendanubeMenus] = useState([]);
   
   const [config, setConfig] = useState({
@@ -114,7 +121,19 @@ function StyleConfig() {
         { text: 'decoración', link: '' }
       ],
       primaryColor: '#000000',
-      maxResults: 8
+      textColor: '#1a1a1a',
+      backgroundColor: '#ffffff',
+      hoverBgColor: '',
+      maxResults: 8,
+      fontFamily: 'inherit',
+      fontSize: '15',
+      fontWeight: '500',
+      headerText: 'Búsquedas Populares',
+      showHeader: true,
+      showIcons: true,
+      defaultEmoji: '🔍',
+      borderRadius: '12',
+      animationType: 'fade'
     },
     searchBar: {
       enabled: false,
@@ -132,20 +151,80 @@ function StyleConfig() {
       logoSize: 100,
       suggestions: [],
       closeButtonColor: '#000000'
+    },
+    shopTheLook: {
+      enabled: false,
+      title: 'Shop the Look',
+      subtitle: '',
+      hotspotColor: '#ffffff',
+      hotspotTextColor: '#111111',
+      hotspotBorderColor: 'rgba(255,255,255,0.35)',
+      hotspotSize: 32,
+      hotspotShape: 'circle', // circle | square | rounded | tag
+      hotspotAnimation: 'pulse', // none | pulse | bounce | glow
+      hotspotLabelMode: 'auto', // auto | number | plus | custom | none
+      hotspotFontSize: 18,
+      hotspotFontWeight: '700',
+      hoverCardEnabled: true,
+      hoverCardBg: '#ffffff',
+      hoverCardText: '#111111',
+      hoverCardButtonBg: '#111111',
+      hoverCardButtonText: '#ffffff',
+      hoverCardButtonLabel: 'Ver producto',
+      injectSelector: '',
+      injectPosition: 'after',
+      looks: []
+    },
+    scrollReveal: {
+      enabled: false,
+      selectors: '.product-item, .js-item-product, .home-section, .banner, .featured-products .item',
+      animation: 'fade-up',
+      duration: 700,
+      distance: 40,
+      stagger: 80,
+      once: true,
+      threshold: 0.12
+    },
+    customCursor: {
+      enabled: false,
+      style: 'dot-ring',
+      dotColor: '#111111',
+      ringColor: '#111111',
+      dotSize: 8,
+      ringSize: 36,
+      mixBlendMode: 'difference',
+      hideOnMobile: true
+    },
+    tabTitle: {
+      enabled: false,
+      messages: ['👋 ¡Volvé!', '🛍️ Te estamos esperando', '💝 Tus productos te extrañan'],
+      interval: 2500,
+      restoreOnFocus: true
+    },
+    backToTop: {
+      enabled: false,
+      icon: '↑',
+      position: 'bottom-right',
+      offset: 30,
+      size: 48,
+      backgroundColor: '#111111',
+      textColor: '#ffffff',
+      borderRadius: 50,
+      showAfter: 400,
+      pulse: false
     }
   });
 
   useEffect(() => {
     // Verificar autenticación
     if (!storeId) {
-      alert('⚠️ Sesión expirada. Por favor, volvé a iniciar sesión.');
+      toast.warn('Sesión expirada. Por favor, volvé a iniciar sesión.');
       navigate('/');
       return;
     }
     
     loadConfig();
-    // Temporalmente deshabilitado - requiere permisos adicionales en TiendaNube
-    // loadTiendanubeMenus();
+    loadTiendanubeMenus();
   }, []);
 
   const loadTiendanubeMenus = async () => {
@@ -157,7 +236,7 @@ function StyleConfig() {
       }
     } catch (error) {
       console.error('Error loading TiendaNube menus:', error);
-      alert('Error al cargar los menús de TiendaNube');
+      // Silent fail - menus import is optional
     } finally {
       setLoadingMenus(false);
     }
@@ -187,7 +266,17 @@ function StyleConfig() {
           primaryColor: data.config.enhancedSearch?.primaryColor || '#000000',
           textColor: data.config.enhancedSearch?.textColor || '#1a1a1a',
           backgroundColor: data.config.enhancedSearch?.backgroundColor || '#ffffff',
-          maxResults: data.config.enhancedSearch?.maxResults || 8
+          hoverBgColor: data.config.enhancedSearch?.hoverBgColor || '',
+          maxResults: data.config.enhancedSearch?.maxResults || 8,
+          fontFamily: data.config.enhancedSearch?.fontFamily || 'inherit',
+          fontSize: data.config.enhancedSearch?.fontSize || '15',
+          fontWeight: data.config.enhancedSearch?.fontWeight || '500',
+          headerText: data.config.enhancedSearch?.headerText || 'Búsquedas Populares',
+          showHeader: data.config.enhancedSearch?.showHeader !== false,
+          showIcons: data.config.enhancedSearch?.showIcons !== false,
+          defaultEmoji: data.config.enhancedSearch?.defaultEmoji || '🔍',
+          borderRadius: data.config.enhancedSearch?.borderRadius || '12',
+          animationType: data.config.enhancedSearch?.animationType || 'fade'
         };
         
         const loadedConfig = {
@@ -196,9 +285,13 @@ function StyleConfig() {
             ...data.config.banners,
             slides: slides
           },
-          enhancedSearch: enhancedSearch
+          enhancedSearch: enhancedSearch,
+          themeSwitch: data.config.themeSwitch || { enabled: false, urls: [], backgroundColor: '#000000', textColor: '#ffffff', accentColor: '#f59e0b', invertColors: false },
+          searchBar: data.config.searchBar || { enabled: false, placeholder: '¿Qué estás buscando?', inputPlaceholder: 'Buscar productos...', buttonText: 'Buscar', backgroundColor: '#000000', backgroundOpacity: 0.85, buttonColor: '#000000', titleColor: '#ffffff', titleSize: 42, titlePosition: 'center', showLogo: false, logoUrl: '', logoSize: 100, suggestions: [], closeButtonColor: '#000000' },
+          lightToggle: data.config.lightToggle || { enabled: false, categoryUrls: [], label: 'Ver:', position: 'top-right', style: 'variant', view1Label: 'Apagada', view2Label: 'Prendida' }
         };
         setConfig(loadedConfig);
+        if (data.config.updatedAt) setLastSaved(new Date(data.config.updatedAt));
         console.log('Config cargado:', loadedConfig);
       }
     } catch (error) {
@@ -208,41 +301,34 @@ function StyleConfig() {
 
   const saveConfig = async () => {
     if (!storeId) {
-      alert('❌ Error: No se encontró el ID de la tienda. Por favor, volvé a iniciar sesión.');
+      toast.error('No se encontró el ID de la tienda. Por favor, volvé a iniciar sesión.');
       return;
     }
 
     setLoading(true);
     try {
-      // Limpiar slides sin botones antes de guardar
-      const cleanedConfig = {
-        ...config,
-        banners: {
-          ...config.banners,
-          slides: config.banners.slides.filter(slide => slide.buttons && slide.buttons.length > 0)
-        }
-      };
-      
-      console.log('Guardando config:', { storeId, config: cleanedConfig });
+      console.log('Guardando config:', { storeId, config });
       
       const data = await apiRequest('/api/style-config', {
         method: 'POST',
         body: JSON.stringify({
           storeId,
-          config: cleanedConfig
+          config
         })
       });
 
       if (data.success) {
-        alert('✅ Configuración guardada! Los cambios se verán en tu tienda en unos segundos');
-        // Actualizar el estado local con la config limpia
-        setConfig(cleanedConfig);
+        const scriptMsg = data.scriptInstalled === false
+          ? '\n\n⚠️ El script no pudo instalarse automáticamente. Si los cambios no aparecen en tu tienda, contactá soporte.'
+          : '';
+        toast.success(`Configuración guardada!${scriptMsg} Los cambios se verán en tu tienda en 1-2 minutos.`);
+        setLastSaved(new Date());
       } else {
-        alert('❌ Error al guardar configuración: ' + (data.message || 'Error desconocido'));
+        toast.error('Error al guardar configuración: ' + (data.message || 'Error desconocido'));
       }
     } catch (error) {
       console.error('Error completo:', error);
-      alert('❌ Error al guardar: ' + error.message);
+      toast.error('Error al guardar: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -252,6 +338,34 @@ function StyleConfig() {
     setConfig(prev => ({
       ...prev,
       whatsapp: { ...prev.whatsapp, [field]: value }
+    }));
+  };
+
+  const updateScrollReveal = (field, value) => {
+    setConfig(prev => ({
+      ...prev,
+      scrollReveal: { ...(prev.scrollReveal || {}), [field]: value }
+    }));
+  };
+
+  const updateCustomCursor = (field, value) => {
+    setConfig(prev => ({
+      ...prev,
+      customCursor: { ...(prev.customCursor || {}), [field]: value }
+    }));
+  };
+
+  const updateTabTitle = (field, value) => {
+    setConfig(prev => ({
+      ...prev,
+      tabTitle: { ...(prev.tabTitle || {}), [field]: value }
+    }));
+  };
+
+  const updateBackToTop = (field, value) => {
+    setConfig(prev => ({
+      ...prev,
+      backToTop: { ...(prev.backToTop || {}), [field]: value }
     }));
   };
 
@@ -306,27 +420,28 @@ function StyleConfig() {
 
   const uploadMenuImage = async (index, file) => {
     if (!file) return;
-    
+
     if (!file.type.startsWith('image/')) {
-      alert('❌ Por favor selecciona una imagen válida');
+      setUploadMessages(prev => ({ ...prev, [index]: { type: 'error', text: 'Seleccioná una imagen válida (JPG, PNG, WebP)' } }));
       return;
     }
-    
+
     if (file.size > 5 * 1024 * 1024) {
-      alert('❌ La imagen es muy grande. Máximo 5MB');
+      setUploadMessages(prev => ({ ...prev, [index]: { type: 'error', text: 'La imagen supera 5MB. Usá una más liviana.' } }));
       return;
     }
-    
+
     try {
-      setLoading(true);
-      
+      setUploadingIndex(index);
+      setUploadMessages(prev => ({ ...prev, [index]: null }));
+
       const reader = new FileReader();
       const base64Data = await new Promise((resolve, reject) => {
         reader.onload = () => resolve(reader.result);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      
+
       const response = await apiRequest('/api/upload-image-base64', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -337,18 +452,21 @@ function StyleConfig() {
           folder: 'menu-images'
         })
       });
-      
+
       if (!response.success) {
         throw new Error(response.message || 'Error al subir imagen');
       }
-      
+
       updateMenuItem(index, 'imageUrl', response.url);
-      alert('✅ Imagen subida correctamente');
+      setUploadMessages(prev => ({ ...prev, [index]: { type: 'success', text: 'Imagen subida correctamente' } }));
+      setTimeout(() => {
+        setUploadMessages(prev => ({ ...prev, [index]: null }));
+      }, 3000);
     } catch (error) {
       console.error('Error:', error);
-      alert('❌ Error al subir imagen: ' + error.message);
+      setUploadMessages(prev => ({ ...prev, [index]: { type: 'error', text: 'Error al subir la imagen. Intentá de nuevo.' } }));
     } finally {
-      setLoading(false);
+      setUploadingIndex(null);
     }
   };
 
@@ -486,11 +604,12 @@ function StyleConfig() {
       <header className="page-header-modern">
         <div className="header-content-modern">
           <div className="header-top-modern">
-            <button className="btn-back-modern" onClick={() => navigate('/dashboard')}>
-              <ArrowLeft size={20} />
-              <span>Dashboard</span>
-            </button>
-            <div style={{display: 'flex', gap: '10px'}}>
+            <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+              {lastSaved && (
+                <span style={{fontSize: '12px', color: 'rgba(255,255,255,0.55)', paddingRight: '4px'}}>
+                  Guardado: {lastSaved.toLocaleTimeString('es-AR', {hour: '2-digit', minute: '2-digit'})}
+                </span>
+              )}
               <button 
                 className="btn-primary-gradient" 
                 onClick={saveConfig}
@@ -508,76 +627,89 @@ function StyleConfig() {
         </div>
       </header>
 
-      {/* Tabs */}
-      <div className="config-tabs">
-        <button 
-          className={`tab-button ${activeTab === 'whatsapp' ? 'active' : ''}`}
-          onClick={() => setActiveTab('whatsapp')}
-        >
-          <MessageSquare size={18} />
-          <span>WhatsApp</span>
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'menu' ? 'active' : ''}`}
-          onClick={() => setActiveTab('menu')}
-        >
-          <MenuIcon size={18} />
-          <span>Menú</span>
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'banners' ? 'active' : ''}`}
-          onClick={() => setActiveTab('banners')}
-        >
-          <Image size={18} />
-          <span>Banners</span>
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'topHeader' ? 'active' : ''}`}
-          onClick={() => setActiveTab('topHeader')}
-        >
-          <span>📌</span>
-          <span>Barra de Encabezado</span>
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'topAnnouncementBar' ? 'active' : ''}`}
-          onClick={() => setActiveTab('topAnnouncementBar')}
-        >
-          <span>📣</span>
-          <span>Menu Superior</span>
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'announcementBar' ? 'active' : ''}`}
-          onClick={() => setActiveTab('announcementBar')}
-        >
-          <span>📢</span>
-          <span>Menu Inferior</span>
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'enhancedSearch' ? 'active' : ''}`}
-          onClick={() => setActiveTab('enhancedSearch')}
-        >
-          <span>🔍</span>
-          <span>Buscador Mejorado</span>
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'searchBar' ? 'active' : ''}`}
-          onClick={() => setActiveTab('searchBar')}
-        >
-          <span>🔎</span>
-          <span>Búsqueda Modal</span>
-        </button>
-        <button 
-          className="tab-button"
-          onClick={() => setActiveTab('lightToggle')}
-        >
-          <span>�</span>
-          <span>Cambio de Vista</span>
-        </button>
-      </div>
+      {/* Layout con sidebar */}
+      <div className="style-layout">
+        <aside className="style-sidebar">
+          <div className="style-sidebar-search">
+            <input
+              type="text"
+              value={tabSearch}
+              onChange={(e) => setTabSearch(e.target.value)}
+              placeholder="🔎 Buscar módulo..."
+            />
+          </div>
+          <nav className="style-sidebar-nav">
+            {[
+              {
+                title: '🎨 Diseño base',
+                items: [
+                  { id: 'menu', label: 'Menú principal', icon: '☰', enabled: config.menu?.enabled },
+                  { id: 'banners', label: 'Banners', icon: '🖼️', enabled: config.banners?.enabled },
+                  { id: 'topHeader', label: 'Barra de encabezado', icon: '📌', enabled: config.topHeader?.enabled },
+                  { id: 'topAnnouncementBar', label: 'Menú superior', icon: '📣', enabled: config.topAnnouncementBar?.enabled },
+                  { id: 'announcementBar', label: 'Menú inferior', icon: '📢', enabled: config.announcementBar?.enabled },
+                ]
+              },
+              {
+                title: '🛒 Conversión',
+                items: [
+                  { id: 'whatsapp', label: 'WhatsApp', icon: '💬', enabled: config.whatsapp?.enabled },
+                  { id: 'enhancedSearch', label: 'Buscador mejorado', icon: '🔍', enabled: config.enhancedSearch?.enabled },
+                  { id: 'searchBar', label: 'Búsqueda modal', icon: '🔎', enabled: config.searchBar?.enabled },
+                ]
+              },
+              {
+                title: '✨ Módulos visuales',
+                items: [
+                  { id: 'shopTheLook', label: 'Shop the Look', icon: '📍', enabled: config.shopTheLook?.enabled, badge: 'NUEVO' },
+                ]
+              },
+              {
+                title: '🎬 Animaciones y efectos',
+                items: [
+                  { id: 'scrollReveal', label: 'Scroll Reveal', icon: '🪄', enabled: config.scrollReveal?.enabled, badge: 'NUEVO' },
+                  { id: 'customCursor', label: 'Cursor custom', icon: '🖱️', enabled: config.customCursor?.enabled, badge: 'NUEVO' },
+                  { id: 'tabTitle', label: 'Título de pestaña', icon: '📑', enabled: config.tabTitle?.enabled, badge: 'NUEVO' },
+                  { id: 'backToTop', label: 'Volver arriba', icon: '⬆️', enabled: config.backToTop?.enabled, badge: 'NUEVO' },
+                ]
+              },
+              {
+                title: '⚙️ Utilidades',
+                items: [
+                  { id: 'lightToggle', label: 'Cambio de vista', icon: '💡', enabled: config.lightToggle?.enabled },
+                  { id: 'themeSwitch', label: 'Tema claro/oscuro', icon: '🌓', enabled: config.themeSwitch?.enabled },
+                ]
+              },
+            ].map((group) => {
+              const q = tabSearch.trim().toLowerCase();
+              const filteredItems = q ? group.items.filter(it => it.label.toLowerCase().includes(q) || it.id.toLowerCase().includes(q)) : group.items;
+              if (!filteredItems.length) return null;
+              return (
+                <div key={group.title} className="style-sidebar-group">
+                  <div className="style-sidebar-group-title">{group.title}</div>
+                  {filteredItems.map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`style-sidebar-item ${activeTab === item.id ? 'active' : ''}`}
+                      onClick={() => setActiveTab(item.id)}
+                    >
+                      <span className="ssi-icon">{item.icon}</span>
+                      <span className="ssi-label">{item.label}</span>
+                      {item.badge && <span className="ssi-badge">{item.badge}</span>}
+                      <span className={`ssi-dot ${item.enabled ? 'on' : 'off'}`} title={item.enabled ? 'Activo' : 'Inactivo'}></span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </nav>
+        </aside>
 
-      <div className="config-content">
-        {/* WhatsApp Tab */}
-        {activeTab === 'whatsapp' && (
+        <main className="style-main">
+          <div className="config-content">
+            {/* WhatsApp Tab */}
+            {activeTab === 'whatsapp' && (
           <div className="config-section">
             <div className="section-header">
               <h2>💬 Botón de WhatsApp</h2>
@@ -630,7 +762,7 @@ function StyleConfig() {
                 </div>
 
                 <div className="preview-box" style={{marginTop: '30px'}}>
-                  <h3 style={{marginBottom: '20px', fontSize: '14px', color: '#666'}}>Vista Previa</h3>
+                  <h3 style={{marginBottom: '20px', fontSize: '14px', color: 'rgba(255, 255, 255, 0.6)'}}>Vista Previa</h3>
                   <div className="whatsapp-preview">
                     <div
                       style={{
@@ -665,6 +797,268 @@ function StyleConfig() {
           </div>
         )}
 
+        {/* Scroll Reveal Tab */}
+        {activeTab === 'scrollReveal' && (
+          <div className="config-section">
+            <div className="section-header">
+              <h2>🪄 Scroll Reveal — Animación al aparecer</h2>
+              <label className="toggle-switch">
+                <input type="checkbox" checked={config.scrollReveal?.enabled || false} onChange={(e) => updateScrollReveal('enabled', e.target.checked)} />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+            {config.scrollReveal?.enabled && (
+              <>
+                <p style={{opacity: 0.7, fontSize: 13, marginBottom: 20, lineHeight: 1.5}}>
+                  Anima elementos cuando entran al viewport al hacer scroll. Ideal para dar un "wow" instantáneo a listas de productos, banners y secciones del home.
+                </p>
+                <div className="form-group">
+                  <label>Selectores CSS (separados por coma)</label>
+                  <input type="text" value={config.scrollReveal.selectors} onChange={(e) => updateScrollReveal('selectors', e.target.value)} placeholder=".product-item, .banner, .home-section" />
+                  <small style={{opacity: 0.6}}>Por defecto apunta a productos de TN. Podés agregar tus propios selectores.</small>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Tipo de animación</label>
+                    <select value={config.scrollReveal.animation} onChange={(e) => updateScrollReveal('animation', e.target.value)}>
+                      <option value="fade">Fade</option>
+                      <option value="fade-up">Fade + Up</option>
+                      <option value="fade-down">Fade + Down</option>
+                      <option value="fade-left">Fade + Left</option>
+                      <option value="fade-right">Fade + Right</option>
+                      <option value="zoom-in">Zoom In</option>
+                      <option value="zoom-out">Zoom Out</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Duración (ms)</label>
+                    <input type="number" min="200" max="2000" step="50" value={config.scrollReveal.duration} onChange={(e) => updateScrollReveal('duration', parseInt(e.target.value) || 700)} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Distancia del desplazamiento (px)</label>
+                    <input type="number" min="0" max="200" step="5" value={config.scrollReveal.distance} onChange={(e) => updateScrollReveal('distance', parseInt(e.target.value) || 40)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Stagger entre elementos (ms)</label>
+                    <input type="number" min="0" max="300" step="10" value={config.scrollReveal.stagger} onChange={(e) => updateScrollReveal('stagger', parseInt(e.target.value) || 80)} />
+                    <small style={{opacity: 0.6}}>Delay entre cada elemento para efecto cascada</small>
+                  </div>
+                </div>
+                <div className="form-group" style={{marginTop: 16}}>
+                  <label style={{display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer'}}>
+                    <input type="checkbox" checked={config.scrollReveal.once !== false} onChange={(e) => updateScrollReveal('once', e.target.checked)} />
+                    <span>Animar solo una vez (recomendado)</span>
+                  </label>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Custom Cursor Tab */}
+        {activeTab === 'customCursor' && (
+          <div className="config-section">
+            <div className="section-header">
+              <h2>🖱️ Cursor Personalizado</h2>
+              <label className="toggle-switch">
+                <input type="checkbox" checked={config.customCursor?.enabled || false} onChange={(e) => updateCustomCursor('enabled', e.target.checked)} />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+            {config.customCursor?.enabled && (
+              <>
+                <p style={{opacity: 0.7, fontSize: 13, marginBottom: 20, lineHeight: 1.5}}>
+                  Reemplaza el cursor del navegador por un dot + ring animado. Da un look premium tipo marca de lujo. Se oculta automáticamente en mobile.
+                </p>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Color del punto (dot)</label>
+                    <div className="color-input-group">
+                      <input type="color" value={config.customCursor.dotColor} onChange={(e) => updateCustomCursor('dotColor', e.target.value)} />
+                      <input type="text" value={config.customCursor.dotColor} onChange={(e) => updateCustomCursor('dotColor', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>Color del anillo (ring)</label>
+                    <div className="color-input-group">
+                      <input type="color" value={config.customCursor.ringColor} onChange={(e) => updateCustomCursor('ringColor', e.target.value)} />
+                      <input type="text" value={config.customCursor.ringColor} onChange={(e) => updateCustomCursor('ringColor', e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Tamaño del dot (px)</label>
+                    <input type="number" min="4" max="30" value={config.customCursor.dotSize} onChange={(e) => updateCustomCursor('dotSize', parseInt(e.target.value) || 8)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Tamaño del ring (px)</label>
+                    <input type="number" min="20" max="80" value={config.customCursor.ringSize} onChange={(e) => updateCustomCursor('ringSize', parseInt(e.target.value) || 36)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Modo de mezcla</label>
+                    <select value={config.customCursor.mixBlendMode} onChange={(e) => updateCustomCursor('mixBlendMode', e.target.value)}>
+                      <option value="difference">Difference (invierte colores ✨)</option>
+                      <option value="normal">Normal</option>
+                      <option value="multiply">Multiply</option>
+                      <option value="exclusion">Exclusion</option>
+                      <option value="screen">Screen</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="form-group" style={{marginTop: 10}}>
+                  <label style={{display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer'}}>
+                    <input type="checkbox" checked={config.customCursor.hideOnMobile !== false} onChange={(e) => updateCustomCursor('hideOnMobile', e.target.checked)} />
+                    <span>Ocultar en mobile y táctil (recomendado)</span>
+                  </label>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Tab Title Tab */}
+        {activeTab === 'tabTitle' && (
+          <div className="config-section">
+            <div className="section-header">
+              <h2>📑 Título dinámico de pestaña</h2>
+              <label className="toggle-switch">
+                <input type="checkbox" checked={config.tabTitle?.enabled || false} onChange={(e) => updateTabTitle('enabled', e.target.checked)} />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+            {config.tabTitle?.enabled && (
+              <>
+                <p style={{opacity: 0.7, fontSize: 13, marginBottom: 20, lineHeight: 1.5}}>
+                  Cuando el usuario cambia de pestaña, el título del navegador rota entre mensajes personalizados para captar su atención. Buenísimo para retención.
+                </p>
+                <div className="form-group">
+                  <label>Mensajes (uno por línea)</label>
+                  <textarea
+                    rows="5"
+                    value={(config.tabTitle.messages || []).join('\n')}
+                    onChange={(e) => updateTabTitle('messages', e.target.value.split('\n').filter(x => x.trim()))}
+                    placeholder={'👋 ¡Volvé!\n🛍️ Te estamos esperando\n💝 Tus productos te extrañan'}
+                    style={{width: '100%', padding: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, color: 'inherit', fontFamily: 'inherit', fontSize: 14, resize: 'vertical'}}
+                  />
+                  <small style={{opacity: 0.6}}>Podés usar emojis. Los mensajes rotan cíclicamente.</small>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Intervalo entre mensajes (ms)</label>
+                    <input type="number" min="800" max="10000" step="100" value={config.tabTitle.interval} onChange={(e) => updateTabTitle('interval', parseInt(e.target.value) || 2500)} />
+                  </div>
+                </div>
+                <div className="form-group" style={{marginTop: 10}}>
+                  <label style={{display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer'}}>
+                    <input type="checkbox" checked={config.tabTitle.restoreOnFocus !== false} onChange={(e) => updateTabTitle('restoreOnFocus', e.target.checked)} />
+                    <span>Restaurar título original cuando vuelva a la pestaña</span>
+                  </label>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Back to Top Tab */}
+        {activeTab === 'backToTop' && (
+          <div className="config-section">
+            <div className="section-header">
+              <h2>⬆️ Botón "Volver arriba"</h2>
+              <label className="toggle-switch">
+                <input type="checkbox" checked={config.backToTop?.enabled || false} onChange={(e) => updateBackToTop('enabled', e.target.checked)} />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+            {config.backToTop?.enabled && (
+              <>
+                <p style={{opacity: 0.7, fontSize: 13, marginBottom: 20, lineHeight: 1.5}}>
+                  Botón flotante que aparece al hacer scroll y lleva al tope con smooth scroll.
+                </p>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Ícono / texto</label>
+                    <input type="text" value={config.backToTop.icon} onChange={(e) => updateBackToTop('icon', e.target.value)} placeholder="↑" maxLength="3" />
+                    <small style={{opacity: 0.6}}>Podés usar texto, emoji o símbolo</small>
+                  </div>
+                  <div className="form-group">
+                    <label>Posición</label>
+                    <select value={config.backToTop.position} onChange={(e) => updateBackToTop('position', e.target.value)}>
+                      <option value="bottom-right">Abajo derecha</option>
+                      <option value="bottom-left">Abajo izquierda</option>
+                      <option value="bottom-center">Abajo centro</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Color de fondo</label>
+                    <div className="color-input-group">
+                      <input type="color" value={config.backToTop.backgroundColor} onChange={(e) => updateBackToTop('backgroundColor', e.target.value)} />
+                      <input type="text" value={config.backToTop.backgroundColor} onChange={(e) => updateBackToTop('backgroundColor', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>Color del ícono</label>
+                    <div className="color-input-group">
+                      <input type="color" value={config.backToTop.textColor} onChange={(e) => updateBackToTop('textColor', e.target.value)} />
+                      <input type="text" value={config.backToTop.textColor} onChange={(e) => updateBackToTop('textColor', e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Tamaño (px)</label>
+                    <input type="number" min="32" max="80" value={config.backToTop.size} onChange={(e) => updateBackToTop('size', parseInt(e.target.value) || 48)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Distancia del borde (px)</label>
+                    <input type="number" min="10" max="100" value={config.backToTop.offset} onChange={(e) => updateBackToTop('offset', parseInt(e.target.value) || 30)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Redondeo (%)</label>
+                    <input type="number" min="0" max="50" value={config.backToTop.borderRadius} onChange={(e) => updateBackToTop('borderRadius', parseInt(e.target.value) || 50)} />
+                    <small style={{opacity: 0.6}}>50 = círculo, 0 = cuadrado</small>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Aparecer después de scrollear (px)</label>
+                    <input type="number" min="0" max="2000" step="50" value={config.backToTop.showAfter} onChange={(e) => updateBackToTop('showAfter', parseInt(e.target.value) || 400)} />
+                  </div>
+                </div>
+                <div className="form-group" style={{marginTop: 10}}>
+                  <label style={{display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer'}}>
+                    <input type="checkbox" checked={config.backToTop.pulse || false} onChange={(e) => updateBackToTop('pulse', e.target.checked)} />
+                    <span>Animación de pulso (pulse glow)</span>
+                  </label>
+                </div>
+
+                {/* Vista Previa */}
+                <div className="preview-box" style={{marginTop: 30, padding: 30, background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px dashed rgba(255,255,255,0.12)', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 140}}>
+                  <div style={{
+                    width: config.backToTop.size,
+                    height: config.backToTop.size,
+                    borderRadius: `${config.backToTop.borderRadius}%`,
+                    background: config.backToTop.backgroundColor,
+                    color: config.backToTop.textColor,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: Math.round(config.backToTop.size * 0.45),
+                    fontWeight: 700,
+                    boxShadow: '0 6px 20px rgba(0,0,0,0.2)'
+                  }}>
+                    {config.backToTop.icon}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Menu Tab */}
         {activeTab === 'menu' && (
           <div className="config-section">
@@ -690,7 +1084,7 @@ function StyleConfig() {
 
                 {(!config.menu.items || config.menu.items.length === 0) ? (
                   <div style={{textAlign: 'center', padding: '40px 20px'}}>
-                    <p style={{color: '#666', marginBottom: '20px'}}>
+                    <p style={{color: 'rgba(255, 255, 255, 0.6)', marginBottom: '20px'}}>
                       No hay items configurados. Agrega el primer item del menú.
                     </p>
                     <button className="btn-add" onClick={addMenuItem}>
@@ -739,7 +1133,7 @@ function StyleConfig() {
                               onChange={(e) => updateMenuItem(index, 'position', e.target.value)}
                               placeholder="1, 2, 3 o 1.1, 2.3 para subcategorías"
                             />
-                            <small style={{color: '#666', fontSize: '11px', display: 'block', marginTop: '4px'}}>
+                            <small style={{color: 'rgba(255, 255, 255, 0.6)', fontSize: '11px', display: 'block', marginTop: '4px'}}>
                               Categoría: 1, 2, 3... | Subcategoría: 1.1, 1.2, 2.1, 2.2...
                             </small>
                           </div>
@@ -817,79 +1211,195 @@ function StyleConfig() {
                         {/* Imagen del Dropdown */}
                         <div style={{
                           marginTop: '20px',
-                          padding: '20px',
-                          background: 'linear-gradient(135deg, #f093fb15 0%, #f5576c15 100%)',
+                          padding: '18px',
+                          background: 'rgba(102, 126, 234, 0.07)',
                           borderRadius: '12px',
-                          border: '2px dashed #f093fb'
+                          border: '1px solid rgba(102, 126, 234, 0.2)'
                         }}>
-                          <h4 style={{fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: 'rgba(255, 255, 255, 0.95)'}}>
-                            🖼️ Imagen del Dropdown
-                          </h4>
-                          <p style={{fontSize: '13px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '15px'}}>
-                            Esta imagen aparecerá dentro del dropdown cuando se haga hover en este menú
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                            <Image size={15} color="#667eea" />
+                            <h4 style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: 'rgba(255, 255, 255, 0.9)' }}>
+                              Imagen del Dropdown
+                            </h4>
+                          </div>
+                          <p style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.45)', marginBottom: '14px', marginTop: '4px', lineHeight: 1.4 }}>
+                            Desktop: aparece dentro del dropdown · Mobile: debajo de las subcategorías
                           </p>
 
-                          <div className="form-group">
-                            <label>URL de la Imagen</label>
-                            <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
-                              <input
-                                type="text"
-                                value={item.imageUrl || ''}
-                                onChange={(e) => updateMenuItem(index, 'imageUrl', e.target.value)}
-                                placeholder="https://... o sube una imagen"
-                                style={{flex: 1}}
-                              />
-                              <label 
-                                htmlFor={`image-upload-${index}`}
-                                style={{
-                                  cursor: 'pointer',
-                                  padding: '10px 16px',
-                                  background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                                  color: '#ffffff',
-                                  borderRadius: '8px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  fontSize: '14px',
-                                  fontWeight: '600',
-                                  whiteSpace: 'nowrap'
-                                }}
-                              >
-                                <Upload size={16} />
-                                Subir
-                              </label>
-                              <input
-                                id={`image-upload-${index}`}
-                                type="file"
-                                accept="image/*"
-                                style={{display: 'none'}}
-                                onChange={(e) => {
-                                  const file = e.target.files[0];
-                                  if (file) uploadMenuImage(index, file);
-                                }}
-                              />
-                            </div>
-                            <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', display: 'block', marginTop: '6px'}}>
-                              💡 Desktop: aparece dentro del dropdown | Mobile: aparece abajo de las subcategorías
-                            </small>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={item.imageUrl || ''}
+                              onChange={(e) => updateMenuItem(index, 'imageUrl', e.target.value)}
+                              placeholder="https://mitienda.com/imagen.jpg"
+                              style={{ flex: 1 }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => fileInputRefs.current[index]?.click()}
+                              disabled={uploadingIndex === index}
+                              style={{
+                                cursor: uploadingIndex === index ? 'not-allowed' : 'pointer',
+                                padding: '10px 14px',
+                                background: uploadingIndex === index
+                                  ? 'rgba(102, 126, 234, 0.25)'
+                                  : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                color: '#ffffff',
+                                borderRadius: '8px',
+                                border: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '13px',
+                                fontWeight: '600',
+                                whiteSpace: 'nowrap',
+                                transition: 'all 0.2s ease',
+                                minWidth: '88px',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              {uploadingIndex === index ? (
+                                <>
+                                  <span style={{
+                                    display: 'inline-block',
+                                    width: '12px',
+                                    height: '12px',
+                                    border: '2px solid rgba(255,255,255,0.3)',
+                                    borderTopColor: '#fff',
+                                    borderRadius: '50%',
+                                    animation: 'spin 0.8s linear infinite',
+                                    flexShrink: 0
+                                  }} />
+                                  Subiendo
+                                </>
+                              ) : (
+                                <>
+                                  <Upload size={14} />
+                                  Subir
+                                </>
+                              )}
+                            </button>
+                            <input
+                              ref={el => { fileInputRefs.current[index] = el; }}
+                              type="file"
+                              accept="image/*"
+                              style={{ display: 'none' }}
+                              onChange={(e) => {
+                                const file = e.target.files[0];
+                                if (file) uploadMenuImage(index, file);
+                                e.target.value = '';
+                              }}
+                            />
                           </div>
 
+                          {/* Mensaje de estado inline */}
+                          {uploadMessages[index] && (
+                            <div style={{
+                              marginTop: '10px',
+                              padding: '8px 12px',
+                              borderRadius: '8px',
+                              fontSize: '12px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              background: uploadMessages[index].type === 'success'
+                                ? 'rgba(34, 197, 94, 0.12)'
+                                : 'rgba(239, 68, 68, 0.12)',
+                              color: uploadMessages[index].type === 'success' ? '#4ade80' : '#f87171',
+                              border: `1px solid ${uploadMessages[index].type === 'success' ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`
+                            }}>
+                              <span style={{ fontWeight: '700' }}>
+                                {uploadMessages[index].type === 'success' ? '✓' : '✕'}
+                              </span>
+                              {uploadMessages[index].text}
+                            </div>
+                          )}
+
+                          {/* Preview de la imagen */}
                           {item.imageUrl && (
-                            <div style={{marginTop: '15px'}}>
-                              <img 
-                                src={item.imageUrl} 
-                                alt="Preview" 
+                            <div style={{ marginTop: '14px', position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+                              <img
+                                src={item.imageUrl}
+                                alt="Preview"
                                 style={{
                                   maxWidth: '100%',
-                                  maxHeight: '200px',
+                                  maxHeight: '160px',
                                   borderRadius: '8px',
-                                  border: '2px solid rgba(124, 124, 255, 0.2)',
-                                  display: 'block'
+                                  border: '1px solid rgba(102, 126, 234, 0.25)',
+                                  display: 'block',
+                                  objectFit: 'cover'
                                 }}
                                 onError={(e) => {
                                   e.target.style.display = 'none';
                                 }}
                               />
+                              <button
+                                type="button"
+                                onClick={() => updateMenuItem(index, 'imageUrl', '')}
+                                title="Eliminar imagen"
+                                style={{
+                                  position: 'absolute',
+                                  top: '6px',
+                                  right: '6px',
+                                  background: 'rgba(0,0,0,0.65)',
+                                  border: 'none',
+                                  borderRadius: '50%',
+                                  width: '22px',
+                                  height: '22px',
+                                  cursor: 'pointer',
+                                  color: '#fff',
+                                  fontSize: '13px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  lineHeight: 1,
+                                  padding: 0
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Campos extra para personalizar la imagen */}
+                          {item.imageUrl && (
+                            <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px dashed rgba(102,126,234,0.25)' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                                <div>
+                                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' }}>🔗 Link al hacer click</label>
+                                  <input
+                                    type="text"
+                                    value={item.imageLink || ''}
+                                    onChange={(e) => updateMenuItem(index, 'imageLink', e.target.value)}
+                                    placeholder="/categoria/verano  o  https://..."
+                                    style={{ width: '100%', boxSizing: 'border-box' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' }}>💬 Caption / CTA (opcional)</label>
+                                  <input
+                                    type="text"
+                                    value={item.imageCaption || ''}
+                                    onChange={(e) => updateMenuItem(index, 'imageCaption', e.target.value)}
+                                    placeholder="Ver colección →"
+                                    style={{ width: '100%', boxSizing: 'border-box' }}
+                                  />
+                                </div>
+                              </div>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '10px 12px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', fontSize: '13px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={item.megaMenu || false}
+                                  onChange={(e) => updateMenuItem(index, 'megaMenu', e.target.checked)}
+                                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                />
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontWeight: '600', color: '#4ade80' }}>✨ Mostrar como Mega-Menú flotante</div>
+                                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.55)', marginTop: '2px' }}>
+                                    Activalo si tu plantilla no tiene dropdown nativo o si la imagen no se ve bien dentro. Crea un panel grande al hacer hover con la imagen + las subcategorías.
+                                  </div>
+                                </div>
+                              </label>
                             </div>
                           )}
                         </div>
@@ -902,7 +1412,7 @@ function StyleConfig() {
                           borderRadius: '8px',
                           border: '1px solid #ddd'
                         }}>
-                          <h4 style={{fontSize: '14px', marginBottom: '10px', color: '#666'}}>Vista Previa:</h4>
+                          <h4 style={{fontSize: '14px', marginBottom: '10px', color: 'rgba(255, 255, 255, 0.6)'}}>Vista Previa:</h4>
                           <span style={{
                             color: item.color || 'inherit',
                             fontWeight: item.fontWeight || 'normal',
@@ -952,7 +1462,7 @@ function StyleConfig() {
 
                 {(!config.banners.slides || config.banners.slides.length === 0) ? (
                   <div style={{textAlign: 'center', padding: '40px 20px'}}>
-                    <p style={{color: '#666', marginBottom: '20px'}}>
+                    <p style={{color: 'rgba(255, 255, 255, 0.6)', marginBottom: '20px'}}>
                       No hay imágenes configuradas. Agrega la primera imagen del carrusel.
                     </p>
                     <button className="btn-add" onClick={addSlide}>
@@ -990,7 +1500,7 @@ function StyleConfig() {
                           </button>
                         </div>
 
-                        <h4 style={{fontSize: '15px', marginBottom: '12px', color: '#555'}}>
+                        <h4 style={{fontSize: '15px', marginBottom: '12px', color: 'rgba(255, 255, 255, 0.7)'}}>
                           Posición de Botones
                         </h4>
                         <div style={{marginBottom: '20px'}}>
@@ -1070,12 +1580,12 @@ function StyleConfig() {
                           </div>
                         </div>
 
-                        <h4 style={{fontSize: '15px', marginBottom: '15px', color: '#555'}}>
+                        <h4 style={{fontSize: '15px', marginBottom: '15px', color: 'rgba(255, 255, 255, 0.7)'}}>
                           Botones de esta Imagen
                         </h4>
                         
                         {slide.buttons.length === 0 ? (
-                          <p style={{color: '#999', fontStyle: 'italic', marginBottom: '15px'}}>
+                          <p style={{color: 'rgba(255, 255, 255, 0.45)', fontStyle: 'italic', marginBottom: '15px'}}>
                             Sin botones. Agrega el primero.
                           </p>
                         ) : (
@@ -1126,13 +1636,13 @@ function StyleConfig() {
                                       placeholder="rgba(0,0,0,0.8) o #FF5733"
                                     />
                                   </div>
-                                  <small style={{color: '#666', fontSize: '11px', display: 'block', marginTop: '4px'}}>
+                                  <small style={{color: 'rgba(255, 255, 255, 0.6)', fontSize: '11px', display: 'block', marginTop: '4px'}}>
                                     💡 Tip: Usa rgba(R,G,B,A) para transparencia. Ejemplo: rgba(0,0,0,0.7)
                                   </small>
                                   
                                   {/* Slider de opacidad */}
                                   <div style={{marginTop: '10px'}}>
-                                    <label style={{fontSize: '13px', color: '#666'}}>
+                                    <label style={{fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)'}}>
                                       🔳 Opacidad: {button.backgroundOpacity !== undefined ? button.backgroundOpacity : 100}%
                                     </label>
                                     <input
@@ -1822,8 +2332,34 @@ function StyleConfig() {
                     <option value="desktop">🖥️ Solo Desktop</option>
                     <option value="mobile">📱 Solo Mobile</option>
                   </select>
-                  <small style={{color: '#666', fontSize: '12px', display: 'block', marginTop: '6px'}}>
+                  <small style={{color: 'rgba(255, 255, 255, 0.6)', fontSize: '12px', display: 'block', marginTop: '6px'}}>
                     Elegí en qué dispositivos se muestra esta barra
+                  </small>
+                </div>
+
+                <div className="form-group" style={{marginBottom: '24px'}}>
+                  <label>🧭 Dónde inyectar la barra</label>
+                  <select
+                    value={config.topAnnouncementBar.insertMode || 'auto'}
+                    onChange={(e) => setConfig(prev => ({
+                      ...prev,
+                      topAnnouncementBar: { ...prev.topAnnouncementBar, insertMode: e.target.value }
+                    }))}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '2px solid rgba(124, 124, 255, 0.2)',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="auto">🎯 Auto (entre logo y menú — recomendado)</option>
+                    <option value="before-header">⬆️ Antes del header (arriba de todo)</option>
+                    <option value="inside-header-top">📥 Al inicio del header</option>
+                    <option value="after-header">⬇️ Después del header</option>
+                  </select>
+                  <small style={{color: 'rgba(255, 255, 255, 0.6)', fontSize: '12px', display: 'block', marginTop: '6px'}}>
+                    Si el modo <strong>Auto</strong> no se ve bien en tu plantilla, probá los otros. Cada theme de TN tiene una estructura distinta.
                   </small>
                 </div>
 
@@ -2236,7 +2772,7 @@ function StyleConfig() {
                     <option value="desktop">🖥️ Solo Desktop</option>
                     <option value="mobile">📱 Solo Mobile</option>
                   </select>
-                  <small style={{color: '#666', fontSize: '12px', display: 'block', marginTop: '6px'}}>
+                  <small style={{color: 'rgba(255, 255, 255, 0.6)', fontSize: '12px', display: 'block', marginTop: '6px'}}>
                     Elegí en qué dispositivos se muestra esta barra
                   </small>
                 </div>
@@ -2916,217 +3452,266 @@ function StyleConfig() {
                           </small>
                         </div>
 
-                        <button
-                          onClick={() => {
-                            const newSearches = config.enhancedSearch.popularSearches.filter((_, i) => i !== index);
-                            setConfig(prev => ({
-                              ...prev,
-                              enhancedSearch: { ...prev.enhancedSearch, popularSearches: newSearches }
-                            }));
-                          }}
-                          style={{
-                            background: '#ef4444',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '8px',
-                            padding: '10px 16px',
-                            cursor: 'pointer',
-                            fontSize: '18px',
-                            marginTop: '28px'
-                          }}
-                        >
-                          🗑️
-                        </button>
+                        <div style={{width: '70px'}}>
+                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255,255,255,0.9)'}}>Emoji</label>
+                          <input type="text" value={search.emoji || ''}
+                            onChange={e => {
+                              const ns = [...config.enhancedSearch.popularSearches];
+                              ns[index] = {...ns[index], emoji: e.target.value};
+                              setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch, popularSearches:ns}}));
+                            }}
+                            placeholder="🔍"
+                            style={{width:'100%',padding:'10px 8px',border:'2px solid rgba(124,124,255,0.2)',borderRadius:'8px',fontSize:'18px',textAlign:'center'}}
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}
 
-                  <button
-                    onClick={() => {
-                      const newSearches = [...(config.enhancedSearch.popularSearches || []), { text: '', link: '' }];
-                      setConfig(prev => ({
-                        ...prev,
-                        enhancedSearch: { ...prev.enhancedSearch, popularSearches: newSearches }
-                      }));
-                    }}
-                    style={{
-                      background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '12px 24px',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      fontWeight: '600'
-                    }}
-                  >
-                    ➕ Agregar Búsqueda Popular
-                  </button>
+                </div>
+
+                {/* ── COLORES ── */}
+                <div style={{marginBottom: '30px'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255,255,255,0.95)'}}>
+                    🎨 Colores
+                  </h3>
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px'}}>
+                    {[
+                      { label: 'Color principal (borde, header)', key: 'primaryColor', default: '#000000', hint: 'Borde del dropdown y encabezado' },
+                      { label: 'Color del texto', key: 'textColor', default: '#1a1a1a', hint: 'Texto de cada ítem' },
+                      { label: 'Fondo del dropdown', key: 'backgroundColor', default: '#ffffff', hint: 'Fondo del panel desplegable' },
+                      { label: 'Fondo al hover', key: 'hoverBgColor', default: '', hint: 'Vacío = automático desde color principal' },
+                    ].map(({label, key, default: def, hint}) => (
+                      <div key={key}>
+                        <label style={{display:'block', marginBottom:'8px', fontWeight:'600', fontSize:'13px', color:'rgba(255,255,255,0.9)'}}>{label}</label>
+                        <div style={{display:'flex', gap:'8px', alignItems:'center'}}>
+                          <input type="color" value={config.enhancedSearch?.[key] || def || '#ffffff'}
+                            onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch,[key]:e.target.value}}))}
+                            style={{width:'50px',height:'44px',border:'2px solid rgba(124,124,255,0.2)',borderRadius:'8px',cursor:'pointer'}} />
+                          <input type="text" value={config.enhancedSearch?.[key] || def}
+                            onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch,[key]:e.target.value}}))}
+                            placeholder={def || '(automático)'}
+                            style={{flex:1,padding:'10px 12px',border:'2px solid rgba(124,124,255,0.2)',borderRadius:'8px',fontSize:'13px',fontFamily:'monospace'}} />
+                        </div>
+                        <small style={{color:'rgba(255,255,255,0.6)',fontSize:'11px',marginTop:'4px',display:'block'}}>{hint}</small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── TIPOGRAFÍA ── */}
+                <div style={{marginBottom: '30px'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255,255,255,0.95)'}}>
+                    ✍️ Tipografía
+                  </h3>
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px'}}>
+                    <div>
+                      <label style={{display:'block', marginBottom:'8px', fontWeight:'600', fontSize:'13px', color:'rgba(255,255,255,0.9)'}}>Fuente</label>
+                      <select value={config.enhancedSearch?.fontFamily || 'inherit'}
+                        onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch, fontFamily:e.target.value}}))}
+                        style={{width:'100%',padding:'10px 12px',border:'2px solid rgba(124,124,255,0.2)',borderRadius:'8px',background:'rgba(20,20,40,0.95)',color:'#fff',fontSize:'13px'}}>
+                        <option value="inherit">Heredar del tema</option>
+                        <option value="system-ui">System UI</option>
+                        <option value="'Poppins', sans-serif">Poppins</option>
+                        <option value="'Montserrat', sans-serif">Montserrat</option>
+                        <option value="'Inter', sans-serif">Inter</option>
+                        <option value="'Roboto', sans-serif">Roboto</option>
+                        <option value="'Raleway', sans-serif">Raleway</option>
+                        <option value="'Lato', sans-serif">Lato</option>
+                        <option value="'Open Sans', sans-serif">Open Sans</option>
+                        <option value="'Nunito', sans-serif">Nunito</option>
+                        <option value="'Playfair Display', serif">Playfair Display</option>
+                        <option value="'Cormorant Garamond', serif">Cormorant Garamond</option>
+                        <option value="'DM Sans', sans-serif">DM Sans</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{display:'block', marginBottom:'8px', fontWeight:'600', fontSize:'13px', color:'rgba(255,255,255,0.9)'}}>Tamaño (px)</label>
+                      <input type="number" min="11" max="22"
+                        value={config.enhancedSearch?.fontSize || '15'}
+                        onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch, fontSize:e.target.value}}))}
+                        style={{width:'100%',padding:'10px 12px',border:'2px solid rgba(124,124,255,0.2)',borderRadius:'8px',fontSize:'14px'}} />
+                    </div>
+                    <div>
+                      <label style={{display:'block', marginBottom:'8px', fontWeight:'600', fontSize:'13px', color:'rgba(255,255,255,0.9)'}}>Peso</label>
+                      <select value={config.enhancedSearch?.fontWeight || '500'}
+                        onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch, fontWeight:e.target.value}}))}
+                        style={{width:'100%',padding:'10px 12px',border:'2px solid rgba(124,124,255,0.2)',borderRadius:'8px',background:'rgba(20,20,40,0.95)',color:'#fff',fontSize:'13px'}}>
+                        <option value="300">300 – Light</option>
+                        <option value="400">400 – Normal</option>
+                        <option value="500">500 – Medium</option>
+                        <option value="600">600 – Semibold</option>
+                        <option value="700">700 – Bold</option>
+                        <option value="800">800 – Extrabold</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── FORMA Y ANIMACIÓN ── */}
+                <div style={{marginBottom: '30px'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255,255,255,0.95)'}}>
+                    ✦ Forma y Animación
+                  </h3>
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px'}}>
+                    <div>
+                      <label style={{display:'block', marginBottom:'8px', fontWeight:'600', fontSize:'13px', color:'rgba(255,255,255,0.9)'}}>Border Radius (px)</label>
+                      <input type="number" min="0" max="32"
+                        value={config.enhancedSearch?.borderRadius || '12'}
+                        onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch, borderRadius:e.target.value}}))}
+                        style={{width:'100%',padding:'10px 12px',border:'2px solid rgba(124,124,255,0.2)',borderRadius:'8px',fontSize:'14px'}} />
+                      <small style={{color:'rgba(255,255,255,0.6)',fontSize:'11px',marginTop:'4px',display:'block'}}>Redondeo de las esquinas del panel</small>
+                    </div>
+                    <div>
+                      <label style={{display:'block', marginBottom:'8px', fontWeight:'600', fontSize:'13px', color:'rgba(255,255,255,0.9)'}}>Animación</label>
+                      <select value={config.enhancedSearch?.animationType || 'fade'}
+                        onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch, animationType:e.target.value}}))}
+                        style={{width:'100%',padding:'10px 12px',border:'2px solid rgba(124,124,255,0.2)',borderRadius:'8px',background:'rgba(20,20,40,0.95)',color:'#fff',fontSize:'13px'}}>
+                        <option value="fade">Fade (desvanecimiento)</option>
+                        <option value="slide">Slide (deslizamiento)</option>
+                        <option value="none">Sin animación</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── ÍCONOS Y ENCABEZADO ── */}
+                <div style={{marginBottom: '30px'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255,255,255,0.95)'}}>
+                    🔧 Encabezado e Íconos
+                  </h3>
+                  <div style={{display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center'}}>
+                    <label style={{display:'flex', alignItems:'center', gap:'8px', cursor:'pointer'}}>
+                      <input type="checkbox" checked={config.enhancedSearch?.showHeader !== false}
+                        onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch, showHeader:e.target.checked}}))} />
+                      <span style={{color:'rgba(255,255,255,0.9)', fontSize:'14px', fontWeight:'600'}}>Mostrar encabezado</span>
+                    </label>
+                    <label style={{display:'flex', alignItems:'center', gap:'8px', cursor:'pointer'}}>
+                      <input type="checkbox" checked={config.enhancedSearch?.showIcons !== false}
+                        onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch, showIcons:e.target.checked}}))} />
+                      <span style={{color:'rgba(255,255,255,0.9)', fontSize:'14px', fontWeight:'600'}}>Mostrar íconos</span>
+                    </label>
+                  </div>
+                  <div style={{display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px'}}>
+                    <div>
+                      <label style={{display:'block', marginBottom:'8px', fontWeight:'600', fontSize:'13px', color:'rgba(255,255,255,0.9)'}}>Texto del encabezado</label>
+                      <input type="text" value={config.enhancedSearch?.headerText || 'Búsquedas Populares'}
+                        onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch, headerText:e.target.value}}))}
+                        placeholder="Búsquedas Populares"
+                        style={{width:'100%',padding:'10px 12px',border:'2px solid rgba(124,124,255,0.2)',borderRadius:'8px',fontSize:'14px'}} />
+                    </div>
+                    <div>
+                      <label style={{display:'block', marginBottom:'8px', fontWeight:'600', fontSize:'13px', color:'rgba(255,255,255,0.9)'}}>Emoji por defecto</label>
+                      <input type="text" value={config.enhancedSearch?.defaultEmoji || '🔍'}
+                        onChange={e => setConfig(p => ({...p, enhancedSearch:{...p.enhancedSearch, defaultEmoji:e.target.value}}))}
+                        placeholder="🔍"
+                        style={{width:'100%',padding:'10px 12px',border:'2px solid rgba(124,124,255,0.2)',borderRadius:'8px',fontSize:'18px',textAlign:'center'}} />
+                      <small style={{color:'rgba(255,255,255,0.6)',fontSize:'11px',marginTop:'4px',display:'block'}}>Emoji para cada ítem sin emoji propio</small>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Theme Switch Tab */}
+        {activeTab === 'themeSwitch' && (
+          <div className="config-section">
+            <div className="section-header">
+              <h2>🎨 Cambio de Tema</h2>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={config.themeSwitch?.enabled || false}
+                  onChange={(e) => setConfig(prev => ({ ...prev, themeSwitch: { ...prev.themeSwitch, enabled: e.target.checked } }))}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+
+            {config.themeSwitch?.enabled && (
+              <>
+                <div className="info-box" style={{marginBottom: '20px'}}>
+                  <p style={{margin: 0, fontSize: '14px'}}>
+                    🎨 <strong>Tema personalizado por URL</strong> — Aplica colores especiales en páginas específicas. Ideal para modos Black Friday, campañas o landing pages.
+                  </p>
                 </div>
 
                 <div style={{marginBottom: '30px'}}>
-                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'rgba(255, 255, 255, 0.95)'}}>
-                    🎨 Personalización del Dropdown
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '12px', color: 'rgba(255,255,255,0.95)'}}>
+                    🔗 URLs donde aplica
                   </h3>
-
-                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px'}}>
-                    <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
-                        Color Principal (Borde, Iconos, Hover)
-                      </label>
-                      <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
-                        <input
-                          type="color"
-                          value={config.enhancedSearch?.primaryColor || '#000000'}
-                          onChange={(e) => setConfig(prev => ({
-                            ...prev,
-                            enhancedSearch: { ...prev.enhancedSearch, primaryColor: e.target.value }
-                          }))}
-                          style={{
-                            width: '60px',
-                            height: '50px',
-                            border: '2px solid rgba(124, 124, 255, 0.2)',
-                            borderRadius: '8px',
-                            cursor: 'pointer'
-                          }}
-                        />
-                        <input
-                          type="text"
-                          value={config.enhancedSearch?.primaryColor || '#000000'}
-                          onChange={(e) => setConfig(prev => ({
-                            ...prev,
-                            enhancedSearch: { ...prev.enhancedSearch, primaryColor: e.target.value }
-                          }))}
-                          placeholder="#000000"
-                          style={{
-                            flex: 1,
-                            padding: '12px',
-                            border: '2px solid rgba(124, 124, 255, 0.2)',
-                            borderRadius: '8px',
-                            fontSize: '14px',
-                            fontFamily: 'monospace'
-                          }}
-                        />
-                      </div>
-                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
-                        Se usa para el borde del dropdown, iconos y efectos de hover
-                      </small>
-                    </div>
-
-                    <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
-                        Color del Texto
-                      </label>
-                      <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
-                        <input
-                          type="color"
-                          value={config.enhancedSearch?.textColor || '#1a1a1a'}
-                          onChange={(e) => setConfig(prev => ({
-                            ...prev,
-                            enhancedSearch: { ...prev.enhancedSearch, textColor: e.target.value }
-                          }))}
-                          style={{
-                            width: '60px',
-                            height: '50px',
-                            border: '2px solid rgba(124, 124, 255, 0.2)',
-                            borderRadius: '8px',
-                            cursor: 'pointer'
-                          }}
-                        />
-                        <input
-                          type="text"
-                          value={config.enhancedSearch?.textColor || '#1a1a1a'}
-                          onChange={(e) => setConfig(prev => ({
-                            ...prev,
-                            enhancedSearch: { ...prev.enhancedSearch, textColor: e.target.value }
-                          }))}
-                          placeholder="#1a1a1a"
-                          style={{
-                            flex: 1,
-                            padding: '12px',
-                            border: '2px solid rgba(124, 124, 255, 0.2)',
-                            borderRadius: '8px',
-                            fontSize: '14px',
-                            fontFamily: 'monospace'
-                          }}
-                        />
-                      </div>
-                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
-                        Color del texto de las búsquedas populares
-                      </small>
-                    </div>
-                  </div>
-
-                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
-                    <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
-                        Color de Fondo del Dropdown
-                      </label>
-                      <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
-                        <input
-                          type="color"
-                          value={config.enhancedSearch?.backgroundColor || '#ffffff'}
-                          onChange={(e) => setConfig(prev => ({
-                            ...prev,
-                            enhancedSearch: { ...prev.enhancedSearch, backgroundColor: e.target.value }
-                          }))}
-                          style={{
-                            width: '60px',
-                            height: '50px',
-                            border: '2px solid rgba(124, 124, 255, 0.2)',
-                            borderRadius: '8px',
-                            cursor: 'pointer'
-                          }}
-                        />
-                        <input
-                          type="text"
-                          value={config.enhancedSearch?.backgroundColor || '#ffffff'}
-                          onChange={(e) => setConfig(prev => ({
-                            ...prev,
-                            enhancedSearch: { ...prev.enhancedSearch, backgroundColor: e.target.value }
-                          }))}
-                          placeholder="#ffffff"
-                          style={{
-                            flex: 1,
-                            padding: '12px',
-                            border: '2px solid rgba(124, 124, 255, 0.2)',
-                            borderRadius: '8px',
-                            fontSize: '14px',
-                            fontFamily: 'monospace'
-                          }}
-                        />
-                      </div>
-                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
-                        Fondo principal del dropdown
-                      </small>
-                    </div>
-
-                    <div>
-                      <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
-                        Máximo de Resultados
-                      </label>
+                  <p style={{fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '12px'}}>Dejá vacío para aplicar en toda la tienda. Ingresá URLs parciales (ej: /coleccion/sale).</p>
+                  {(config.themeSwitch?.urls || []).map((url, index) => (
+                    <div key={index} style={{display: 'flex', gap: '10px', marginBottom: '10px'}}>
                       <input
-                        type="number"
-                        min="3"
-                        max="12"
-                        value={config.enhancedSearch?.maxResults || 8}
-                        onChange={(e) => setConfig(prev => ({
-                          ...prev,
-                          enhancedSearch: { ...prev.enhancedSearch, maxResults: parseInt(e.target.value) }
-                        }))}
-                        style={{
-                          width: '100%',
-                          padding: '12px',
-                          border: '2px solid rgba(124, 124, 255, 0.2)',
-                          borderRadius: '8px',
-                          fontSize: '14px'
+                        type="text"
+                        value={url}
+                        onChange={(e) => {
+                          const newUrls = [...(config.themeSwitch.urls || [])];
+                          newUrls[index] = e.target.value;
+                          setConfig(prev => ({ ...prev, themeSwitch: { ...prev.themeSwitch, urls: newUrls } }));
                         }}
+                        placeholder="/coleccion/sale"
+                        style={{ flex: 1, padding: '10px 12px', border: '2px solid rgba(124,124,255,0.2)', borderRadius: '8px', fontSize: '14px' }}
                       />
-                      <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>
-                        Cantidad de búsquedas a mostrar (3-12)
-                      </small>
+                      <button
+                        onClick={() => {
+                          const newUrls = (config.themeSwitch.urls || []).filter((_, i) => i !== index);
+                          setConfig(prev => ({ ...prev, themeSwitch: { ...prev.themeSwitch, urls: newUrls } }));
+                        }}
+                        style={{ padding: '10px 14px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
+                      >🗑️</button>
                     </div>
+                  ))}
+                  <button
+                    onClick={() => setConfig(prev => ({ ...prev, themeSwitch: { ...prev.themeSwitch, urls: [...(prev.themeSwitch?.urls || []), ''] } }))}
+                    style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', width: '100%', marginTop: '8px' }}
+                  >+ Agregar URL</button>
+                </div>
+
+                <div style={{marginBottom: '30px'}}>
+                  <h3 style={{fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: 'rgba(255,255,255,0.95)'}}>🎨 Colores del Tema</h3>
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px'}}>
+                    {[
+                      { label: 'Color de Fondo', key: 'backgroundColor', def: '#000000' },
+                      { label: 'Color de Texto', key: 'textColor', def: '#ffffff' },
+                      { label: 'Color de Acento', key: 'accentColor', def: '#f59e0b' },
+                    ].map(({ label, key, def }) => (
+                      <div key={key}>
+                        <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255,255,255,0.9)'}}>{label}</label>
+                        <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                          <input type="color" value={config.themeSwitch?.[key] || def}
+                            onChange={(e) => setConfig(prev => ({ ...prev, themeSwitch: { ...prev.themeSwitch, [key]: e.target.value } }))}
+                            style={{ width: '50px', height: '44px', border: '2px solid rgba(124,124,255,0.2)', borderRadius: '8px', cursor: 'pointer' }} />
+                          <input type="text" value={config.themeSwitch?.[key] || def}
+                            onChange={(e) => setConfig(prev => ({ ...prev, themeSwitch: { ...prev.themeSwitch, [key]: e.target.value } }))}
+                            style={{ flex: 1, padding: '10px 12px', border: '2px solid rgba(124,124,255,0.2)', borderRadius: '8px', fontSize: '13px', fontFamily: 'monospace' }} />
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                </div>
+
+                <div style={{marginBottom: '20px'}}>
+                  <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
+                    <input type="checkbox"
+                      checked={config.themeSwitch?.invertColors || false}
+                      onChange={(e) => setConfig(prev => ({ ...prev, themeSwitch: { ...prev.themeSwitch, invertColors: e.target.checked } }))}
+                      style={{width: '18px', height: '18px'}} />
+                    <span style={{fontWeight: '600', color: 'rgba(255,255,255,0.9)'}}>Invertir colores de imágenes</span>
+                  </label>
+                  <small style={{color: 'rgba(255,255,255,0.6)', fontSize: '12px', display: 'block', marginTop: '6px', marginLeft: '28px'}}>
+                    Aplica <code>filter: invert(1)</code> a las imágenes para adaptarlas al tema oscuro
+                  </small>
+                </div>
+
+                <div style={{background: 'rgba(245,158,11,0.15)', border: '2px solid #fef3c7', borderRadius: '12px', padding: '16px'}}>
+                  <strong style={{color: '#92400e', fontSize: '14px'}}>💡 Ejemplo de uso:</strong>
+                  <p style={{margin: '8px 0 0 0', fontSize: '13px', color: '#78350f'}}>
+                    Fondo <strong>#000000</strong>, Texto <strong>#ffffff</strong>, Acento <strong>#f59e0b</strong> para modo Black Friday activado en <code>/coleccion/black-friday</code>.
+                  </p>
                 </div>
               </>
             )}
@@ -3593,19 +4178,18 @@ function StyleConfig() {
                                         ...prev,
                                         searchBar: { ...prev.searchBar, logoUrl: response.url }
                                       }));
-                                      alert('✅ Logo subido correctamente');
+                                      toast.success('Logo subido correctamente');
                                     } else {
-                                      alert('❌ Error: ' + response.message);
+                                      toast.error('Error: ' + response.message);
                                     }
                                   } catch (error) {
                                     console.error('Error uploading logo:', error);
-                                    alert('❌ Error al subir el logo: ' + error.message);
                                   }
                                 };
                                 reader.readAsDataURL(file);
                               } catch (error) {
                                 console.error('Error uploading logo:', error);
-                                alert('❌ Error al subir el logo');
+                                toast.error('Error al subir el logo');
                               }
                             }}
                             style={{
@@ -3706,6 +4290,28 @@ function StyleConfig() {
                       )}
 
                       <div style={{display: 'grid', gap: '12px'}}>
+                        {/* Etiqueta de texto */}
+                        <div>
+                          <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
+                            🏷️ Etiqueta
+                          </label>
+                          <input
+                            type="text"
+                            value={suggestion.text || ''}
+                            onChange={(e) => {
+                              const newSuggestions = [...config.searchBar.suggestions];
+                              newSuggestions[index].text = e.target.value;
+                              setConfig(prev => ({
+                                ...prev,
+                                searchBar: { ...prev.searchBar, suggestions: newSuggestions }
+                              }));
+                            }}
+                            placeholder="Muebles, Sillas, Ofertas..."
+                            style={{ width: '100%', padding: '10px 12px', border: '2px solid rgba(124, 124, 255, 0.2)', borderRadius: '8px', fontSize: '14px' }}
+                          />
+                          <small style={{color: 'rgba(255, 255, 255, 0.7)', fontSize: '12px', marginTop: '4px', display: 'block'}}>Texto que aparece debajo de la imagen</small>
+                        </div>
+
                         {/* Upload de imagen */}
                         <div>
                           <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: 'rgba(255, 255, 255, 0.95)'}}>
@@ -3757,9 +4363,9 @@ function StyleConfig() {
                                         searchBar: { ...prev.searchBar, suggestions: updatedSuggestions }
                                       }));
                                       
-                                      alert('✅ Imagen subida correctamente');
+                                      toast.success('Imagen subida correctamente');
                                     } else {
-                                      alert('❌ Error: ' + response.message);
+                                      toast.error('Error: ' + response.message);
                                       const errorSuggestions = [...(config.searchBar?.suggestions || [])];
                                       errorSuggestions[index] = { ...errorSuggestions[index], uploading: false };
                                       setConfig(prev => ({
@@ -3769,7 +4375,7 @@ function StyleConfig() {
                                     }
                                   } catch (error) {
                                     console.error('Error:', error);
-                                    alert('❌ Error al subir la imagen');
+                                    toast.error('Error al subir la imagen');
                                     const errorSuggestions = [...(config.searchBar?.suggestions || [])];
                                     errorSuggestions[index] = { ...errorSuggestions[index], uploading: false };
                                     setConfig(prev => ({
@@ -3781,7 +4387,7 @@ function StyleConfig() {
                                 reader.readAsDataURL(file);
                               } catch (error) {
                                 console.error('Error:', error);
-                                alert('❌ Error al procesar la imagen');
+                                toast.error('Error al procesar la imagen');
                                 const errorSuggestions = [...(config.searchBar?.suggestions || [])];
                                 errorSuggestions[index] = { ...errorSuggestions[index], uploading: false };
                                 setConfig(prev => ({
@@ -3890,7 +4496,7 @@ function StyleConfig() {
 
                   <button
                     onClick={() => {
-                      const newSuggestions = [...(config.searchBar.suggestions || []), { imageUrl: '', link: '' }];
+                      const newSuggestions = [...(config.searchBar.suggestions || []), { text: '', imageUrl: '', link: '' }];
                       setConfig(prev => ({
                         ...prev,
                         searchBar: { ...prev.searchBar, suggestions: newSuggestions }
@@ -3920,7 +4526,525 @@ function StyleConfig() {
             )}
           </div>
         )}
+
+        {/* Shop the Look Tab */}
+        {activeTab === 'shopTheLook' && (
+          <ShopTheLookEditor
+            config={config.shopTheLook}
+            onChange={(patch) => setConfig(prev => ({ ...prev, shopTheLook: { ...prev.shopTheLook, ...patch } }))}
+            storeId={storeId}
+          />
+        )}
+          </div>
+        </main>
       </div>
+    </div>
+  );
+}
+
+// ====================== SHOP THE LOOK EDITOR ======================
+function ShopTheLookEditor({ config, onChange, storeId }) {
+  const cfg = config || {};
+  const looks = Array.isArray(cfg.looks) ? cfg.looks : [];
+  const [activeLookIdx, setActiveLookIdx] = useState(0);
+  const [uploadingLook, setUploadingLook] = useState(null);
+  const [pickerHotspot, setPickerHotspot] = useState(null); // { lookIdx, hotspotIdx }
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerResults, setPickerResults] = useState([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const imgRefs = useRef({});
+
+  const updateLook = (idx, patch) => {
+    const next = looks.slice();
+    next[idx] = { ...next[idx], ...patch };
+    onChange({ looks: next });
+  };
+
+  const addLook = () => {
+    const next = looks.concat([{ id: 'look_' + Date.now(), imageUrl: '', hotspots: [] }]);
+    onChange({ looks: next });
+    setActiveLookIdx(next.length - 1);
+  };
+
+  const removeLook = (idx) => {
+    if (!confirm('¿Eliminar este look y todos sus hotspots?')) return;
+    const next = looks.filter((_, i) => i !== idx);
+    onChange({ looks: next });
+    setActiveLookIdx(0);
+  };
+
+  const uploadLookImage = async (lookIdx, file) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    if (file.size > 5 * 1024 * 1024) { alert('La imagen supera 5MB'); return; }
+    setUploadingLook(lookIdx);
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const response = await apiRequest('/api/upload-image-base64', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId, fileName: file.name, fileData: base64, folder: 'shop-the-look' })
+      });
+      if (!response.success) throw new Error(response.message);
+      updateLook(lookIdx, { imageUrl: response.url });
+    } catch (e) {
+      alert('Error al subir la imagen: ' + e.message);
+    } finally {
+      setUploadingLook(null);
+    }
+  };
+
+  const handleImageClick = (lookIdx, e) => {
+    const img = imgRefs.current[lookIdx];
+    if (!img) return;
+    const rect = img.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const look = looks[lookIdx];
+    const newHotspot = { id: 'h_' + Date.now(), x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, productId: '', productName: '', productImage: '', productPrice: '', productUrl: '' };
+    const nextHotspots = (look.hotspots || []).concat([newHotspot]);
+    updateLook(lookIdx, { hotspots: nextHotspots });
+    // Abrir picker automáticamente
+    setPickerHotspot({ lookIdx, hotspotIdx: nextHotspots.length - 1 });
+    setPickerQuery('');
+    setPickerResults([]);
+  };
+
+  const updateHotspot = (lookIdx, hIdx, patch) => {
+    const look = looks[lookIdx];
+    const next = (look.hotspots || []).slice();
+    next[hIdx] = { ...next[hIdx], ...patch };
+    updateLook(lookIdx, { hotspots: next });
+  };
+
+  const removeHotspot = (lookIdx, hIdx) => {
+    const look = looks[lookIdx];
+    const next = (look.hotspots || []).filter((_, i) => i !== hIdx);
+    updateLook(lookIdx, { hotspots: next });
+  };
+
+  const searchProducts = async (q) => {
+    setPickerQuery(q);
+    if (!q || q.length < 2) { setPickerResults([]); return; }
+    setPickerLoading(true);
+    try {
+      const resp = await apiRequest(`/api/tiendanube/products/search?storeId=${storeId}&q=${encodeURIComponent(q)}`);
+      const arr = Array.isArray(resp) ? resp : (resp.products || []);
+      setPickerResults(arr);
+    } catch (e) {
+      console.error(e);
+      setPickerResults([]);
+    } finally {
+      setPickerLoading(false);
+    }
+  };
+
+  const assignProduct = (product) => {
+    if (!pickerHotspot) return;
+    const { lookIdx, hotspotIdx } = pickerHotspot;
+    const name = typeof product.name === 'object' ? (product.name.es || Object.values(product.name)[0]) : product.name;
+    const handle = typeof product.handle === 'object' ? (product.handle.es || Object.values(product.handle)[0]) : product.handle;
+    const image = product.images && product.images[0] ? (product.images[0].src || product.images[0]) : '';
+    const variant = product.variants && product.variants[0] ? product.variants[0] : null;
+    const price = variant ? variant.price : '';
+    const productUrl = handle ? `/productos/${handle}` : '';
+    updateHotspot(lookIdx, hotspotIdx, {
+      productId: String(product.id),
+      productName: name || '',
+      productImage: image,
+      productPrice: price ? `$${price}` : '',
+      productUrl
+    });
+    setPickerHotspot(null);
+  };
+
+  return (
+    <div className="config-section">
+      <div className="section-header">
+        <h2>📍 Shop the Look</h2>
+        <label className="toggle-switch">
+          <input type="checkbox" checked={!!cfg.enabled} onChange={(e) => onChange({ enabled: e.target.checked })} />
+          <span className="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div className="info-box" style={{background: '#eff6ff', borderColor: '#3b82f6', marginBottom: 20}}>
+        <p style={{margin: 0, fontSize: 13, color: '#1e40af'}}>
+          <strong>💡 Cómo funciona:</strong> subí una imagen (un look, un ambiente, una foto de producción). Hacé <strong>click sobre la imagen</strong> para agregar puntos y asignale un producto a cada uno. Al visitante le aparecerá un modal para agregarlo al carrito.
+        </p>
+      </div>
+
+      {cfg.enabled && (
+        <>
+          {/* Configuración general */}
+          <div className="form-row">
+            <div className="form-group">
+              <label>Título de la sección</label>
+              <input type="text" value={cfg.title || ''} onChange={(e) => onChange({ title: e.target.value })} placeholder="Shop the Look" />
+            </div>
+            <div className="form-group">
+              <label>Subtítulo (opcional)</label>
+              <input type="text" value={cfg.subtitle || ''} onChange={(e) => onChange({ subtitle: e.target.value })} placeholder="Descubrí los productos del look" />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Color del hotspot</label>
+              <div className="color-input-group">
+                <input type="color" value={cfg.hotspotColor || '#ffffff'} onChange={(e) => onChange({ hotspotColor: e.target.value })} />
+                <input type="text" value={cfg.hotspotColor || '#ffffff'} onChange={(e) => onChange({ hotspotColor: e.target.value })} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Color del texto del hotspot</label>
+              <div className="color-input-group">
+                <input type="color" value={cfg.hotspotTextColor || '#111111'} onChange={(e) => onChange({ hotspotTextColor: e.target.value })} />
+                <input type="text" value={cfg.hotspotTextColor || '#111111'} onChange={(e) => onChange({ hotspotTextColor: e.target.value })} />
+              </div>
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Color del borde / halo</label>
+              <input type="text" value={cfg.hotspotBorderColor || 'rgba(255,255,255,0.35)'} onChange={(e) => onChange({ hotspotBorderColor: e.target.value })} placeholder="rgba(255,255,255,0.35)" />
+              <small className="field-hint">Admite hex o rgba con transparencia.</small>
+            </div>
+            <div className="form-group">
+              <label>Tamaño ({cfg.hotspotSize || 32}px)</label>
+              <input type="range" min="18" max="72" value={cfg.hotspotSize || 32} onChange={(e) => onChange({ hotspotSize: parseInt(e.target.value, 10) })} />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Forma del hotspot</label>
+              <select value={cfg.hotspotShape || 'circle'} onChange={(e) => onChange({ hotspotShape: e.target.value })}>
+                <option value="circle">Círculo</option>
+                <option value="rounded">Cuadrado redondeado</option>
+                <option value="square">Cuadrado</option>
+                <option value="tag">Pill / Tag (horizontal)</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Animación</label>
+              <select value={cfg.hotspotAnimation || 'pulse'} onChange={(e) => onChange({ hotspotAnimation: e.target.value })}>
+                <option value="pulse">Pulso (halo expandido)</option>
+                <option value="bounce">Rebote sutil</option>
+                <option value="glow">Brillo expansivo</option>
+                <option value="none">Sin animación</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Contenido del punto</label>
+              <select value={cfg.hotspotLabelMode || 'auto'} onChange={(e) => onChange({ hotspotLabelMode: e.target.value })}>
+                <option value="auto">Automático (usa label custom o símbolo)</option>
+                <option value="number">Numerado (1, 2, 3…)</option>
+                <option value="plus">Símbolo +</option>
+                <option value="custom">Texto personalizado (por hotspot)</option>
+                <option value="none">Vacío (solo animación)</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Peso / grosor del texto</label>
+              <select value={cfg.hotspotFontWeight || '700'} onChange={(e) => onChange({ hotspotFontWeight: e.target.value })}>
+                <option value="400">Normal (400)</option>
+                <option value="500">Medium (500)</option>
+                <option value="600">Semi-bold (600)</option>
+                <option value="700">Bold (700)</option>
+                <option value="800">Extra bold (800)</option>
+                <option value="900">Black (900)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Tamaño del texto del hotspot ({cfg.hotspotFontSize || 18}px)</label>
+            <input type="range" min="10" max="28" value={cfg.hotspotFontSize || 18} onChange={(e) => onChange({ hotspotFontSize: parseInt(e.target.value, 10) })} />
+          </div>
+
+          <hr style={{margin: '24px 0', border: 0, borderTop: '1px solid #e5e7eb'}} />
+
+          <h3 style={{margin: '0 0 12px', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8}}>
+            <span style={{fontSize: 18}}>💬</span> Popup flotante al pasar el mouse
+            <label className="toggle-switch" style={{marginLeft: 'auto'}}>
+              <input type="checkbox" checked={cfg.hoverCardEnabled !== false} onChange={(e) => onChange({ hoverCardEnabled: e.target.checked })} />
+              <span className="toggle-slider"></span>
+            </label>
+          </h3>
+          <p style={{margin: '0 0 16px', fontSize: 13, color: '#6b7280'}}>
+            Al pasar el cursor sobre un punto, aparece una tarjetita con la foto del producto, precio y botón. En mobile (sin hover) se abre un modal al tocar.
+          </p>
+
+          {cfg.hoverCardEnabled !== false && (
+            <>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Fondo del popup</label>
+                  <div className="color-input-group">
+                    <input type="color" value={cfg.hoverCardBg || '#ffffff'} onChange={(e) => onChange({ hoverCardBg: e.target.value })} />
+                    <input type="text" value={cfg.hoverCardBg || '#ffffff'} onChange={(e) => onChange({ hoverCardBg: e.target.value })} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Color del texto</label>
+                  <div className="color-input-group">
+                    <input type="color" value={cfg.hoverCardText || '#111111'} onChange={(e) => onChange({ hoverCardText: e.target.value })} />
+                    <input type="text" value={cfg.hoverCardText || '#111111'} onChange={(e) => onChange({ hoverCardText: e.target.value })} />
+                  </div>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Fondo del botón</label>
+                  <div className="color-input-group">
+                    <input type="color" value={cfg.hoverCardButtonBg || '#111111'} onChange={(e) => onChange({ hoverCardButtonBg: e.target.value })} />
+                    <input type="text" value={cfg.hoverCardButtonBg || '#111111'} onChange={(e) => onChange({ hoverCardButtonBg: e.target.value })} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Color del texto del botón</label>
+                  <div className="color-input-group">
+                    <input type="color" value={cfg.hoverCardButtonText || '#ffffff'} onChange={(e) => onChange({ hoverCardButtonText: e.target.value })} />
+                    <input type="text" value={cfg.hoverCardButtonText || '#ffffff'} onChange={(e) => onChange({ hoverCardButtonText: e.target.value })} />
+                  </div>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Texto del botón</label>
+                <input type="text" value={cfg.hoverCardButtonLabel || 'Ver producto'} onChange={(e) => onChange({ hoverCardButtonLabel: e.target.value })} placeholder="Ver producto" />
+              </div>
+            </>
+          )}
+
+          <hr style={{margin: '24px 0', border: 0, borderTop: '1px solid #e5e7eb'}} />
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Selector CSS de inyección (avanzado, opcional)</label>
+              <input type="text" value={cfg.injectSelector || ''} onChange={(e) => onChange({ injectSelector: e.target.value })} placeholder="Dejar vacío para ubicación automática (después del banner)" />
+              <small className="field-hint">Ej: <code>.main-slider</code>, <code>#banner-home</code>, <code>main</code>. Vacío = auto.</small>
+            </div>
+            <div className="form-group">
+              <label>Posición respecto al selector</label>
+              <select value={cfg.injectPosition || 'after'} onChange={(e) => onChange({ injectPosition: e.target.value })}>
+                <option value="after">Después</option>
+                <option value="before">Antes</option>
+                <option value="prepend">Al inicio (dentro)</option>
+                <option value="append">Al final (dentro)</option>
+              </select>
+            </div>
+          </div>
+
+          <hr style={{margin: '24px 0', border: 0, borderTop: '1px solid #e5e7eb'}} />
+
+          {/* Lista de looks */}
+          {looks.length === 0 && (
+            <div style={{textAlign: 'center', padding: 40, background: '#f9fafb', borderRadius: 12, border: '2px dashed #d1d5db'}}>
+              <p style={{margin: '0 0 16px', color: '#6b7280'}}>Todavía no agregaste ninguna imagen.</p>
+              <button type="button" onClick={addLook} style={{padding: '10px 20px', background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600}}>
+                + Agregar primer look
+              </button>
+            </div>
+          )}
+
+          {looks.length > 0 && (
+            <>
+              {/* Tabs de looks si hay más de uno */}
+              {looks.length > 1 && (
+                <div style={{display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap'}}>
+                  {looks.map((_, i) => (
+                    <button key={i} type="button" onClick={() => setActiveLookIdx(i)}
+                      style={{padding: '6px 14px', background: activeLookIdx === i ? '#111' : '#f3f4f6', color: activeLookIdx === i ? '#fff' : '#111', border: 'none', borderRadius: 20, cursor: 'pointer', fontSize: 13, fontWeight: 600}}>
+                      Look {i + 1}
+                    </button>
+                  ))}
+                  <button type="button" onClick={addLook} style={{padding: '6px 14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 20, cursor: 'pointer', fontSize: 13, fontWeight: 600}}>+ Nuevo look</button>
+                </div>
+              )}
+
+              {/* Editor del look activo */}
+              {looks[activeLookIdx] && (
+                <LookEditor
+                  look={looks[activeLookIdx]}
+                  idx={activeLookIdx}
+                  uploading={uploadingLook === activeLookIdx}
+                  onUpload={(file) => uploadLookImage(activeLookIdx, file)}
+                  onImageClick={(e) => handleImageClick(activeLookIdx, e)}
+                  onRemove={() => removeLook(activeLookIdx)}
+                  updateHotspot={(hi, p) => updateHotspot(activeLookIdx, hi, p)}
+                  removeHotspot={(hi) => removeHotspot(activeLookIdx, hi)}
+                  openPicker={(hi) => { setPickerHotspot({ lookIdx: activeLookIdx, hotspotIdx: hi }); setPickerQuery(''); setPickerResults([]); }}
+                  hotspotColor={cfg.hotspotColor || '#ffffff'}
+                  hotspotTextColor={cfg.hotspotTextColor || '#111111'}
+                  hotspotBorderColor={cfg.hotspotBorderColor || 'rgba(255,255,255,0.35)'}
+                  hotspotSize={cfg.hotspotSize || 32}
+                  hotspotShape={cfg.hotspotShape || 'circle'}
+                  hotspotAnimation={cfg.hotspotAnimation || 'pulse'}
+                  hotspotLabelMode={cfg.hotspotLabelMode || 'auto'}
+                  hotspotFontSize={cfg.hotspotFontSize || 18}
+                  hotspotFontWeight={cfg.hotspotFontWeight || '700'}
+                  imgRefs={imgRefs}
+                  canAddMore={looks.length === 1}
+                  onAddLook={addLook}
+                />
+              )}
+            </>
+          )}
+
+          {/* Modal picker de productos */}
+          {pickerHotspot && (
+            <div style={{position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16}} onClick={() => setPickerHotspot(null)}>
+              <div style={{background: '#fff', borderRadius: 14, padding: 20, maxWidth: 540, width: '100%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)'}} onClick={(e) => e.stopPropagation()}>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+                  <h3 style={{margin: 0, fontSize: 17}}>Asignar producto al hotspot</h3>
+                  <button type="button" onClick={() => setPickerHotspot(null)} style={{background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', lineHeight: 1}}>×</button>
+                </div>
+                <input
+                  type="text"
+                  autoFocus
+                  value={pickerQuery}
+                  onChange={(e) => searchProducts(e.target.value)}
+                  placeholder="Buscá por nombre del producto…"
+                  style={{width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 14, marginBottom: 12, boxSizing: 'border-box'}}
+                />
+                {pickerLoading && <p style={{textAlign: 'center', color: '#6b7280', fontSize: 13}}>Buscando…</p>}
+                {!pickerLoading && pickerQuery.length >= 2 && pickerResults.length === 0 && (
+                  <p style={{textAlign: 'center', color: '#6b7280', fontSize: 13}}>Sin resultados</p>
+                )}
+                <div style={{display: 'flex', flexDirection: 'column', gap: 6}}>
+                  {pickerResults.map((p) => {
+                    const name = typeof p.name === 'object' ? (p.name.es || Object.values(p.name)[0]) : p.name;
+                    const img = p.images && p.images[0] ? (p.images[0].src || p.images[0]) : null;
+                    const price = p.variants && p.variants[0] ? p.variants[0].price : '';
+                    return (
+                      <button key={p.id} type="button" onClick={() => assignProduct(p)}
+                        style={{display: 'flex', gap: 12, alignItems: 'center', padding: 8, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', cursor: 'pointer', textAlign: 'left'}}>
+                        {img && <img src={img} alt="" style={{width: 44, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0}} />}
+                        <div style={{flex: 1, minWidth: 0}}>
+                          <div style={{fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{name}</div>
+                          {price && <div style={{fontSize: 13, color: '#6b7280'}}>${price}</div>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function LookEditor({ look, idx, uploading, onUpload, onImageClick, onRemove, updateHotspot, removeHotspot, openPicker, hotspotColor, hotspotTextColor, hotspotBorderColor, hotspotSize, hotspotShape, hotspotAnimation, hotspotLabelMode, hotspotFontSize, hotspotFontWeight, imgRefs, canAddMore, onAddLook }) {
+  const fileRef = useRef(null);
+  const hotspots = look.hotspots || [];
+
+  const shapeRadiusMap = { circle: '50%', square: '4px', rounded: '10px', tag: '999px' };
+  const previewRadius = shapeRadiusMap[hotspotShape] || '50%';
+  const isTag = hotspotShape === 'tag';
+
+  const getPreviewLabel = (h, hi) => {
+    if (hotspotLabelMode === 'custom') return h.label || '';
+    if (hotspotLabelMode === 'number') return String(hi + 1);
+    if (hotspotLabelMode === 'plus') return '+';
+    if (hotspotLabelMode === 'none') return '';
+    if (h.label) return h.label;
+    if (isTag) return 'Ver';
+    return hotspotAnimation === 'pulse' ? '' : '+';
+  };
+
+  return (
+    <div style={{border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, background: '#fff'}}>
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+        <strong style={{fontSize: 15}}>Look {idx + 1}</strong>
+        <div style={{display: 'flex', gap: 8}}>
+          {canAddMore && (
+            <button type="button" onClick={onAddLook} style={{padding: '6px 12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600}}>+ Otro look</button>
+          )}
+          <button type="button" onClick={onRemove} style={{padding: '6px 12px', background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600}}>🗑 Eliminar</button>
+        </div>
+      </div>
+
+      {!look.imageUrl ? (
+        <div style={{textAlign: 'center', padding: 40, background: '#f9fafb', borderRadius: 8, border: '2px dashed #d1d5db'}}>
+          <input ref={fileRef} type="file" accept="image/*" style={{display: 'none'}} onChange={(e) => onUpload(e.target.files[0])} />
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+            style={{padding: '10px 20px', background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: uploading ? 'wait' : 'pointer', fontWeight: 600}}>
+            {uploading ? 'Subiendo…' : '📤 Subir imagen'}
+          </button>
+          <p style={{margin: '12px 0 0', fontSize: 12, color: '#6b7280'}}>JPG, PNG o WebP · máximo 5 MB</p>
+        </div>
+      ) : (
+        <>
+          <div style={{position: 'relative', borderRadius: 8, overflow: 'hidden', cursor: 'crosshair', userSelect: 'none'}}>
+            <img
+              ref={(el) => { imgRefs.current[idx] = el; }}
+              src={look.imageUrl}
+              alt=""
+              onClick={onImageClick}
+              style={{display: 'block', width: '100%', height: 'auto'}}
+            />
+            {hotspots.map((h, hi) => (
+              <div key={h.id || hi}
+                title={h.productName || 'Sin producto asignado'}
+                style={{position: 'absolute', left: `${h.x}%`, top: `${h.y}%`, width: isTag ? 'auto' : hotspotSize, minWidth: hotspotSize, height: hotspotSize, padding: isTag ? `0 ${Math.max(10, Math.round(hotspotSize * 0.45))}px` : 0, transform: 'translate(-50%, -50%)', borderRadius: previewRadius, background: hotspotColor, color: hotspotTextColor, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: hotspotFontWeight, fontSize: hotspotFontSize, lineHeight: 1, whiteSpace: 'nowrap', boxShadow: `0 2px 8px rgba(0,0,0,0.4), 0 0 0 3px ${hotspotBorderColor}`, pointerEvents: 'none', border: h.productId ? 'none' : '2px dashed #ef4444', boxSizing: 'border-box'}}>
+                {getPreviewLabel(h, hi)}
+              </div>
+            ))}
+          </div>
+          <p style={{margin: '10px 0 0', fontSize: 12, color: '#6b7280'}}>
+            💡 Hacé <strong>click sobre la imagen</strong> donde quieras agregar un punto. Los hotspots con borde rojo aún no tienen producto asignado.
+          </p>
+
+          <div style={{marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+            <button type="button" onClick={() => fileRef.current?.click()} style={{padding: '6px 12px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: 12}}>
+              🔄 Reemplazar imagen
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" style={{display: 'none'}} onChange={(e) => onUpload(e.target.files[0])} />
+          </div>
+
+          {/* Tabla de hotspots */}
+          {hotspots.length > 0 && (
+            <div style={{marginTop: 20}}>
+              <h4 style={{margin: '0 0 10px', fontSize: 14}}>Hotspots ({hotspots.length})</h4>
+              <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+                {hotspots.map((h, hi) => (
+                  <div key={h.id || hi} style={{display: 'flex', gap: 10, alignItems: 'center', padding: 10, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fafafa'}}>
+                    <div style={{flexShrink: 0, width: 24, height: 24, borderRadius: '50%', background: hotspotColor, color: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, boxShadow: '0 0 0 2px rgba(0,0,0,0.15)'}}>
+                      {hi + 1}
+                    </div>
+                    {h.productImage ? <img src={h.productImage} alt="" style={{width: 36, height: 36, objectFit: 'cover', borderRadius: 4, flexShrink: 0}} /> : <div style={{width: 36, height: 36, background: '#e5e7eb', borderRadius: 4, flexShrink: 0}} />}
+                    <div style={{flex: 1, minWidth: 0}}>
+                      <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>
+                        {h.productName || <span style={{color: '#ef4444'}}>Sin producto</span>}
+                      </div>
+                      <div style={{fontSize: 11, color: '#6b7280'}}>X: {h.x}% · Y: {h.y}%{h.productPrice ? ' · ' + h.productPrice : ''}</div>
+                    </div>
+                    <input type="number" value={h.x} step="0.5" min="0" max="100" onChange={(e) => updateHotspot(hi, { x: parseFloat(e.target.value) || 0 })} style={{width: 60, padding: '4px 6px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4}} title="X%" />
+                    <input type="number" value={h.y} step="0.5" min="0" max="100" onChange={(e) => updateHotspot(hi, { y: parseFloat(e.target.value) || 0 })} style={{width: 60, padding: '4px 6px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4}} title="Y%" />
+                    <input type="text" value={h.label || ''} onChange={(e) => updateHotspot(hi, { label: e.target.value })} placeholder="label" style={{width: 70, padding: '4px 6px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4}} title="Texto del punto (usado si el modo es 'custom' o 'auto')" />
+                    <button type="button" onClick={() => openPicker(hi)} style={{padding: '6px 10px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600}}>
+                      {h.productId ? 'Cambiar' : 'Asignar'}
+                    </button>
+                    <button type="button" onClick={() => removeHotspot(hi)} style={{padding: '6px 10px', background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12}} title="Eliminar">🗑</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

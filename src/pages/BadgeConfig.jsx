@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './BadgeConfig.css';
 
 function BadgeConfig() {
   const { badgeId } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
@@ -96,7 +98,7 @@ function BadgeConfig() {
       }
     } catch (error) {
       console.error('Error cargando badge:', error);
-      alert('Error al cargar la configuración del badge');
+      toast.info('Error al cargar la configuración del badge');
     } finally {
       setLoading(false);
     }
@@ -116,7 +118,7 @@ function BadgeConfig() {
       setSearchResults(data);
     } catch (error) {
       console.error('Error buscando productos:', error);
-      alert('Error al buscar productos');
+      toast.info('Error al buscar productos');
     } finally {
       setSearchingProducts(false);
     }
@@ -146,7 +148,7 @@ function BadgeConfig() {
       setCategories(data);
     } catch (error) {
       console.error('Error cargando categorías:', error);
-      alert('Error al cargar las categorías');
+      toast.info('Error al cargar las categorías');
     } finally {
       setLoadingCategories(false);
     }
@@ -174,48 +176,48 @@ function BadgeConfig() {
 
   const handleSave = async () => {
     if (!badgeName.trim()) {
-      alert('Por favor ingresa un nombre para el badge');
+      toast.info('Por favor ingresa un nombre para el badge');
       return;
     }
     
     if (!badgeText.trim()) {
-      alert('Por favor ingresa el texto que se mostrará en el badge');
+      toast.info('Por favor ingresa el texto que se mostrará en el badge');
       return;
     }
     
     // Validate rule-specific fields
     if (ruleType === 'manual' && selectedProducts.length === 0) {
-      alert('Por favor selecciona al menos un producto');
+      toast.info('Por favor selecciona al menos un producto');
       return;
     }
     
     if (ruleType === 'price_min' && !minPrice) {
-      alert('Por favor ingresa el precio mínimo');
+      toast.info('Por favor ingresa el precio mínimo');
       return;
     }
     
     if (ruleType === 'price_max' && !maxPrice) {
-      alert('Por favor ingresa el precio máximo');
+      toast.info('Por favor ingresa el precio máximo');
       return;
     }
     
     if (ruleType === 'discount' && !minDiscount) {
-      alert('Por favor ingresa el descuento mínimo');
+      toast.info('Por favor ingresa el descuento mínimo');
       return;
     }
     
     if (ruleType === 'stock_low' && !maxStock) {
-      alert('Por favor ingresa el stock máximo');
+      toast.info('Por favor ingresa el stock máximo');
       return;
     }
     
     if (ruleType === 'category' && selectedCategories.length === 0) {
-      alert('Por favor selecciona al menos una categoría');
+      toast.info('Por favor selecciona al menos una categoría');
       return;
     }
 
     if (ruleType === 'tags' && selectedTags.length === 0) {
-      alert('Por favor ingresa al menos un tag');
+      toast.info('Por favor ingresa al menos un tag');
       return;
     }
 
@@ -273,7 +275,7 @@ function BadgeConfig() {
             body: JSON.stringify(badgeData)
           }
         );
-        alert('Badge actualizado correctamente');
+        toast.info('Badge actualizado correctamente');
       } else {
         // Create new
         await apiRequest(
@@ -283,13 +285,13 @@ function BadgeConfig() {
             body: JSON.stringify(badgeData)
           }
         );
-        alert('Badge creado correctamente');
+        toast.info('Badge creado correctamente');
       }
       
       navigate('/badges');
     } catch (error) {
       console.error('Error guardando badge:', error);
-      alert('Error al guardar el badge: ' + error.message);
+      toast.error('Error al guardar el badge: ' + error.message);
     } finally {
       setSaving(false);
     }

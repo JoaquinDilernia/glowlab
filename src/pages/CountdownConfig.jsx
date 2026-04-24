@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Save, Eye, Clock, Zap, Calendar, Link as LinkIcon, Palette } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './CountdownConfig.css';
 
 function CountdownConfig() {
   const navigate = useNavigate();
+  const toast = useToast();
   const { countdownId } = useParams();
   const [searchParams] = useSearchParams();
   const storeId = localStorage.getItem('promonube_store_id');
@@ -103,12 +105,12 @@ function CountdownConfig() {
   const saveConfig = async () => {
     // Validaciones
     if (!config.name || !config.endDate) {
-      alert('❌ Completa todos los campos requeridos');
+      toast.warn('Completa todos los campos requeridos');
       return;
     }
 
     if (config.type === 'upcoming' && !config.startDate) {
-      alert('❌ Fecha de inicio requerida para promociones "Próximamente"');
+      toast.warn('Fecha de inicio requerida para promociones "Próximamente"');
       return;
     }
 
@@ -126,18 +128,18 @@ function CountdownConfig() {
       });
 
       if (data.success) {
-        alert(config.enabled 
-          ? '✅ Cuenta regresiva guardada y activada!' 
-          : '✅ Configuración guardada. Activala para que aparezca en tu tienda');
+        toast.success(config.enabled 
+          ? 'Cuenta regresiva guardada y activada!' 
+          : 'Configuración guardada. Activala para que aparezca en tu tienda');
         if (!isEdit && data.countdownId) {
           navigate(`/countdown/${data.countdownId}/config`);
         }
       } else {
-        alert('❌ Error al guardar configuración');
+        toast.error('Error al guardar configuración');
       }
     } catch (error) {
       console.error('Error saving config:', error);
-      alert('❌ Error al guardar');
+      toast.error('Error al guardar');
     } finally {
       setLoading(false);
     }
@@ -311,14 +313,14 @@ function CountdownConfig() {
                     <li><strong>Flash Sale:</strong> "⚡ Flash Sale 50% OFF - Termina en:"</li>
                     <li><strong>Cierre de Promo:</strong> "🔥 Últimas 24hs - Termina en:"</li>
                     <li><strong>Stock Limitado:</strong> "⏰ Hasta agotar stock - Termina en:"</li>
-                    <li style={{marginTop: '8px', color: '#059669'}}><strong>✓ Agregá un botón</strong> para llevar a la promo destacada</li>
+                    <li style={{marginTop: '8px', color: 'rgba(134,239,172,0.9)'}}><strong>✓ Agregá un botón</strong> para llevar a la promo destacada</li>
                   </>
                 ) : (
                   <>
                     <li><strong>Lanzamiento:</strong> "🚀 Nuevo producto en:"</li>
                     <li><strong>Evento:</strong> "📅 Black Friday comienza en:"</li>
                     <li><strong>Preventa:</strong> "⭐ Preventa exclusiva en:"</li>
-                    <li style={{marginTop: '8px', color: '#059669'}}><strong>✓ Genera expectativa</strong> y anticipa el evento</li>
+                    <li style={{marginTop: '8px', color: 'rgba(134,239,172,0.9)'}}><strong>✓ Genera expectativa</strong> y anticipa el evento</li>
                   </>
                 )}
               </ul>

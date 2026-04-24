@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Users, Package, TrendingUp, Search, LogOut, ArrowLeft, Sparkles, Lock, Calendar, CheckCircle, XCircle } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './AdminPanel.css';
 
 function AdminPanel() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const toast = useToast();
   const [adminKey, setAdminKey] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [stores, setStores] = useState([]);
@@ -14,6 +15,8 @@ function AdminPanel() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('stores');
   const [processingStore, setProcessingStore] = useState(null);
+  const [quickStoreId, setQuickStoreId] = useState('');
+  const [quickDays, setQuickDays] = useState('36500');
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -27,14 +30,16 @@ function AdminPanel() {
     if (adminKey === 'PromoNube2026Admin!SecretKey') {
       setIsAuthenticated(true);
     } else {
-      alert('❌ Clave incorrecta');
+      toast.error('Clave incorrecta');
     }
   };
 
   const loadStores = async () => {
     setLoading(true);
     try {
-      const response = await apiRequest('/api/admin/stores');
+      const response = await apiRequest('/api/admin/stores', {
+        headers: { 'x-admin-key': adminKey }
+      });
       if (response.success) {
         setStores(response.stores);
       }
@@ -47,7 +52,9 @@ function AdminPanel() {
 
   const loadUninstalls = async () => {
     try {
-      const response = await apiRequest('/api/admin/uninstalls');
+      const response = await apiRequest('/api/admin/uninstalls', {
+        headers: { 'x-admin-key': adminKey }
+      });
       if (response.success) {
         setUninstalls(response.uninstalls);
       }
@@ -74,13 +81,13 @@ function AdminPanel() {
       }).then(r => r.json());
 
       if (response.success) {
-        alert(`✅ Demo activada hasta ${new Date(response.expiresAt).toLocaleDateString()}`);
+        toast.success(`Demo activada hasta ${new Date(response.expiresAt).toLocaleDateString()}`);
         loadStores();
       } else {
-        alert('❌ Error: ' + response.message);
+        toast.error('Error: ' + response.message);
       }
     } catch (error) {
-      alert('❌ Error activando demo');
+      toast.error('Error activando demo');
     } finally {
       setProcessingStore(null);
     }
@@ -97,13 +104,13 @@ function AdminPanel() {
       });
 
       if (response.success) {
-        alert('✅ Demo desactivada');
+        toast.success('Demo desactivada');
         loadStores();
       } else {
-        alert('❌ Error: ' + response.error);
+        toast.error('Error: ' + response.error);
       }
     } catch (error) {
-      alert('❌ Error desactivando demo');
+      toast.error('Error desactivando demo');
     } finally {
       setProcessingStore(null);
     }
@@ -207,6 +214,43 @@ function AdminPanel() {
         </div>
       </div>
 
+      {/* Quick Action - Activar Trial */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(102,126,234,0.15) 0%, rgba(118,75,162,0.15) 100%)',
+        border: '1px solid rgba(102,126,234,0.35)',
+        borderRadius: '12px',
+        padding: '16px 20px',
+        marginBottom: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        flexWrap: 'wrap'
+      }}>
+        <Sparkles size={18} color="#667eea" />
+        <strong style={{color:'rgba(255,255,255,0.9)', fontSize:'14px', whiteSpace:'nowrap'}}>Activar Trial Rápido:</strong>
+        <input
+          type="text"
+          placeholder="Store ID (ej: 5320806)"
+          value={quickStoreId}
+          onChange={e => setQuickStoreId(e.target.value)}
+          style={{padding:'8px 12px', borderRadius:'8px', border:'1px solid rgba(102,126,234,0.4)', background:'rgba(255,255,255,0.08)', color:'#fff', width:'180px', outline:'none'}}
+        />
+        <select value={quickDays} onChange={e => setQuickDays(e.target.value)}
+          style={{padding:'8px 12px', borderRadius:'8px', border:'1px solid rgba(102,126,234,0.4)', background:'rgba(20,20,40,0.95)', color:'#fff', cursor:'pointer'}}>
+          <option value="36500">♾️ Ilimitado (100 años)</option>
+          <option value="365">365 días</option>
+          <option value="90">90 días</option>
+          <option value="30">30 días</option>
+        </select>
+        <button
+          onClick={() => { if (quickStoreId) activateDemo(quickStoreId, parseInt(quickDays)); }}
+          disabled={!quickStoreId || processingStore === quickStoreId}
+          style={{padding:'8px 20px', borderRadius:'8px', background:'linear-gradient(135deg,#667eea,#764ba2)', color:'#fff', border:'none', cursor:'pointer', fontWeight:'600', opacity: !quickStoreId ? 0.5 : 1}}
+        >
+          {processingStore === quickStoreId ? 'Activando...' : '✨ Activar'}
+        </button>
+      </div>
+
       {/* Tabs */}
       <div className="admin-tabs">
         <button 
@@ -308,11 +352,13 @@ function AdminPanel() {
                             className="action-select"
                           >
                             <option value="">Activar Demo...</option>
-                            <option value="7">7 días</option>
-                            <option value="15">15 días</option>
-                            <option value="30">30 días</option>
-                            <option value="60">60 días</option>
+                            <option value="36500">♾️ Ilimitado</option>
+                            <option value="365">365 días</option>
                             <option value="90">90 días</option>
+                            <option value="60">60 días</option>
+                            <option value="30">30 días</option>
+                            <option value="15">15 días</option>
+                            <option value="7">7 días</option>
                           </select>
                         ) : (
                           <button

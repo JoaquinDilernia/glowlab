@@ -26,6 +26,11 @@ functions/.env.*
 .firebaserc
 firebase-debug.log
 
+# Archivos temporales
+tmpclaude-*
+*.bak
+functions/tmpclaude-*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

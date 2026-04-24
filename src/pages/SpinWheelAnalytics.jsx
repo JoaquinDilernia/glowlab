@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './SpinWheelAnalytics.css';
 import { apiRequest, API_CONFIG } from '../config';
+import { useToast } from '../context/ToastContext';
 
 function SpinWheelAnalytics() {
   const { wheelId } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,11 +30,11 @@ function SpinWheelAnalytics() {
         setAnalytics(response.analytics);
       } else {
         console.error('❌ Error en respuesta:', response);
-        alert('Error cargando analytics: ' + response.message);
+        toast.error('Error cargando analytics: ' + response.message);
       }
     } catch (error) {
       console.error('❌ Error en catch:', error);
-      alert('Error cargando analytics: ' + error.message);
+      toast.error('Error cargando analytics: ' + error.message);
     } finally {
       setLoading(false);
     }

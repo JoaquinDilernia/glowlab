@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Save, Eye, Type, Palette, Target, Zap } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './PopupConfig.css';
 
 const TABS = [
@@ -51,6 +52,7 @@ const DEFAULT_CONFIG = {
 function PopupConfig() {
   const { popupId } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
   const [searchParams] = useSearchParams();
   const storeId = localStorage.getItem('promonube_store_id');
   const isNew = !popupId;
@@ -85,12 +87,12 @@ function PopupConfig() {
         };
         setConfig(merged);
       } else {
-        alert('Error cargando popup');
+        toast.info('Error cargando popup');
         navigate('/popups');
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error cargando popup');
+      toast.info('Error cargando popup');
       navigate('/popups');
     } finally {
       setLoading(false);
@@ -110,7 +112,7 @@ function PopupConfig() {
 
   const handleSave = async () => {
     if (!config.name.trim()) {
-      alert('El nombre del popup es obligatorio');
+      toast.info('El nombre del popup es obligatorio');
       setActiveTab('content');
       return;
     }
@@ -133,11 +135,11 @@ function PopupConfig() {
         const targetId = isNew ? data.popupId : popupId;
         navigate('/popups');
       } else {
-        alert('Error guardando: ' + data.message);
+        toast.error('Error guardando: ' + data.message);
       }
     } catch (error) {
       console.error('Error guardando:', error);
-      alert('Error guardando popup');
+      toast.info('Error guardando popup');
     } finally {
       setSaving(false);
     }
@@ -160,10 +162,6 @@ function PopupConfig() {
       <header className="config-header">
         <div className="config-header-inner">
           <div className="config-header-left">
-            <button className="btn-back-modern" onClick={() => navigate('/popups')}>
-              <ArrowLeft size={20} />
-              Popups
-            </button>
             <div>
               <h1 className="config-page-title">{isNew ? 'Crear Popup' : 'Editar Popup'}</h1>
               <p className="config-page-subtitle">

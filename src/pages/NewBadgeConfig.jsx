@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Eye, Tag, Palette, Settings } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './NewBadgeConfig.css';
 
 function NewBadgeConfig() {
   const navigate = useNavigate();
+  const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
 
   const [loading, setLoading] = useState(false);
@@ -67,15 +69,15 @@ function NewBadgeConfig() {
       });
 
       if (data.success) {
-        alert(config.enabled 
-          ? '✅ Badge de productos nuevos activado!' 
-          : '✅ Configuración guardada. Activala para que aparezca en tu tienda');
+        toast.success(config.enabled 
+          ? 'Badge de productos nuevos activado!' 
+          : 'Configuración guardada. Activala para que aparezca en tu tienda');
       } else {
-        alert('❌ Error al guardar configuración');
+        toast.error('Error al guardar configuración');
       }
     } catch (error) {
       console.error('Error saving config:', error);
-      alert('❌ Error al guardar');
+      toast.error('Error al guardar');
     } finally {
       setLoading(false);
     }
@@ -750,31 +752,12 @@ function NewBadgeConfig() {
               </div>
             </div>
 
-            <div className="setup-instructions">
-              <h3>📋 Instrucciones de Instalación</h3>
-              <p>Para que el badge funcione en tu tienda, debes agregar el script en el Panel de Socios de TiendaNube:</p>
-              <ol>
-                <li>Ve al <strong>Partner Panel de TiendaNube</strong></li>
-                <li>En tu app, ve a <strong>App Embeds</strong></li>
-                <li>Crea un nuevo script con esta URL:</li>
-              </ol>
-              <div className="code-block">
-                <code>
-                  https://apipromonube-jlfopowzaq-uc.a.run.app/api/new-badge-script.js?store={storeId}
-                </code>
-                <button 
-                  className="btn-copy"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`https://apipromonube-jlfopowzaq-uc.a.run.app/api/new-badge-script.js?store=${storeId}`);
-                    alert('✅ URL copiada al portapapeles');
-                  }}
-                >
-                  Copiar URL
-                </button>
+            <div className="auto-activation-box">
+              <div className="auto-activation-icon">✅</div>
+              <div>
+                <strong>Funcionamiento automático</strong>
+                <p>El badge ya está activo en tu tienda. No necesitás instalar ni pegar ningún código — PromoNube lo gestiona automáticamente.</p>
               </div>
-              <p className="note">
-                💡 <strong>Nota:</strong> El script detectará automáticamente los productos y agregará el badge solo a los que cumplan con el criterio de días configurado.
-              </p>
             </div>
           </div>
         )}

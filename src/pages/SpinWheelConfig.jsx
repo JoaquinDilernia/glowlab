@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, Eye, Settings, Palette, Target, Clock, Link as LinkIcon, Plus, Trash2, Code, Copy, BarChart3, Mail } from 'lucide-react';
+import { ArrowLeft, Save, Eye, Settings, Palette, Target, Clock, Link as LinkIcon, Plus, Trash2, BarChart3, Mail } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './SpinWheelConfig.css';
 
 function SpinWheelConfig() {
   const navigate = useNavigate();
+  const toast = useToast();
   const { wheelId } = useParams();
   const storeId = localStorage.getItem('promonube_store_id');
   const isEdit = !!wheelId;
@@ -57,18 +59,26 @@ function SpinWheelConfig() {
     backgroundColor: '#FFFFFF',
     overlayColor: 'rgba(0, 0, 0, 0.7)',
     buttonColor: '#667EEA',
-    buttonTextColor: '#FFFFFF'
+    buttonTextColor: '#FFFFFF',
+    // Dise�o premium
+    fontFamily: 'modern',
+    modalStyle: 'gradient',
+    wheelBorderColor: '#FFFFFF',
+    pointerColor: '#FF3860',
+    titleFontWeight: '800',
+    borderRadiusStyle: 'rounded',
+    inputBgColor: 'rgba(255,255,255,0.08)',
+    inputTextColor: '#FFFFFF',
+    inputBorderColor: 'rgba(128,128,128,0.25)'
   });
 
   const [activeTab, setActiveTab] = useState('general');
   const [showPreview, setShowPreview] = useState(false);
-  const [scriptUrl, setScriptUrl] = useState('');
 
   useEffect(() => {
     if (isEdit) {
       loadConfig();
     }
-    setScriptUrl(`https://apipromonube-jlfopowzaq-uc.a.run.app/api/spin-wheel/script.js?storeId=${storeId}`);
   }, [wheelId]);
 
   const loadConfig = async () => {
@@ -111,18 +121,18 @@ function SpinWheelConfig() {
       });
 
       if (data.success) {
-        alert(config.enabled 
-          ? '✅ Ruleta guardada y activada! Ya está visible en tu tienda' 
-          : '✅ Configuración guardada. Activala para que aparezca en tu tienda');
+        toast.success(config.enabled 
+          ? 'Ruleta guardada y activada! Ya está visible en tu tienda' 
+          : 'Configuración guardada. Activala para que aparezca en tu tienda');
         if (!isEdit && data.wheelId) {
           navigate(`/spin-wheel/${data.wheelId}/config`);
         }
       } else {
-        alert('❌ Error al guardar configuración');
+        toast.info('❌ Error al guardar configuración');
       }
     } catch (error) {
       console.error('Error saving config:', error);
-      alert('❌ Error al guardar');
+      toast.info('❌ Error al guardar');
     } finally {
       setLoading(false);
     }
@@ -145,7 +155,7 @@ function SpinWheelConfig() {
 
   const removeSegment = (id) => {
     if (config.segments.length <= 2) {
-      alert('Debe haber al menos 2 segmentos');
+      toast.info('Debe haber al menos 2 segmentos');
       return;
     }
     setConfig({
@@ -164,12 +174,6 @@ function SpinWheelConfig() {
   };
 
   const totalProbability = config.segments.reduce((sum, s) => sum + parseInt(s.probability || 0), 0);
-
-  const copyScript = () => {
-    const scriptCode = `<!-- GlowLab Spin Wheel -->\n<script src="${scriptUrl}" async></script>`;
-    navigator.clipboard.writeText(scriptCode);
-    alert('✅ Código copiado al portapapeles!');
-  };
 
   return (
     <div className="spin-config-container">
@@ -406,12 +410,12 @@ function SpinWheelConfig() {
               <label>Centro de la Ruleta</label>
               <input
                 type="text"
-                value={config.centerEmoji || '🎁'}
+                value={config.centerEmoji !== undefined ? config.centerEmoji : '🎁'}
                 onChange={(e) => setConfig({ ...config, centerEmoji: e.target.value })}
-                placeholder="🎁"
+                placeholder="Dejar vacío para no mostrar"
                 maxLength={10}
               />
-              <div className="form-hint">Emoji o texto que aparece en el centro de la rueda. Ej: 🎁 🎯 ⭐ 🔥 o el nombre de tu marca</div>
+              <div className="form-hint">Emoji o texto del centro de la rueda. Ej: 🎁 🎯 ⭐ 🔥 o nombre de marca. Deja el campo vacío para ocultarlo.</div>
             </div>
           </div>
         )}
@@ -434,6 +438,9 @@ function SpinWheelConfig() {
                 {totalProbability !== 100 && ' - Debe sumar exactamente 100%'}
               </span>
             </div>
+            <small className="field-hint" style={{display:'block', marginBottom:'20px'}}>
+              La probabilidad controla con qué frecuencia cae cada premio. El total debe sumar 100%. Ejemplo: si querés regalar poco, ponele 5% y compensá con "Sin Premio" al 50-60%.
+            </small>
 
             <div className="segments-list">
               {config.segments.map((segment, index) => (
@@ -620,6 +627,68 @@ function SpinWheelConfig() {
           <div className="config-section">
             <h2>🎨 Personalización del Estilo</h2>
 
+            {/* --- Estilo premium (tema, tipografía, forma) --- */}
+            <div className="premium-style-grid" style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:'16px', marginBottom:'28px'}}>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label>🎭 Estilo del modal</label>
+                <select
+                  value={config.modalStyle || 'gradient'}
+                  onChange={(e) => setConfig({ ...config, modalStyle: e.target.value })}
+                >
+                  <option value="gradient">Gradiente (clásico)</option>
+                  <option value="solid">Color sólido</option>
+                  <option value="glass">Glass / Vidrio</option>
+                </select>
+                <small className="field-hint">Cómo se ve el fondo del popup</small>
+              </div>
+
+              <div className="form-group" style={{marginBottom:0}}>
+                <label>✒️ Tipografía</label>
+                <select
+                  value={config.fontFamily || 'modern'}
+                  onChange={(e) => setConfig({ ...config, fontFamily: e.target.value })}
+                >
+                  <option value="modern">Modern — Inter (sans)</option>
+                  <option value="poppins">Poppins — moderna, redondeada</option>
+                  <option value="minimal">Minimal — DM Sans</option>
+                  <option value="bold">Bold — Space Grotesk</option>
+                  <option value="rounded">Rounded — Nunito</option>
+                  <option value="elegant">Elegant — Playfair Display (serif)</option>
+                  <option value="editorial">Editorial — Fraunces (serif)</option>
+                  <option value="luxe">Luxe — Cormorant (serif)</option>
+                  <option value="mono">Mono — JetBrains (monoespacio)</option>
+                </select>
+                <small className="field-hint">Google Font aplicada al título, texto y botones</small>
+              </div>
+
+              <div className="form-group" style={{marginBottom:0}}>
+                <label>💪 Peso del título</label>
+                <select
+                  value={config.titleFontWeight || '800'}
+                  onChange={(e) => setConfig({ ...config, titleFontWeight: e.target.value })}
+                >
+                  <option value="400">Regular (400)</option>
+                  <option value="500">Medium (500)</option>
+                  <option value="600">Semi-Bold (600)</option>
+                  <option value="700">Bold (700)</option>
+                  <option value="800">Extra-Bold (800)</option>
+                  <option value="900">Black (900)</option>
+                </select>
+              </div>
+
+              <div className="form-group" style={{marginBottom:0}}>
+                <label>📐 Forma / esquinas</label>
+                <select
+                  value={config.borderRadiusStyle || 'rounded'}
+                  onChange={(e) => setConfig({ ...config, borderRadiusStyle: e.target.value })}
+                >
+                  <option value="sharp">Recto (minimal)</option>
+                  <option value="rounded">Redondeado (default)</option>
+                  <option value="pill">Muy redondeado (pill)</option>
+                </select>
+              </div>
+            </div>
+
             <div className="color-grid">
               <div className="form-group">
                 <label>🎨 Color Primario</label>
@@ -739,6 +808,96 @@ function SpinWheelConfig() {
                 />
                 <small className="field-hint">Usa rgba para transparencia. Ej: rgba(0, 0, 0, 0.7)</small>
               </div>
+
+              <div className="form-group">
+                <label>⚪ Borde de la ruleta</label>
+                <div className="color-input-group">
+                  <input
+                    type="color"
+                    value={config.wheelBorderColor || '#FFFFFF'}
+                    onChange={(e) => setConfig({ ...config, wheelBorderColor: e.target.value })}
+                  />
+                  <input
+                    type="text"
+                    value={config.wheelBorderColor || '#FFFFFF'}
+                    onChange={(e) => setConfig({ ...config, wheelBorderColor: e.target.value })}
+                    placeholder="#FFFFFF"
+                  />
+                </div>
+                <small className="field-hint">Color del anillo que rodea la rueda</small>
+              </div>
+
+              <div className="form-group">
+                <label>📍 Puntero / flecha</label>
+                <div className="color-input-group">
+                  <input
+                    type="color"
+                    value={config.pointerColor || '#FF3860'}
+                    onChange={(e) => setConfig({ ...config, pointerColor: e.target.value })}
+                  />
+                  <input
+                    type="text"
+                    value={config.pointerColor || '#FF3860'}
+                    onChange={(e) => setConfig({ ...config, pointerColor: e.target.value })}
+                    placeholder="#FF3860"
+                  />
+                </div>
+                <small className="field-hint">Color del indicador que marca el premio ganador</small>
+              </div>
+
+              <div className="form-group">
+                <label>📧 Fondo del input de email</label>
+                <div className="color-input-group">
+                  <input
+                    type="color"
+                    value={(config.inputBgColor && config.inputBgColor.startsWith('#')) ? config.inputBgColor : '#FFFFFF'}
+                    onChange={(e) => setConfig({ ...config, inputBgColor: e.target.value })}
+                  />
+                  <input
+                    type="text"
+                    value={config.inputBgColor || 'rgba(255,255,255,0.08)'}
+                    onChange={(e) => setConfig({ ...config, inputBgColor: e.target.value })}
+                    placeholder="#FFFFFF o rgba(...)"
+                  />
+                </div>
+                <small className="field-hint">Acepta hex (#FFFFFF) o rgba(r,g,b,a) con transparencia</small>
+              </div>
+
+              <div className="form-group">
+                <label>✏️ Color del texto del input</label>
+                <div className="color-input-group">
+                  <input
+                    type="color"
+                    value={config.inputTextColor || '#FFFFFF'}
+                    onChange={(e) => setConfig({ ...config, inputTextColor: e.target.value })}
+                  />
+                  <input
+                    type="text"
+                    value={config.inputTextColor || '#FFFFFF'}
+                    onChange={(e) => setConfig({ ...config, inputTextColor: e.target.value })}
+                    placeholder="#FFFFFF"
+                  />
+                </div>
+                <small className="field-hint">Color del email escrito y del placeholder</small>
+              </div>
+
+              <div className="form-group">
+                <label>🔲 Color del borde del input</label>
+                <div className="color-input-group">
+                  <input
+                    type="color"
+                    value={(config.inputBorderColor && config.inputBorderColor.startsWith('#')) ? config.inputBorderColor : '#808080'}
+                    onChange={(e) => setConfig({ ...config, inputBorderColor: e.target.value })}
+                  />
+                  <input
+                    type="text"
+                    value={config.inputBorderColor || 'rgba(128,128,128,0.25)'}
+                    onChange={(e) => setConfig({ ...config, inputBorderColor: e.target.value })}
+                    placeholder="#808080 o rgba(...)"
+                  />
+                </div>
+                <small className="field-hint">Acepta hex o rgba(r,g,b,a) con transparencia</small>
+              </div>
             </div>
 
             <div className="style-preview" style={{
@@ -831,9 +990,9 @@ function SpinWheelConfig() {
               </div>
             </div>
 
-            <div className="info-box" style={{marginTop: '24px', padding: '16px', background: '#f0f9ff', border: '1px solid #0ea5e9', borderRadius: '8px'}}>
-              <strong style={{color: '#0284c7'}}>ℹ️ Cómo funciona:</strong>
-              <ol style={{margin: '8px 0 0 20px', color: '#0369a1'}}>
+            <div className="info-box" style={{marginTop: '24px'}}>
+              <strong>ℹ️ Cómo funciona:</strong>
+              <ol style={{margin: '8px 0 0 20px'}}>
                 <li>El usuario ingresa su email y gira la ruleta</li>
                 <li>Se crea el cupón de descuento en TiendaNube</li>
                 <li>El email se envía automáticamente a Perfit con tags y datos del premio</li>
@@ -845,8 +1004,38 @@ function SpinWheelConfig() {
       </div>
 
       {/* Preview Modal - Popup real */}
-      {showPreview && (
-        <div 
+      {showPreview && (() => {
+        // Presets de fuente (espejo del widget)
+        const FONT_PRESETS = {
+          modern: { link: 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap', stack: "'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif" },
+          poppins: { link: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap', stack: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif" },
+          elegant: { link: 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap', stack: "'Playfair Display', Georgia, serif" },
+          luxe: { link: 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&display=swap', stack: "'Cormorant Garamond', Georgia, serif" },
+          minimal: { link: 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap', stack: "'DM Sans', -apple-system, sans-serif" },
+          bold: { link: 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap', stack: "'Space Grotesk', -apple-system, sans-serif" },
+          editorial: { link: 'https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600;700;800;900&display=swap', stack: "'Fraunces', Georgia, serif" },
+          rounded: { link: 'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap', stack: "'Nunito', -apple-system, sans-serif" },
+          mono: { link: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap', stack: "'JetBrains Mono', ui-monospace, monospace" }
+        };
+        const fontPreset = FONT_PRESETS[config.fontFamily] || FONT_PRESETS.modern;
+        const RADIUS_PRESETS = { sharp: '4px', rounded: '20px', pill: '32px' };
+        const modalRadius = RADIUS_PRESETS[config.borderRadiusStyle] || '20px';
+        const buttonRadius = config.borderRadiusStyle === 'pill' ? '999px' : (config.borderRadiusStyle === 'sharp' ? '4px' : '12px');
+        let modalBackground;
+        if (config.modalStyle === 'solid') {
+          modalBackground = config.primaryColor;
+        } else if (config.modalStyle === 'glass') {
+          modalBackground = 'rgba(20, 20, 30, 0.75)';
+        } else {
+          modalBackground = `linear-gradient(135deg, ${config.primaryColor} 0%, ${config.secondaryColor} 100%)`;
+        }
+        const glassStyle = config.modalStyle === 'glass'
+          ? { backdropFilter: 'blur(30px) saturate(180%)', WebkitBackdropFilter: 'blur(30px) saturate(180%)', border: '1px solid rgba(255,255,255,0.15)' }
+          : {};
+        const titleWeight = parseInt(config.titleFontWeight, 10) || 800;
+
+        return (
+        <div
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setShowPreview(false);
           }}
@@ -856,75 +1045,87 @@ function SpinWheelConfig() {
             left: 0,
             right: 0,
             bottom: 0,
-            background: config.overlayColor || 'rgba(0, 0, 0, 0.92)',
-            backdropFilter: 'blur(8px)',
+            background: 'radial-gradient(circle at center, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.95) 100%)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 999999,
             animation: 'pnFadeIn 0.3s ease-out',
-            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+            fontFamily: fontPreset.stack,
+            padding: '16px'
           }}
         >
-          <div 
+          {/* Cargar la Google Font seleccionada */}
+          <link rel="stylesheet" href={fontPreset.link} />
+          <div
             onMouseDown={(e) => e.stopPropagation()}
             style={{
-              background: `linear-gradient(135deg, ${config.primaryColor} 0%, ${config.secondaryColor} 100%)`,
-              padding: '40px 30px',
-              borderRadius: '24px',
-              maxWidth: '480px',
-              width: '90%',
-              maxHeight: '90vh',
+              background: modalBackground,
+              ...glassStyle,
+              padding: '40px 32px 32px',
+              borderRadius: modalRadius,
+              maxWidth: '440px',
+              width: '100%',
+              maxHeight: '92vh',
               overflowY: 'auto',
               color: config.textColor || '#FFFFFF',
               textAlign: 'center',
               position: 'relative',
-              animation: 'pnSlideUp 0.4s ease-out',
-              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.4)'
+              animation: 'pnSlideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
+              boxShadow: '0 24px 80px -8px rgba(0, 0, 0, 0.5)',
+              fontFamily: fontPreset.stack
             }}
           >
             {/* Botón cerrar */}
-            <button 
+            <button
               onClick={() => setShowPreview(false)}
               style={{
                 position: 'absolute',
-                top: '16px',
-                right: '16px',
-                background: 'transparent',
-                border: 'none',
-                color: '#1a1a1a',
-                width: '40px',
-                height: '40px',
+                top: '14px',
+                right: '14px',
+                background: 'rgba(255,255,255,0.15)',
+                border: '1px solid rgba(255,255,255,0.25)',
+                color: config.textColor || '#FFFFFF',
+                width: '32px',
+                height: '32px',
+                padding: 0,
                 borderRadius: '50%',
                 cursor: 'pointer',
-                fontSize: '28px',
-                lineHeight: 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                transition: 'all 0.2s ease'
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                zIndex: 2,
+                lineHeight: 0
               }}
+              aria-label="Cerrar"
             >
-              ×
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M1 1L13 13M13 1L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
             </button>
 
             {/* Logo */}
             {config.showLogo && config.logoUrl && (
-              <img 
-                src={config.logoUrl} 
-                alt="Logo" 
-                style={{ maxWidth: '200px', marginBottom: '20px' }} 
-                onError={(e) => e.target.style.display = 'none'} 
+              <img
+                src={config.logoUrl}
+                alt="Logo"
+                style={{ maxWidth: '180px', marginBottom: '16px' }}
+                onError={(e) => e.target.style.display = 'none'}
               />
             )}
 
             {/* Título */}
             <h1 style={{
-              fontSize: '32px',
+              fontFamily: fontPreset.stack,
+              fontSize: '28px',
               margin: '0 0 8px',
-              fontWeight: 800,
-              textShadow: '0 2px 10px rgba(0, 0, 0, 0.2)',
-              lineHeight: 1.2,
+              fontWeight: titleWeight,
+              letterSpacing: '-0.015em',
+              lineHeight: 1.15,
               color: config.textColor || '#FFFFFF'
             }}>
               {config.title}
@@ -932,47 +1133,66 @@ function SpinWheelConfig() {
 
             {/* Subtítulo */}
             <p style={{
-              fontSize: '16px',
+              fontSize: '14px',
               margin: '0 0 24px',
-              opacity: 0.95,
-              lineHeight: 1.4,
+              opacity: 0.82,
+              lineHeight: 1.5,
+              fontWeight: 400,
               color: config.textColor || '#FFFFFF'
             }}>
               {config.subtitle}
             </p>
 
-            {/* Ruleta SVG */}
+            {/* Ruleta SVG minimalista con aro exterior */}
             <div style={{
               position: 'relative',
               width: '300px',
               height: '300px',
-              margin: '0 auto 24px'
+              margin: '4px auto 28px',
+              padding: '6px',
+              boxSizing: 'border-box'
             }}>
-              {/* Puntero */}
+              {/* Aro exterior */}
               <div style={{
                 position: 'absolute',
-                top: '-20px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: 0,
-                height: 0,
-                borderLeft: '20px solid transparent',
-                borderRight: '20px solid transparent',
-                borderTop: '35px solid #FF0040',
-                filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4))',
-                zIndex: 10
+                inset: 0,
+                borderRadius: '50%',
+                background: config.wheelBorderColor || '#FFFFFF',
+                boxShadow: '0 18px 50px -12px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(0,0,0,0.08)',
+                zIndex: 0
               }} />
 
-              <div style={{ position: 'relative' }}>
-                <svg 
-                  viewBox="0 0 320 320" 
+              {/* Puntero minimalista */}
+              <div style={{
+                position: 'absolute',
+                top: '-4px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '26px',
+                height: '32px',
+                zIndex: 10,
+                filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.4))'
+              }}>
+                <svg viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%', display: 'block' }}>
+                  <path
+                    d="M12 30 L2 4 Q12 -2 22 4 Z"
+                    fill={config.pointerColor || '#FF3860'}
+                    stroke="#fff"
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+
+              <div style={{ position: 'relative', width: '100%', height: '100%', zIndex: 1 }}>
+                <svg
+                  viewBox="0 0 320 320"
                   style={{
                     width: '100%',
                     height: '100%',
                     borderRadius: '50%',
-                    border: '10px solid rgba(255, 255, 255, 0.95)',
-                    boxShadow: '0 0 0 3px rgba(0, 0, 0, 0.1), 0 0 32px rgba(0, 0, 0, 0.2) inset, 0 16px 48px rgba(0, 0, 0, 0.3)',
-                    background: config.backgroundColor || '#FFFFFF'
+                    background: '#FFFFFF',
+                    display: 'block'
                   }}
                 >
                   <g>
@@ -1009,19 +1229,19 @@ function SpinWheelConfig() {
                             <path
                               d={`M 160 160 L ${x1} ${y1} A 150 150 0 ${largeArc} 1 ${x2} ${y2} Z`}
                               fill={segment.color}
-                              stroke="white"
-                              strokeWidth="2"
+                              stroke="rgba(255,255,255,0.9)"
+                              strokeWidth="1"
                             />
                             <text
                               x={textX}
                               y={textY}
                               fill="white"
                               fontSize={fontSize}
-                              fontWeight="bold"
+                              fontWeight="600"
                               textAnchor="middle"
                               dominantBaseline="middle"
                               transform={`rotate(${textAngle + 90}, ${textX}, ${textY})`}
-                              style={{ pointerEvents: 'none', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
+                              style={{ pointerEvents: 'none', letterSpacing: '0.02em', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}
                             >
                               {displayLabel}
                             </text>
@@ -1032,26 +1252,24 @@ function SpinWheelConfig() {
                   </g>
                 </svg>
 
-                {/* Centro de la ruleta */}
+                {/* Centro con anillo concéntrico */}
                 <div style={{
                   position: 'absolute',
                   top: '50%',
                   left: '50%',
                   transform: 'translate(-50%, -50%)',
-                  width: '72px',
-                  height: '72px',
-                  background: 'linear-gradient(135deg, #FFFFFF 0%, #F5F5F5 100%)',
+                  width: '42px',
+                  height: '42px',
+                  background: '#FFFFFF',
                   borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '32px',
-                  boxShadow: '0 0 0 4px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.3)',
-                  zIndex: 10,
-                  fontWeight: 'bold',
-                  border: '3px solid rgba(255, 255, 255, 0.9)'
+                  fontSize: '18px',
+                  boxShadow: `0 0 0 4px ${config.wheelBorderColor || '#FFFFFF'}, 0 0 0 5px rgba(0,0,0,0.1), 0 4px 14px rgba(0,0,0,0.22)`,
+                  zIndex: 10
                 }}>
-                  {config.centerEmoji || '🎁'}
+                  {config.centerEmoji !== undefined ? config.centerEmoji : '🎁'}
                 </div>
               </div>
             </div>
@@ -1061,20 +1279,22 @@ function SpinWheelConfig() {
               <input
                 type="email"
                 placeholder={config.emailPlaceholder || 'tu@email.com'}
-                disabled
+                readOnly
                 style={{
                   width: '100%',
-                  padding: '16px',
-                  border: 'none',
-                  borderRadius: '12px',
-                  fontSize: '16px',
+                  padding: '14px 16px',
+                  border: `1.5px solid ${config.inputBorderColor || 'rgba(128,128,128,0.25)'}`,
+                  borderRadius: buttonRadius,
+                  fontSize: '15px',
                   marginBottom: '12px',
                   textAlign: 'center',
                   boxSizing: 'border-box',
-                  background: 'rgba(255, 255, 255, 0.95)',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-                  color: '#999',
-                  fontWeight: 500
+                  background: config.inputBgColor || 'rgba(255,255,255,0.08)',
+                  color: config.inputTextColor || config.textColor || '#FFFFFF',
+                  WebkitTextFillColor: config.inputTextColor || config.textColor || '#FFFFFF',
+                  opacity: 1,
+                  fontWeight: 500,
+                  fontFamily: fontPreset.stack
                 }}
               />
             )}
@@ -1083,19 +1303,20 @@ function SpinWheelConfig() {
             <button
               disabled
               style={{
-                background: config.buttonColor || 'white',
+                background: config.buttonColor || '#FFFFFF',
                 color: config.buttonTextColor || config.primaryColor,
                 border: 'none',
-                padding: '18px 32px',
-                borderRadius: '12px',
-                fontSize: '18px',
+                padding: '16px 32px',
+                borderRadius: buttonRadius,
+                fontSize: '15px',
                 fontWeight: 700,
                 cursor: 'default',
                 width: '100%',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.22)',
                 textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                opacity: 0.9
+                letterSpacing: '0.08em',
+                fontFamily: fontPreset.stack,
+                opacity: 0.95
               }}
             >
               {config.buttonText}
@@ -1103,26 +1324,29 @@ function SpinWheelConfig() {
 
             <p style={{
               fontSize: '12px',
-              opacity: 0.7,
-              marginTop: '16px',
+              opacity: 0.65,
+              marginTop: '14px',
               color: config.textColor || '#FFFFFF'
             }}>
               {config.termsText}
             </p>
 
             <div style={{
-              marginTop: '16px',
-              padding: '10px',
-              background: 'rgba(255,255,255,0.1)',
+              marginTop: '14px',
+              padding: '8px 12px',
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.12)',
               borderRadius: '8px',
-              fontSize: '12px',
-              opacity: 0.7
+              fontSize: '11px',
+              opacity: 0.7,
+              letterSpacing: '0.02em'
             }}>
-              👆 Esta es una vista previa. Así se verá el popup en tu tienda.
+              Vista previa — así se verá el popup real en tu tienda
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

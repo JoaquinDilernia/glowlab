@@ -56,7 +56,7 @@ function PopupsList() {
       }
     } catch (error) {
       console.error('Error toggling popup:', error);
-      alert('Error al cambiar estado del popup');
+      toast.info('Error al cambiar estado del popup');
     } finally {
       setTogglingId(null);
     }
@@ -74,7 +74,7 @@ function PopupsList() {
       }
     } catch (error) {
       console.error('Error eliminando popup:', error);
-      alert('Error al eliminar popup');
+      toast.info('Error al eliminar popup');
     } finally {
       setDeletingId(null);
     }
@@ -100,10 +100,6 @@ function PopupsList() {
       <header className="popups-header">
         <div className="popups-header-inner">
           <div className="popups-header-top">
-            <button className="btn-back-modern" onClick={() => navigate('/dashboard')}>
-              <ArrowLeft size={20} />
-              <span>Dashboard</span>
-            </button>
             <button className="btn-primary-gradient" onClick={() => navigate('/popups/create')}>
               <Plus size={18} />
               <span>Nuevo Popup</span>
@@ -130,7 +126,7 @@ function PopupsList() {
               className="btn-copy"
               onClick={() => {
                 navigator.clipboard.writeText(getScriptSnippet());
-                alert('Copiado al portapapeles');
+                toast.info('Copiado al portapapeles');
               }}
             >
               Copiar

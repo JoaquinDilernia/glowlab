@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, Download, Plus, Tag, Calendar, Users, DollarSign, Eye, EyeOff, Trash2, Filter, BarChart2, Zap, Mail, Gift, Upload, X, AlertCircle, CheckCircle } from 'lucide-react';
 import { apiRequest } from '../config';
 import CouponUsageModal from '../components/CouponUsageModal';
+import { useToast } from '../context/ToastContext';
 import './CouponsList.css';
 
 function CouponsList() {
   const navigate = useNavigate();
+  const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
   
   const [loading, setLoading] = useState(true);
@@ -143,13 +145,11 @@ function CouponsList() {
         setCoupons(prev => prev.map(c => 
           c.couponId === couponId ? { ...c, active: data.active } : c
         ));
-        alert(data.message);
-      } else {
-        alert(data.message || 'Error al cambiar estado');
+        toast.success(data.message);
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error al cambiar estado del cupón');
+      toast.info('Error al cambiar estado del cupón');
     }
   };
 
@@ -164,13 +164,11 @@ function CouponsList() {
       if (data.success) {
         // Remover localmente
         setCoupons(prev => prev.filter(c => c.couponId !== couponId));
-        alert(data.message);
-      } else {
-        alert(data.message || 'Error al eliminar');
+        toast.success(data.message);
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error al eliminar cupón');
+      toast.info('Error al eliminar cupón');
     }
   };
 
@@ -265,17 +263,17 @@ function CouponsList() {
       });
 
       if (data.success) {
-        alert(`✅ ${data.imported} cupones importados correctamente`);
+        toast.success(`${data.imported} cupones importados correctamente`);
         setShowImportModal(false);
         setCsvData([]);
         setCsvErrors([]);
         loadCoupons();
       } else {
-        alert(`❌ Error: ${data.message}`);
+        toast.error(`Error: ${data.message}`);
       }
     } catch (error) {
       console.error('Error importing coupons:', error);
-      alert('Error al importar cupones');
+      toast.info('Error al importar cupones');
     } finally {
       setImporting(false);
     }
@@ -296,10 +294,6 @@ function CouponsList() {
       <header className="coupons-header-modern">
         <div className="header-content-wrapper">
           <div className="header-top">
-            <button className="btn-back-modern" onClick={() => navigate('/dashboard')}>
-              <ArrowLeft size={20} />
-              <span>Dashboard</span>
-            </button>
             <div className="header-actions-modern">
               <button className="btn-secondary-modern" onClick={exportToCSV} disabled={filteredCoupons.length === 0}>
                 <Download size={18} />

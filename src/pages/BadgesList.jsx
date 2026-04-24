@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plus, Tag, Settings, Trash2, Eye, EyeOff } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './BadgesList.css';
 
 function BadgesList() {
   const navigate = useNavigate();
+  const toast = useToast();
   const location = useLocation();
   const storeId = localStorage.getItem('promonube_store_id');
   
@@ -78,13 +80,13 @@ function BadgesList() {
 
       if (data.success) {
         setBadges(prev => prev.filter(b => b.badgeId !== badgeId));
-        alert('✅ Badge eliminado');
+        toast.success('Badge eliminado');
       } else {
-        alert('❌ Error al eliminar');
+        toast.error('Error al eliminar');
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('❌ Error al eliminar');
+      toast.error('Error al eliminar');
     }
   };
 
@@ -153,10 +155,6 @@ function BadgesList() {
       <header className="page-header-modern">
         <div className="header-content-modern">
           <div className="header-top-modern">
-            <button className="btn-back-modern" onClick={() => navigate('/dashboard')}>
-              <ArrowLeft size={20} />
-              <span>Dashboard</span>
-            </button>
             <button className="btn-primary-gradient" onClick={() => navigate('/badges/create')}>
               <Plus size={18} />
               <span>Nuevo Badge</span>
@@ -173,71 +171,24 @@ function BadgesList() {
         <div className="empty-state-modern">
           <div className="empty-icon-large">🏷️</div>
           <h2 className="empty-title">Crea Tu Primer Badge</h2>
-          <p className="empty-description">Destaca productos con etiquetas visuales según múltiples reglas y criterios</p>
+          <p className="empty-description">Etiquetas visuales automáticas en tus productos: Nuevo, Descuento, Últimas unidades y más</p>
 
-          <div style={{
-            marginTop: '40px',
-            padding: '30px',
-            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-            borderRadius: '20px',
-            border: '2px solid #bae6fd',
-            maxWidth: '700px',
-            margin: '40px auto'
-          }}>
-            <h4 style={{fontSize: '18px', fontWeight: '700', color: '#0369a1', marginBottom: '20px', textAlign: 'center'}}>
-              💡 Tipos de Reglas Disponibles
-            </h4>
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px'}}>
-              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>🆕</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Productos Nuevos</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Días desde creación</p>
+          <div className="em-badges-grid">
+            {[{em:'🆕',t:'Productos Nuevos',d:'Días desde creación'},{em:'✋',t:'Selección Manual',d:'Elegí productos específicos'},{em:'💰',t:'Rango de Precio',d:'Mayor o menor a $X'},{em:'%',t:'Descuentos',d:'Descuento mínimo %'},{em:'📦',t:'Stock Bajo',d:'Últimas unidades'},{em:'📂',t:'Por Categoría',d:'Toda una categoría'}].map(r => (
+              <div key={r.t} className="em-rule-card">
+                <span className="em-rule-icon">{r.em}</span>
+                <strong>{r.t}</strong>
+                <p>{r.d}</p>
               </div>
-              
-              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>✋</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Selección Manual</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Elige productos específicos</p>
-              </div>
-
-              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>💰</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Rango de Precio</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Mayor/menor a precio X</p>
-              </div>
-
-              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>%</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Descuentos</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Descuento mínimo %</p>
-              </div>
-
-              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>📦</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Stock Bajo</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Últimas unidades</p>
-              </div>
-
-              <div style={{background: 'rgba(26, 26, 46, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid #7dd3fc'}}>
-                <div style={{fontSize: '28px', marginBottom: '8px'}}>📂</div>
-                <strong style={{color: '#0369a1', fontSize: '14px'}}>Por Categoría</strong>
-                <p style={{margin: '6px 0 0 0', fontSize: '13px', color: '#075985'}}>Toda una categoría</p>
-              </div>
-            </div>
-
-            <div style={{marginTop: '24px', padding: '16px', background: '#fef3c7', borderRadius: '12px', border: '1px solid #fbbf24'}}>
-              <strong style={{color: '#92400e', fontSize: '14px'}}>✨ Múltiples badges simultáneos</strong>
-              <p style={{margin: '8px 0 0 0', fontSize: '13px', color: '#78350f'}}>
-                Puedes tener varios badges activos con diferentes reglas. Cada producto mostrará todos los badges que cumplan con sus criterios.
-              </p>
-            </div>
+            ))}
           </div>
 
-          <button 
-            className="btn-primary-large" 
-            onClick={() => navigate('/badges/create')}
-            style={{marginTop: '30px'}}
-          >
+          <div className="em-tip-box">
+            <strong>✨ Múltiples badges simultáneos</strong>
+            <p>Podés tener varios badges activos con diferentes reglas. Cada producto muestra solo los que aplican.</p>
+          </div>
+
+          <button className="btn-primary-large" onClick={() => navigate('/badges/create')} style={{marginTop: '28px'}}>
             <Plus size={20} />
             Crear Mi Primer Badge
           </button>

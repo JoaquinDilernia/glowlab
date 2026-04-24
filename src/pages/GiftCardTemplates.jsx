@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Upload, Image, Trash2, Star, Palette } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './GiftCardTemplates.css';
 
 // TEMPLATES PREDETERMINADOS (vienen de fábrica)
@@ -40,6 +41,7 @@ const DEFAULT_TEMPLATES = [
 // Solo: Templates predeterminados + Subir imagen + Color de fondo
 function GiftCardTemplates() {
   const navigate = useNavigate();
+  const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
 
   const [customTemplates, setCustomTemplates] = useState([]);
@@ -83,12 +85,12 @@ function GiftCardTemplates() {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        alert('❌ La imagen debe pesar menos de 5MB');
+        toast.warn('La imagen debe pesar menos de 5MB');
         return;
       }
 
       if (!file.type.match('image.*')) {
-        alert('❌ Solo se permiten archivos de imagen (JPG, PNG)');
+        toast.warn('Solo se permiten archivos de imagen (JPG, PNG)');
         return;
       }
 
@@ -106,13 +108,13 @@ function GiftCardTemplates() {
 
   const handleUpload = async () => {
     if (!newTemplate.name.trim()) {
-      alert('❌ Por favor ingresa un nombre para el diseño');
+      toast.warn('Por favor ingresá un nombre para el diseño');
       return;
     }
 
     // Validación según tipo
     if (createType === 'image' && !newTemplate.imageFile) {
-      alert('❌ Por favor selecciona una imagen');
+      toast.warn('Por favor seleccioná una imagen');
       return;
     }
 
@@ -142,7 +144,7 @@ function GiftCardTemplates() {
       });
 
       if (data.success) {
-        alert('✅ Diseño creado exitosamente');
+        toast.success('Diseño creado exitosamente');
         setShowCreateModal(false);
         setNewTemplate({
           name: '',
@@ -153,11 +155,11 @@ function GiftCardTemplates() {
         setCreateType('image');
         loadCustomTemplates();
       } else {
-        alert('❌ Error: ' + (data.message || 'Error al crear diseño'));
+        toast.error('Error: ' + (data.message || 'Error al crear diseño'));
       }
     } catch (error) {
       console.error('Error uploading:', error);
-      alert('❌ Error al subir diseño');
+      toast.error('Error al subir diseño');
     } finally {
       setUploading(false);
     }
@@ -171,12 +173,12 @@ function GiftCardTemplates() {
       });
 
       if (data.success) {
-        alert('✅ Diseño marcado como predeterminado');
+        toast.success('Diseño marcado como predeterminado');
         loadTemplates();
       }
     } catch (error) {
       console.error('Error setting default:', error);
-      alert('❌ Error al marcar como predeterminado');
+      toast.error('Error al marcar como predeterminado');
     }
   };
 
@@ -190,14 +192,14 @@ function GiftCardTemplates() {
       });
 
       if (data.success) {
-        alert('✅ Diseño eliminado');
+        toast.success('Diseño eliminado');
         loadCustomTemplates();
       } else {
-        alert('❌ Error: ' + (data.error || 'Error al eliminar'));
+        toast.error('Error: ' + (data.error || 'Error al eliminar'));
       }
     } catch (error) {
       console.error('Error deleting:', error);
-      alert('❌ Error al eliminar diseño');
+      toast.error('Error al eliminar diseño');
     }
   };
 

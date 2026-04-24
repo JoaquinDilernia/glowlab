@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package, DollarSign, Calendar, Trash2, ExternalLink } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './GiftCardProducts.css';
 
 function GiftCardProducts() {
   const navigate = useNavigate();
+  const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
 
   const [products, setProducts] = useState([]);
@@ -42,14 +44,14 @@ function GiftCardProducts() {
       });
 
       if (data.success) {
-        alert('✅ Producto eliminado');
+        toast.success('Producto eliminado');
         loadProducts();
       } else {
-        alert('❌ Error: ' + data.error);
+        toast.error('Error: ' + data.error);
       }
     } catch (error) {
       console.error('Error deleting product:', error);
-      alert('❌ Error al eliminar producto');
+      toast.error('Error al eliminar producto');
     }
   };
 

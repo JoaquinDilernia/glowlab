@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, LogOut, Tag, CreditCard, Sparkles, Clock, Palette, Lock, Settings, Shield, BadgeCheck, Bell } from 'lucide-react';
+import { Zap, Tag, CreditCard, Sparkles, Clock, Palette, Lock, Shield, BadgeCheck, Bell, Rocket, ChevronRight } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useSubscription } from '../hooks/useSubscription';
+import { useToast } from '../context/ToastContext';
 import UpgradeModal from '../components/UpgradeModal';
 import SubscriptionBanner from '../components/SubscriptionBanner';
 import AdminPanel from '../components/AdminPanel';
@@ -10,6 +11,7 @@ import './Dashboard.css';
 
 function Dashboard() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [storeInfo, setStoreInfo] = useState(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -29,17 +31,36 @@ function Dashboard() {
 
   useEffect(() => {
     loadStoreInfo();
-    
-    // Recargar suscripción cuando se enfoca la ventana (volver del admin)
-    const handleFocus = () => {
-      reload();
-    };
+    handleChargeReturn();
+
+    const handleFocus = () => reload();
     window.addEventListener('focus', handleFocus);
-    
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
+    return () => window.removeEventListener('focus', handleFocus);
   }, []);
+
+  const handleChargeReturn = async () => {
+    const params = new URLSearchParams(window.location.search);
+    const chargeStatus = params.get('charge_status');
+    const chargeId = params.get('charge_id');
+    if (!chargeStatus || !chargeId) return;
+    window.history.replaceState({}, '', window.location.pathname);
+    const storeId = localStorage.getItem('promonube_store_id');
+    if (!storeId) return;
+    try {
+      const response = await apiRequest('/api/subscription/confirm-charge', {
+        method: 'POST',
+        body: JSON.stringify({ storeId, chargeId, chargeStatus })
+      });
+      if (response.success && response.activated) {
+        toast.success('¡Pago confirmado! Tu plan PRO ya está activo.');
+        reload();
+      } else if (chargeStatus === 'rejected' || chargeStatus === 'cancelled') {
+        toast.error('El pago fue cancelado o rechazado. Podés intentarlo nuevamente.');
+      }
+    } catch (error) {
+      console.error('Error confirmando cargo:', error);
+    }
+  };
 
   const loadStoreInfo = async () => {
     const storeId = localStorage.getItem('promonube_store_id');
@@ -143,6 +164,8 @@ function Dashboard() {
   ];
 
   const handleFeatureClick = (feature) => {
+    // Marcar onboarding como visto cuando el usuario navega por primera vez
+    localStorage.setItem('gl_onboarding_done', '1');
     if (!feature.available) {
       setShowUpgradeModal(true);
     } else {
@@ -193,7 +216,7 @@ function Dashboard() {
         </div>
       )}
 
-      {/* Modern Header */}
+      {/* Header */}
       <header className="dashboard-header">
         <div className="header-content">
           <div className="header-left">
@@ -211,26 +234,17 @@ function Dashboard() {
               </div>
             </div>
           </div>
-
           <div className="header-center">
-            <div className="app-title">GlowLab</div>
+            <span className="app-title">GlowLab</span>
           </div>
 
           <div className="header-right">
-            <button className="btn-integrations" onClick={() => navigate('/integrations')}>
-              <Settings size={18} />
-              <span>Integraciones</span>
-            </button>
             <button 
               className="btn-admin-access"
               onClick={() => setShowAdminPanel(true)}
-              title="Ctrl+Shift+A"
+              title="Panel Admin (Ctrl+Shift+A)"
             >
-              <Shield size={18} />
-            </button>
-            <button className="btn-logout" onClick={handleLogout}>
-              <LogOut size={18} />
-              <span>Salir</span>
+              <Shield size={16} />
             </button>
           </div>
         </div>
@@ -241,9 +255,30 @@ function Dashboard() {
         {/* Subscription Status Banner */}
         <SubscriptionBanner subscription={subscription} />
 
+        {/* Welcome Banner — solo si es usuario nuevo (nunca navegó a ningún módulo) */}
+        {!localStorage.getItem('gl_onboarding_done') && (
+          <div className="welcome-banner">
+            <div className="wb-left">
+              <Rocket size={28} className="wb-icon" />
+              <div>
+                <h3 className="wb-title">¡Bienvenido a GlowLab! Empezá en 3 pasos</h3>
+                <div className="wb-steps">
+                  <span className="wb-step"><span className="wb-step-num">1</span> Elegí un módulo abajo</span>
+                  <ChevronRight size={14} className="wb-chevron" />
+                  <span className="wb-step"><span className="wb-step-num">2</span> Configuralo en minutos</span>
+                  <ChevronRight size={14} className="wb-chevron" />
+                  <span className="wb-step"><span className="wb-step-num">3</span> Empezá a vender más</span>
+                </div>
+              </div>
+            </div>
+            <button className="wb-dismiss" onClick={() => { localStorage.setItem('gl_onboarding_done', '1'); window.location.reload(); }}>✕</button>
+          </div>
+        )}
+
         {/* Modules Section */}
         <div className="modules-header">
           <h2>Módulos</h2>
+          <p className="modules-subtitle">Activá los que necesites, funciona sin instalar nada extra en tu tienda</p>
         </div>
 
         {/* Main Features Grid */}
@@ -286,7 +321,7 @@ function Dashboard() {
                   <h3 className="feature-title-modern">{feature.title}</h3>
                   <p className="feature-description-modern">{feature.description}</p>
                   
-                  {feature.stat !== null && (
+                  {feature.stat != null && (
                     <div className="feature-stat">
                       <span className="feature-stat-number">{feature.stat}</span>
                       <span className="feature-stat-label">{feature.statLabel}</span>

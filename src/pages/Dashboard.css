@@ -1,7 +1,6 @@
 /* GlowLab Dashboard */
 .dashboard-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #16213e 100%);
 }
 
 /* Header */
@@ -37,7 +36,7 @@
 }
 
 .app-logo {
-  height: 80px;
+  height: 48px;
   width: auto;
 }
 
@@ -67,9 +66,12 @@
 }
 
 .app-title {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 800;
-  color: rgba(255,255,255,0.95);
+  background: linear-gradient(135deg, #00D9FF 0%, #7C7CFF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   letter-spacing: 0.5px;
 }
 
@@ -114,9 +116,44 @@
   box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
 }
 
-.header-right {
+.plan-badge-inline.demo {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.12) 0%, rgba(255, 140, 0, 0.12) 100%);
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  color: #FFD700;
+}
+
+.plan-badge-inline.demo:hover {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.22) 0%, rgba(255, 140, 0, 0.22) 100%);
+  border-color: rgba(255, 215, 0, 0.6);
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.25);
+}
+
+.btn-admin-access {
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(124, 124, 255, 0.25);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.btn-admin-access:hover {
+  background: rgba(124, 124, 255, 0.12);
+  border-color: rgba(0, 217, 255, 0.4);
+  color: #00D9FF;
+}
+
+.header-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 12px;
 }
 
@@ -197,8 +234,94 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin: 0;
+  margin: 0 0 6px;
   line-height: 1.2;
+}
+
+.modules-subtitle {
+  font-size: 14px;
+  color: rgba(255,255,255,0.42);
+  margin: 0;
+  font-weight: 400;
+}
+
+/* Welcome Banner */
+.welcome-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: linear-gradient(135deg, rgba(0,217,255,0.07) 0%, rgba(124,124,255,0.10) 100%);
+  border: 1px solid rgba(0,217,255,0.25);
+  border-radius: 14px;
+  padding: 18px 22px;
+  margin-bottom: 28px;
+  animation: fadeInUp 0.5s ease-out;
+}
+.wb-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.wb-icon {
+  color: #00D9FF;
+  flex-shrink: 0;
+}
+.wb-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  margin: 0 0 8px;
+}
+.wb-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.wb-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.62);
+}
+.wb-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, #00D9FF, #7C7CFF);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+.wb-chevron {
+  color: rgba(255,255,255,0.25);
+}
+.wb-dismiss {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.3);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.wb-dismiss:hover {
+  color: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.06);
+}
+@media (max-width: 600px) {
+  .welcome-banner { flex-direction: column; align-items: flex-start; }
+  .wb-steps { flex-direction: column; align-items: flex-start; }
+  .wb-chevron { display: none; }
 }
 
 .welcome-subtitle {
@@ -364,8 +487,8 @@
   align-items: baseline;
   gap: 8px;
   padding: 12px 0;
-  border-top: 1px solid #f3f4f6;
-  border-bottom: 1px solid #f3f4f6;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   margin: 8px 0;
 }
 
@@ -436,29 +559,30 @@
 }
 
 /* Loading */
+/* Loading */
 .loading-container {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+  background: transparent;
   gap: 20px;
 }
 
 .spinner-large {
-  width: 56px;
-  height: 56px;
-  border: 4px solid #f3f4f6;
+  width: 52px;
+  height: 52px;
+  border: 4px solid rgba(124, 124, 255, 0.15);
   border-top: 4px solid #7C7CFF;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
 .loading-container p {
-  color: #6b7280;
-  font-size: 16px;
-  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 15px;
+  font-weight: 500;
 }
 
 /* Animations */
@@ -500,14 +624,6 @@
     padding: 12px 16px;
   }
 
-  .welcome-title {
-    font-size: 28px;
-  }
-
-  .welcome-subtitle {
-    font-size: 16px;
-  }
-
   .quick-stats {
     grid-template-columns: 1fr;
   }
@@ -516,25 +632,8 @@
     grid-template-columns: 1fr;
   }
   
-  /* En mobile, todas las cards ocupan 1 columna */
   .feature-card-modern.featured {
     grid-column: span 1;
-  }
-
-  .btn-logout span {
-    display: none;
-  }
-
-  .header-left {
-    gap: 12px;
-  }
-
-  .app-title {
-    font-size: 20px;
-  }
-
-  .app-title {
-    font-size: 22px;
   }
 
   .header-left {
@@ -545,9 +644,12 @@
     flex: 1;
   }
 
+  .app-title {
+    font-size: 20px;
+  }
+
   .header-right {
     flex: 1;
-    display: flex;
     justify-content: flex-end;
     gap: 8px;
   }
@@ -628,30 +730,31 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.97);
+  background: rgba(5, 5, 18, 0.80);
+  backdrop-filter: blur(5px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   z-index: 5;
-  border-radius: 12px;
+  border-radius: 18px;
 }
 
 .locked-overlay svg {
-  color: #a3a3a3;
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .locked-overlay span {
   font-size: 13px;
   font-weight: 500;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .feature-card-modern.locked .btn-feature-modern {
-  background: #fafafa;
-  color: #a3a3a3;
-  border-color: #f0f0f0;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.08);
   cursor: not-allowed;
 }
 

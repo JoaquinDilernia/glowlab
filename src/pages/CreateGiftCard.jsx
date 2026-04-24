@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Gift, DollarSign, Calendar, Image, Tag } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './CreateGiftCard.css';
 
 // VERSION SIMPLIFICADA - Solo crear productos Gift Card
 function CreateGiftCard() {
   const navigate = useNavigate();
+  const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
 
   const [formData, setFormData] = useState({
@@ -81,7 +83,7 @@ function CreateGiftCard() {
       });
 
       if (data.success) {
-        alert(`✅ Producto Gift Card creado!\n\nYa está publicado en tu tienda.`);
+        toast.success('Producto Gift Card creado! Ya está publicado en tu tienda.');
         navigate('/gift-cards');
       } else {
         setError(data.error || 'Error al crear gift card');

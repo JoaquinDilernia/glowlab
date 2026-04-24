@@ -1,3 +1,60 @@
+/* ── Empty state dark-theme classes ── */
+.em-badges-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  max-width: 720px;
+  margin: 36px auto 0;
+}
+.em-rule-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(124,124,255,0.18);
+  border-radius: 12px;
+  padding: 18px 16px;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.em-rule-card:hover {
+  border-color: rgba(124,124,255,0.40);
+}
+.em-rule-icon {
+  font-size: 26px;
+  display: block;
+  margin-bottom: 10px;
+}
+.em-rule-card strong {
+  font-size: 13px;
+  color: rgba(255,255,255,0.85);
+  display: block;
+  margin-bottom: 4px;
+}
+.em-rule-card p {
+  font-size: 12px;
+  color: rgba(255,255,255,0.40);
+  margin: 0;
+}
+.em-tip-box {
+  margin: 28px auto 0;
+  max-width: 640px;
+  background: rgba(124,124,255,0.07);
+  border: 1px solid rgba(124,124,255,0.25);
+  border-radius: 12px;
+  padding: 16px 20px;
+  text-align: left;
+}
+.em-tip-box strong {
+  font-size: 14px;
+  color: rgba(255,255,255,0.85);
+  display: block;
+  margin-bottom: 6px;
+}
+.em-tip-box p {
+  font-size: 13px;
+  color: rgba(255,255,255,0.48);
+  margin: 0;
+  line-height: 1.55;
+}
+
 .badges-container {
   max-width: 1400px;
   margin: 0 auto;

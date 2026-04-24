@@ -3,7 +3,7 @@ const admin = require("firebase-admin");
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
-const { createCanvas, loadImage } = require("canvas");
+// canvas se carga de forma lazy dentro de generateGiftCardImage para reducir cold start
 const sgMail = require('@sendgrid/mail');
 const Busboy = require('busboy');
 const multer = require('multer');
@@ -14,6 +14,55 @@ admin.initializeApp();
 const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const bucket = admin.storage().bucket();
+
+// ============================================
+// CACH? EN MEMORIA ? optimización de costos
+// Reduce lecturas Firestore ~90% en widgets
+// TTL: 10 minutos por clave
+// ============================================
+const _configCache = new Map();
+const CONFIG_CACHE_TTL_MS = 10 * 60 * 1000;
+
+async function getCachedData(key, fetchFn) {
+  const cached = _configCache.get(key);
+  if (cached && Date.now() - cached.ts < CONFIG_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  const data = await fetchFn();
+  _configCache.set(key, { data, ts: Date.now() });
+  return data;
+}
+
+async function getCachedDoc(collection, docId) {
+  return getCachedData(`${collection}/${docId}`, () =>
+    db.collection(collection).doc(docId).get()
+  );
+}
+
+function invalidateConfigCache(storeId) {
+  _configCache.delete(`promonube_style_config/${storeId}`);
+  _configCache.delete(`sub:${storeId}`);
+}
+
+async function checkStoreActive(storeId) {
+  const result = await getCachedData(`sub:${storeId}`, async () => {
+    const subDoc = await db.collection('stores').doc(storeId.toString()).collection('subscription').doc('current').get();
+    if (!subDoc.exists) return { active: false };
+    const data = subDoc.data();
+    const status = data?.status;
+    if (status === 'active') return { active: true };
+    if (status === 'demo') {
+      const expires = data.demoExpiresAt ? new Date(data.demoExpiresAt) : null;
+      return { active: !expires || expires > new Date() };
+    }
+    if (status === 'trial') {
+      const expires = data.expiresAt ? new Date(data.expiresAt) : null;
+      return { active: !expires || expires > new Date() };
+    }
+    return { active: false };
+  });
+  return result.active;
+}
 
 // Configurar Mercado Pago
 let mpClient = null;
@@ -29,13 +78,13 @@ function initMercadoPago() {
         accessToken: MP_ACCESS_TOKEN,
         options: { timeout: 5000 }
       });
-      console.log('âœ… Mercado Pago configurado correctamente');
-      console.log('ðŸ”‘ Token preview:', MP_ACCESS_TOKEN.substring(0, 20) + '...');
+      console.log('? Mercado Pago configurado correctamente');
+      console.log('?? Token preview:', MP_ACCESS_TOKEN.substring(0, 20) + '...');
     } else {
-      console.warn('âš ï¸ MP_ACCESS_TOKEN no encontrado en variables de entorno');
+      console.warn('?? MP_ACCESS_TOKEN no encontrado en variables de entorno');
     }
   } catch (error) {
-    console.error('âŒ Error configurando Mercado Pago:', error);
+    console.error('? Error configurando Mercado Pago:', error);
   }
 }
 
@@ -52,25 +101,25 @@ const upload = multer({
 // Ejecutar: firebase functions:config:set sendgrid.api_key="TU_API_KEY"
 let SENDGRID_API_KEY = '';
 
-// FunciÃ³n para inicializar SendGrid
+// Función para inicializar SendGrid
 function initSendGrid() {
   try {
     // Intentar desde process.env primero (para desarrollo local)
     SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
     
-    // Si no estÃ¡, intentar desde functions.config() (para producciÃ³n)
+    // Si no est?, intentar desde functions.config() (para producción)
     if (!SENDGRID_API_KEY && functions.config && functions.config().sendgrid) {
       SENDGRID_API_KEY = functions.config().sendgrid.api_key || '';
     }
     
     if (SENDGRID_API_KEY) {
       sgMail.setApiKey(SENDGRID_API_KEY);
-      console.log('âœ… SendGrid configurado correctamente');
+      console.log('? SendGrid configurado correctamente');
     } else {
-      console.warn('âš ï¸ SENDGRID_API_KEY no encontrada');
+      console.warn('?? SENDGRID_API_KEY no encontrada');
     }
   } catch (error) {
-    console.error('âŒ Error configurando SendGrid:', error);
+    console.error('? Error configurando SendGrid:', error);
   }
 }
 
@@ -85,23 +134,23 @@ const CLOUD_FUNCTION_URL = 'https://us-central1-pedidos-lett-2.cloudfunctions.ne
 // ==========================================
 
 // ============================================
-// PLAN ÃšNICO PRO - Todo incluido
+// PLAN ÚNICO PRO - Todo incluido
 // ============================================
 
-// Precios por paÃ­s (mensuales) - PLAN ÃšNICO
+// Precios por país (mensuales) - PLAN ÚNICO
 const PRICES_BY_COUNTRY = {
   ARS: 30000,  // Argentina (configurado en Partner Panel)
-  MXN: 1500,   // MÃ©xico
+  MXN: 1500,   // México
   COP: 135000, // Colombia
   CLP: 33000   // Chile
 };
 
-// FunciÃ³n para obtener precio segÃºn moneda de la tienda
+// Función para obtener precio según moneda de la tienda
 function getPlanPrice(currency = 'ARS') {
   return PRICES_BY_COUNTRY[currency] || PRICES_BY_COUNTRY.ARS;
 }
 
-// MÃ³dulos incluidos en el plan PRO (todos activos)
+// Módulos incluidos en el plan PRO (todos activos)
 const ALL_MODULES = ['coupons', 'giftcards', 'spinWheel', 'style', 'countdown', 'popups'];
 
 const MODULES = {
@@ -113,7 +162,7 @@ const MODULES = {
   popups: { name: 'Pop-ups', included: true }
 };
 
-// Plan Ãºnico PRO con todo incluido
+// Plan único PRO con todo incluido
 const PLANS = {
   free: { 
     name: 'Free (Trial)', 
@@ -135,7 +184,7 @@ PLANS.giftcards = PLANS.pro;
 PLANS.countdown = PLANS.pro;
 PLANS.style = PLANS.pro;
 
-// Helper: Convertir array de mÃ³dulos a objeto {moduleName: true}
+// Helper: Convertir array de módulos a objeto {moduleName: true}
 function modulesArrayToObject(modulesArray) {
   const modulesObj = {};
   modulesArray.forEach(mod => {
@@ -144,7 +193,7 @@ function modulesArrayToObject(modulesArray) {
   return modulesObj;
 }
 
-// Verificar acceso a un mÃ³dulo
+// Verificar acceso a un módulo
 async function checkModuleAccess(storeId, moduleName) {
   try {
     // Cupones siempre gratis
@@ -152,18 +201,18 @@ async function checkModuleAccess(storeId, moduleName) {
       return { hasAccess: true, reason: 'free_module' };
     }
 
-    // Consultar suscripciÃ³n del store
+    // Consultar suscripción del store
     const subscriptionRef = db.collection('stores').doc(storeId.toString()).collection('subscription').doc('current');
     const subscriptionDoc = await subscriptionRef.get();
 
     if (!subscriptionDoc.exists) {
-      // Sin suscripciÃ³n = solo acceso a cupones
+      // Sin suscripción = solo acceso a cupones
       return { hasAccess: false, reason: 'no_subscription' };
     }
 
     const subscription = subscriptionDoc.data();
 
-    // âœ… DEMO: Si es cuenta demo Y no ha expirado, dar acceso total
+    // ? DEMO: Si es cuenta demo Y no ha expirado, dar acceso total
     if (subscription.isDemoAccount) {
       const expiresAt = new Date(subscription.demoExpiresAt);
       const now = new Date();
@@ -175,8 +224,8 @@ async function checkModuleAccess(storeId, moduleName) {
           expiresAt: subscription.demoExpiresAt
         };
       } else {
-        // Demo expirado - desactivar automÃ¡ticamente
-        console.log(`âš ï¸ Demo expirado para store ${storeId}, desactivando...`);
+        // Demo expirado - desactivar automáticamente
+        console.log(`?? Demo expirado para store ${storeId}, desactivando...`);
         await subscriptionRef.update({
           status: 'inactive',
           plan: 'free',
@@ -189,7 +238,7 @@ async function checkModuleAccess(storeId, moduleName) {
       }
     }
 
-    // Verificar estado de la suscripciÃ³n
+    // Verificar estado de la suscripción
     if (subscription.status === 'suspended') {
       return { hasAccess: false, reason: 'payment_suspended', message: 'Regulariza el pago en tu panel de TiendaNube' };
     }
@@ -198,7 +247,7 @@ async function checkModuleAccess(storeId, moduleName) {
       return { hasAccess: false, reason: 'inactive_subscription', status: subscription.status };
     }
 
-    // Verificar si el mÃ³dulo estÃ¡ activo
+    // Verificar si el módulo est? activo
     const hasModule = subscription.modules && subscription.modules[moduleName] === true;
     
     return { 
@@ -207,7 +256,7 @@ async function checkModuleAccess(storeId, moduleName) {
       plan: subscription.plan 
     };
   } catch (error) {
-    console.error('Error verificando acceso al mÃ³dulo:', error);
+    console.error('Error verificando acceso al módulo:', error);
     return { hasAccess: false, reason: 'error', error: error.message };
   }
 }
@@ -225,10 +274,10 @@ function requireModule(moduleName) {
 
     if (!accessCheck.hasAccess) {
       return res.status(403).json({ 
-        error: 'MÃ³dulo no disponible',
+        error: 'Módulo no disponible',
         module: moduleName,
         reason: accessCheck.reason,
-        message: `El mÃ³dulo ${MODULES[moduleName]?.name || moduleName} no estÃ¡ activo en tu plan.`,
+        message: `El módulo ${MODULES[moduleName]?.name || moduleName} no est? activo en tu plan.`,
         upgrade_url: `https://pedidos-lett-2.web.app/upgrade?module=${moduleName}`
       });
     }
@@ -239,7 +288,7 @@ function requireModule(moduleName) {
   };
 }
 
-// Inicializar suscripciÃ³n por defecto para nuevos stores
+// Inicializar suscripción por defecto para nuevos stores
 async function initializeStoreSubscription(storeId) {
   try {
     const subscriptionRef = db.collection('promonube_subscription').doc(storeId.toString());
@@ -262,10 +311,10 @@ async function initializeStoreSubscription(storeId) {
         nextBillingDate: null,
         mpSubscriptionId: null
       });
-      console.log('âœ… SuscripciÃ³n FREE inicializada para store', storeId);
+      console.log('? Suscripción FREE inicializada para store', storeId);
     }
   } catch (error) {
-    console.error('Error inicializando suscripciÃ³n:', error);
+    console.error('Error inicializando suscripción:', error);
   }
 }
 
@@ -276,7 +325,7 @@ async function initializeStoreSubscription(storeId) {
 // Helper: Enviar contacto a Perfit
 async function sendToPerfit(store, email, data = {}) {
   try {
-    console.log('ðŸ“§ [Perfit] Intentando enviar contacto:', { 
+    console.log('?? [Perfit] Intentando enviar contacto:', { 
       email, 
       storeId: store.storeId,
       hasApiKey: !!store.perfitApiKey,
@@ -285,7 +334,7 @@ async function sendToPerfit(store, email, data = {}) {
     });
 
     if (!store.perfitApiKey || !store.perfitAccountId) {
-      console.log('âš ï¸ Perfit no configurado para store', store.storeId, {
+      console.log('?? Perfit no configurado para store', store.storeId, {
         perfitApiKey: store.perfitApiKey ? 'configurada' : 'NO configurada',
         perfitAccountId: store.perfitAccountId || 'NO configurado'
       });
@@ -312,7 +361,7 @@ async function sendToPerfit(store, email, data = {}) {
 
     if (response.ok) {
       const result = await response.json();
-      console.log('âœ… Contacto enviado a Perfit exitosamente:', { 
+      console.log('? Contacto enviado a Perfit exitosamente:', { 
         email, 
         accountId: store.perfitAccountId,
         lists: perfitData.lists,
@@ -322,7 +371,7 @@ async function sendToPerfit(store, email, data = {}) {
       return { success: true, data: result };
     } else {
       const error = await response.text();
-      console.error('âŒ [PERFIT ERROR] Error enviando a Perfit:', { 
+      console.error('? [PERFIT ERROR] Error enviando a Perfit:', { 
         status: response.status,
         statusText: response.statusText,
         errorBody: error,
@@ -335,7 +384,7 @@ async function sendToPerfit(store, email, data = {}) {
       return { success: false, error, details: { status: response.status, statusText: response.statusText } };
     }
   } catch (error) {
-    console.error('âŒ [PERFIT EXCEPTION] Error en sendToPerfit:', {
+    console.error('? [PERFIT EXCEPTION] Error en sendToPerfit:', {
       error: error.message,
       stack: error.stack,
       store: store.storeId,
@@ -349,7 +398,7 @@ async function sendToPerfit(store, email, data = {}) {
 async function sendToMailchimp(store, email, data = {}) {
   try {
     if (!store.mailchimpApiKey || !store.mailchimpListId) {
-      console.log('âš ï¸ Mailchimp no configurado para store', store.storeId);
+      console.log('?? Mailchimp no configurado para store', store.storeId);
       return { success: false, error: 'not_configured' };
     }
 
@@ -377,16 +426,16 @@ async function sendToMailchimp(store, email, data = {}) {
     );
 
     if (response.ok || response.status === 400) {
-      // 400 puede significar que ya existe, lo consideramos Ã©xito
-      console.log('âœ… Contacto enviado a Mailchimp:', email);
+      // 400 puede significar que ya existe, lo consideramos ééxito
+      console.log('? Contacto enviado a Mailchimp:', email);
       return { success: true };
     } else {
       const error = await response.text();
-      console.error('âŒ Error enviando a Mailchimp:', error);
+      console.error('? Error enviando a Mailchimp:', error);
       return { success: false, error };
     }
   } catch (error) {
-    console.error('âŒ Error en sendToMailchimp:', error);
+    console.error('? Error en sendToMailchimp:', error);
     return { success: false, error: error.message };
   }
 }
@@ -409,16 +458,16 @@ async function syncEmailToIntegrations(store, email, eventData = {}) {
     results.mailchimp = await sendToMailchimp(store, email, eventData);
   }
 
-  // ActiveCampaign (prÃ³ximamente)
+  // ActiveCampaign (próximamente)
   // if (store.activeCampaignApiKey && store.activeCampaignEnabled !== false) {
   //   results.activecampaign = await sendToActiveCampaign(store, email, eventData);
   // }
 
-  console.log('ðŸ“§ SincronizaciÃ³n de email completada:', { email, results });
+  console.log('?? Sincronización de email completada:', { email, results });
   return results;
 }
 
-// Helper para hashear contraseÃ±as
+// Helper para hashear contraseñas
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
 }
@@ -426,11 +475,11 @@ function hashPassword(password) {
 // Helper para instalar templates predeterminados
 async function installDefaultTemplates(storeId) {
   try {
-    console.log(`ðŸŽ¨ Instalando templates predeterminados para store ${storeId}...`);
+    console.log(`?? Instalando templates predeterminados para store ${storeId}...`);
     
     const templates = [
       {
-        name: "ðŸŽ„ Navidad MÃ¡gica",
+        name: "?? Navidad Mágica",
         category: "Festividades",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJjaHJpc3RtYXMiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiMxZTQwYWY7c3RvcC1vcGFjaXR5OjEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiMwNTc1MmQ7c3RvcC1vcGFjaXR5OjEiLz48L2xpbmVhckdyYWRpZW50Pjwvl2Vmc48cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIGZpbGw9InVybCgjY2hyaXN0bWFzKSIvPjxjaXJjbGUgY3g9IjE1MCIgY3k9IjEwMCIgcj0iNCIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC44Ii8+PGNpcmNsZSBjeD0iMzAwIiBjeT0iMjAwIiByPSIzIiBmaWxsPSIjZmZmIiBvcGFjaXR5PSIwLjYiLz48Y2lyY2xlIGN4PSI5MDAiIGN5PSIxNTAiIHI9IjUiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuOSIvPjxjaXJjbGUgY3g9IjYwMCIgY3k9IjQwMCIgcj0iNCIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC43Ii8+PGNpcmNsZSBjeD0iMTA1MCIgY3k9IjMwMCIgcj0iMyIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC44Ii8+PHBvbHlnb24gcG9pbnRzPSI2MDAsNTAgNjIwLDExMCA1ODAsODAgNjQwLDgwIDYwMCwxMTAiIGZpbGw9IiNmZmQ3MDAiIG9wYWNpdHk9IjAuOSIvPjxwb2x5Z29uIHBvaW50cz0iMjAwLDMwMCAyMTUsMzUwIDE5MCwzMjUgMjI1LDMyNSAyMDAsMzUwIiBmaWxsPSIjZmZkNzAwIiBvcGFjaXR5PSIwLjgiLz48cG9seWdvbiBwb2ludHM9IjEwMDAsNDAwIDEwMTUsNDUwIDk5MCw0MjUgMTAzMCw0MjUgMTAwMCw0NTAiIGZpbGw9IiNmZmQ3MDAiIG9wYWNpdHk9IjAuOSIvPjwvc3ZnPg==",
         textPosition: "center",
@@ -439,7 +488,7 @@ async function installDefaultTemplates(storeId) {
         isDefault: true
       },
       {
-        name: "ðŸŽ‰ CumpleaÃ±os Festivo",
+        name: "?? Cumpleaños Festivo",
         category: "Celebraciones",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJiaXJ0aGRheSIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6I2VjNDg5OTtzdG9wLW9wYWNpdHk6MSIvPjxzdG9wIG9mZnNldD0iNTAlIiBzdHlsZT0ic3RvcC1jb2xvcjojZjU5ZTBiO3N0b3Atb3BhY2l0eToxIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojOGI1Y2Y2O3N0b3Atb3BhY2l0eToxIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjI4IiBmaWxsPSJ1cmwoI2JpcnRoZGF5KSIvPjxyZWN0IHg9IjEwMCIgeT0iNTAiIHdpZHRoPSIzMCIgaGVpZ2h0PSI4MCIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC4zIiB0cmFuc2Zvcm09InJvdGF0ZSgxNSA2MDAgMzAwKSIvPjxyZWN0IHg9IjMwMCIgeT0iNDAwIiB3aWR0aD0iNDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmZmQiIG9wYWNpdHk9IjAuNCIgdHJhbnNmb3JtPSJyb3RhdGUoLTE1IDYwMCAzMDApIi8+PHJlY3QgeD0iOTAwIiB5PSIxMDAiIHdpZHRoPSIzNSIgaGVpZ2h0PSI3MCIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC4zNSIgdHJhbnNmb3JtPSJyb3RhdGUoMjUgNjAwIDMwMCkiLz48Y2lyY2xlIGN4PSI0MDAiIGN5PSIxNTAiIHI9IjgiIGZpbGw9IiNmZmQ3MDAiIG9wYWNpdHk9IjAuNyIvPjxjaXJjbGUgY3g9IjgwMCIgY3k9IjUwMCIgcj0iMTAiIGZpbGw9IiMzYjgyZjYiIG9wYWNpdHk9IjAuNiIvPjxjaXJjbGUgY3g9IjYwMCIgY3k9IjgwIiByPSI2IiBmaWxsPSIjZWM0ODk5IiBvcGFjaXR5PSIwLjgiLz48L3N2Zz4=",
         textPosition: "center",
@@ -448,7 +497,7 @@ async function installDefaultTemplates(storeId) {
         isDefault: false
       },
       {
-        name: "ðŸ’Ž Lujo Premium",
+        name: "?? Lujo Premium",
         category: "Elegante",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJsdXh1cnkiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiMwZjE3MmE7c3RvcC1vcGFjaXR5OjEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiMxZTE5MWI7c3RvcC1vcGFjaXR5OjEiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIGZpbGw9InVybCgjbHV4dXJ5KSIvPjxsaW5lIHgxPSIwIiB5MT0iMTAwIiB4Mj0iMTIwMCIgeTI9IjEwMCIgc3Ryb2tlPSIjZmZkNzAwIiBzdHJva2Utd2lkdGg9IjIiIG9wYWNpdHk9IjAuMyIvPjxsaW5lIHgxPSIwIiB5MT0iNTI4IiB4Mj0iMTIwMCIgeTI9IjUyOCIgc3Ryb2tlPSIjZmZkNzAwIiBzdHJva2Utd2lkdGg9IjIiIG9wYWNpdHk9IjAuMyIvPjxyZWN0IHg9IjgwIiB5PSI1MCIgd2lkdGg9IjMiIGhlaWdodD0iNTI4IiBmaWxsPSIjZmZkNzAwIiBvcGFjaXR5PSIwLjQiLz48cmVjdCB4PSIxMTE3IiB5PSI1MCIgd2lkdGg9IjMiIGhlaWdodD0iNTI4IiBmaWxsPSIjZmZkNzAwIiBvcGFjaXR5PSIwLjQiLz48cG9seWdvbiBwb2ludHM9IjYwMCwxODAgNjIwLDE5MCA2MTAsMjEwIDU5MCwyMTAgNTgwLDE5MCIgZmlsbD0iI2ZmZDcwMCIgb3BhY2l0eT0iMC42Ii8+PHBvbHlnb24gcG9pbnRzPSI2MDAsMzgwIDYyMCwzOTAgNjEwLDQxMCA1OTAsNDEwIDU4MCwzOTAiIGZpbGw9IiNmZmQ3MDAiIG9wYWNpdHk9IjAuNiIvPjwvc3ZnPg==",
         textPosition: "center",
@@ -457,7 +506,7 @@ async function installDefaultTemplates(storeId) {
         isDefault: false
       },
       {
-        name: "ðŸ’ RomÃ¡ntico",
+        name: "?? Romántico",
         category: "Amor",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJyb21hbnRpYyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6I2ZjZTdmMztzdG9wLW9wYWNpdHk6MSIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6I2ZkYmZkMjtzdG9wLW9wYWNpdHk6MSIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjYyOCIgZmlsbD0idXJsKCNyb21hbnRpYykiLz48cGF0aCBkPSJNMzAwLDI1MCBRMzAwLDIwMCAzNTAsMjAwIFE0MDAsMjAwIDQwMCwyNTAgUTQwMCwzMDAgMzAwLDM4MCBRMjAwLDMwMCAyMDAsMjUwIFEyMDAsMjAwIDI1MCwyMDAgUTMwMCwyMDAgMzAwLDI1MCIgZmlsbD0iI2ZiN2E4NSIgb3BhY2l0eT0iMC4yIi8+PHBhdGggZD0iTTkwMCwxNTAgUTkwMCwxMDAgOTUwLDEwMCBRMTAwMCwxMDAgMTAwMCwxNTAgUTEwMDAsMjAwIDkwMCwyODAgUTgwMCwyMDAgODAwLDE1MCBRODAwLDEwMCA4NTAsMTAwIFE5MDAsMTAwIDkwMCwxNTAiIGZpbGw9IiNmYjdhODUiIG9wYWNpdHk9IjAuMTUiLz48Y2lyY2xlIGN4PSI2MDAiIGN5PSI1MDAiIHI9IjgwIiBmaWxsPSIjZmI3YTg1IiBvcGFjaXR5PSIwLjEiLz48Y2lyY2xlIGN4PSI0NTAiIGN5PSI0MDAiIHI9IjUwIiBmaWxsPSIjZjljMmNiIiBvcGFjaXR5PSIwLjIiLz48L3N2Zz4=",
         textPosition: "center",
@@ -466,7 +515,7 @@ async function installDefaultTemplates(storeId) {
         isDefault: false
       },
       {
-        name: "ðŸŒ´ Tropical Verano",
+        name: "?? Tropical Verano",
         category: "Estaciones",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJ0cm9waWNhbCIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6IzA4OTFiMjtzdG9wLW9wYWNpdHk6MSIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6IzA1NzVhMTtzdG9wLW9wYWNpdHk6MSIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjYyOCIgZmlsbD0idXJsKCN0cm9waWNhbCkiLz48ZWxsaXBzZSBjeD0iMjAwIiBjeT0iMTAwIiByeD0iNDAiIHJ5PSI2MCIgZmlsbD0iIzEwYjk4MSIgb3BhY2l0eT0iMC4zIi8+PGVsbGlwc2UgY3g9IjIyMCIgY3k9IjkwIiByeD0iMzUiIHJ5PSI1NSIgZmlsbD0iIzEwYjk4MSIgb3BhY2l0eT0iMC4yNSIvPjxlbGxpcHNlIGN4PSIxMDAwIiBjeT0iNDAwIiByeD0iNDUiIHJ5PSI2NSIgZmlsbD0iIzEwYjk4MSIgb3BhY2l0eT0iMC4yOCIvPjxlbGxpcHNlIGN4PSIxMDIwIiBjeT0iMzgwIiByeD0iNDAiIHJ5PSI2MCIgZmlsbD0iIzEwYjk4MSIgb3BhY2l0eT0iMC4yMiIvPjxjaXJjbGUgY3g9IjkwMCIgY3k9IjgwIiByPSI1MCIgZmlsbD0iI2ZiZDM4ZCIgb3BhY2l0eT0iMC40Ii8+PGNpcmNsZSBjeD0iNTAwIiBjeT0iNTUwIiByPSI0MCIgZmlsbD0iI2ZiZDM4ZCIgb3BhY2l0eT0iMC4zNSIvPjwvc3ZnPg==",
         textPosition: "center",
@@ -475,7 +524,7 @@ async function installDefaultTemplates(storeId) {
         isDefault: false
       },
       {
-        name: "ðŸŽ¨ Moderno GeomÃ©trico",
+        name: "?? Moderno Geométrico",
         category: "Moderno",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnZW9tZXRyaWMiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiM2NjdlZWE7c3RvcC1vcGFjaXR5OjEiLz48c3RvcCBvZmZzZXQ9IjUwJSIgc3R5bGU9InN0b3AtY29sb3I6IzhiNWNmNjtzdG9wLW9wYWNpdHk6MSIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6I2VjNDg5OTtzdG9wLW9wYWNpdHk6MSIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjYyOCIgZmlsbD0idXJsKCNnZW9tZXRyaWMpIi8+PHBvbHlnb24gcG9pbnRzPSIyMDAsMTAwIDMwMCw1MCAzMDAsMTUwIiBmaWxsPSIjZmZmIiBvcGFjaXR5PSIwLjEiLz48cG9seWdvbiBwb2ludHM9IjkwMCw0MDAgMTAwMCwzNTAgMTAwMCw0NTAiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuMTIiLz48cmVjdCB4PSI0MDAiIHk9IjIwMCIgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuMDgiIHRyYW5zZm9ybT0icm90YXRlKDQ1IDYwMCAzMDApIi8+PGNpcmNsZSBjeD0iNzAwIiBjeT0iNTAwIiByPSI2MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjMiIG9wYWNpdHk9IjAuMTUiLz48Y2lyY2xlIGN4PSIzMDAiIGN5PSI0MDAiIHI9IjQwIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIgb3BhY2l0eT0iMC4xIi8+PC9zdmc+",
         textPosition: "center",
@@ -484,7 +533,7 @@ async function installDefaultTemplates(storeId) {
         isDefault: false
       },
       {
-        name: "ðŸŒ¸ Primavera Floral",
+        name: "?? Primavera Floral",
         category: "Estaciones",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJzcHJpbmciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiNmYWY1ZmY7c3RvcC1vcGFjaXR5OjEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiNlOWQ1ZmY7c3RvcC1vcGFjaXR5OjEiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIGZpbGw9InVybCgjc3ByaW5nKSIvPjxjaXJjbGUgY3g9IjIwMCIgY3k9IjE1MCIgcj0iMjAiIGZpbGw9IiNmOWExYjgiIG9wYWNpdHk9IjAuNiIvPjxjaXJjbGUgY3g9IjE5MCIgY3k9IjE3MCIgcj0iMTUiIGZpbGw9IiNmYjdhODUiIG9wYWNpdHk9IjAuNyIvPjxjaXJjbGUgY3g9IjIxMCIgY3k9IjE3MCIgcj0iMTUiIGZpbGw9IiNmNmQzYmEiIG9wYWNpdHk9IjAuNyIvPjxjaXJjbGUgY3g9IjkwMCIgY3k9IjQwMCIgcj0iMjUiIGZpbGw9IiNkOGI0ZmUiIG9wYWNpdHk9IjAuNSIvPjxjaXJjbGUgY3g9Ijg4NSIgY3k9IjQyNSIgcj0iMTgiIGZpbGw9IiNjMDg0ZmMiIG9wYWNpdHk9IjAuNiIvPjxjaXJjbGUgY3g9IjkxNSIgY3k9IjQyNSIgcj0iMTgiIGZpbGw9IiNlOWQ1ZmYiIG9wYWNpdHk9IjAuNiIvPjxjaXJjbGUgY3g9IjYwMCIgY3k9IjUwIiByPSIyMiIgZmlsbD0iI2Y5YTFiOCIgb3BhY2l0eT0iMC41NSIvPjxjaXJjbGUgY3g9IjQ1MCIgY3k9IjUwMCIgcj0iMjAiIGZpbGw9IiNmNmQzYmEiIG9wYWNpdHk9IjAuNiIvPjwvc3ZnPg==",
         textPosition: "center",
@@ -493,7 +542,7 @@ async function installDefaultTemplates(storeId) {
         isDefault: false
       },
       {
-        name: "âœ¨ Minimalista Elegante",
+        name: "? Minimalista Elegante",
         category: "Minimalista",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJtaW5pbWFsIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojZjlmYWZiO3N0b3Atb3BhY2l0eToxIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojZjNmNGY2O3N0b3Atb3BhY2l0eToxIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjI4IiBmaWxsPSJ1cmwoI21pbmltYWwpIi8+PGxpbmUgeDE9IjEwMCIgeTE9IjEwMCIgeDI9IjExMDAiIHkyPSIxMDAiIHN0cm9rZT0iIzY2N2VlYSIgc3Ryb2tlLXdpZHRoPSIyIiBvcGFjaXR5PSIwLjMiLz48bGluZSB4MT0iMTAwIiB5MT0iNTI4IiB4Mj0iMTEwMCIgeTI9IjUyOCIgc3Ryb2tlPSIjNjY3ZWVhIiBzdHJva2Utd2lkdGg9IjIiIG9wYWNpdHk9IjAuMyIvPjxyZWN0IHg9IjEwMCIgeT0iMTAwIiB3aWR0aD0iMiIgaGVpZ2h0PSI0MjgiIGZpbGw9IiM2NjdlZWEiIG9wYWNpdHk9IjAuMyIvPjxyZWN0IHg9IjEwOTgiIHk9IjEwMCIgd2lkdGg9IjIiIGhlaWdodD0iNDI4IiBmaWxsPSIjNjY3ZWVhIiBvcGFjaXR5PSIwLjMiLz48Y2lyY2xlIGN4PSI2MDAiIGN5PSIzMTQiIHI9IjUiIGZpbGw9IiM2NjdlZWEiIG9wYWNpdHk9IjAuNSIvPjwvc3ZnPg==",
         textPosition: "center",
@@ -522,19 +571,19 @@ async function installDefaultTemplates(storeId) {
       });
     }
 
-    console.log(`âœ… ${templates.length} templates predeterminados instalados`);
+    console.log(`? ${templates.length} templates predeterminados instalados`);
     return { success: true };
     
   } catch (error) {
-    console.error('âŒ Error instalando templates:', error);
+    console.error('? Error instalando templates:', error);
     return { success: false, error: error.message };
   }
 }
 
-// Helper para registrar webhook de pedidos automÃ¡ticamente
+// Helper para registrar webhook de pedidos automáticamente
 async function registerOrderWebhook(storeId, accessToken) {
   try {
-    console.log(`ðŸ”— Registrando webhooks para store ${storeId}...`);
+    console.log(`?? Registrando webhooks para store ${storeId}...`);
     
     const webhookUrl = "https://apipromonube-jlfopowzaq-uc.a.run.app/api/webhooks/order";
     const webhooks = ['order/created', 'order/paid']; // Ambos eventos
@@ -561,7 +610,7 @@ async function registerOrderWebhook(storeId, accessToken) {
       );
 
       if (alreadyExists) {
-        console.log(`âœ… Webhook ${event} ya existe para store ${storeId}`);
+        console.log(`? Webhook ${event} ya existe para store ${storeId}`);
         results.push({ event, success: true, message: "Already exists" });
         continue;
       }
@@ -582,11 +631,11 @@ async function registerOrderWebhook(storeId, accessToken) {
 
       if (!response.ok) {
         const errorData = await response.text();
-        console.error(`âŒ Error registrando webhook ${event}: ${response.status} - ${errorData}`);
+        console.error(`? Error registrando webhook ${event}: ${response.status} - ${errorData}`);
         results.push({ event, success: false, error: errorData });
       } else {
         const webhook = await response.json();
-        console.log(`âœ… Webhook ${event} registrado exitosamente:`, webhook.id);
+        console.log(`? Webhook ${event} registrado exitosamente:`, webhook.id);
         results.push({ event, success: true, webhookId: webhook.id });
       }
     }
@@ -594,18 +643,18 @@ async function registerOrderWebhook(storeId, accessToken) {
     return { success: true, results };
     
   } catch (error) {
-    console.error("âŒ Error al registrar webhook:", error);
+    console.error("? Error al registrar webhook:", error);
     return { success: false, error: error.message };
   }
 }
 
 // Helper para enviar email de gift card
-async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expiresAt) {
+async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expiresAt, storeUrl, customMessage = '') {
   try {
-    console.log(`ðŸ“§ Enviando gift card a ${recipientEmail}`);
+    console.log(`?? Enviando gift card a ${recipientEmail}`);
     
     const expiryText = expiresAt ? 
-      `VÃ¡lida hasta: ${new Date(expiresAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}` : 
+      `Válida hasta: ${new Date(expiresAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}` : 
       'Sin vencimiento';
     
     const emailHTML = `
@@ -665,8 +714,8 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
             <td class="header">
               <div class="header-bg"></div>
               <div class="header-content">
-                <div class="emoji">🎁</div>
-                <h1>Â¡Felicitaciones!</h1>
+                <div class="emoji">??</div>
+                <h1>¡Felicitaciones!</h1>
                 <p>Has recibido una Gift Card</p>
               </div>
             </td>
@@ -674,7 +723,7 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
           <tr>
             <td class="content">
               <div class="gift-code">
-                <p class="code-label">Tu cÃ³digo Ãºnico</p>
+                <p class="code-label">Tu código único</p>
                 <div class="code-box">
                   <p class="code">${code}</p>
                 </div>
@@ -683,19 +732,20 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
                 <p class="amount">$${amount.toLocaleString('es-AR')}</p>
               </div>
               
+              ${customMessage ? `<div class="custom-message" style="background:rgba(124,124,255,0.08);border:1px solid rgba(124,124,255,0.25);border-radius:10px;padding:14px 18px;margin-bottom:18px;text-align:center;"><p style="margin:0;color:#c4c4ff;font-size:15px;line-height:1.5;">${customMessage}</p></div>` : ''}
               <div class="instructions">
-                <div class="instructions-bg">ðŸ’¡</div>
+                <div class="instructions-bg">??</div>
                 <div class="instructions-content">
-                  <h3>âœ¨ CÃ³mo usar tu gift card</h3>
-                  <p>IngresÃ¡ el cÃ³digo <strong>${code}</strong> al momento de pagar en <strong>${storeName}</strong> y el descuento se aplicarÃ¡ automÃ¡ticamente.</p>
+                  <h3>? Cómo usar tu gift card</h3>
+                  <p>Ingres? el código <strong>${code}</strong> al momento de pagar en <strong>${storeName}</strong> y el descuento se aplicar? automáticamente.</p>
                 </div>
               </div>
               
               <div class="cta-wrapper">
-                <a href="https://tutienda.mitiendanube.com" class="button">Ir a la tienda â†’</a>
+                <a href="https://tutienda.mitiendanube.com" class="button">Ir a la tienda ?</a>
               </div>
               
-              <p class="info">ðŸ”’ Este cÃ³digo es Ãºnico y personal</p>
+              <p class="info">?? Este código es único y personal</p>
             </td>
           </tr>
           <tr>
@@ -704,8 +754,8 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
               <p class="validity">${expiryText}</p>
               <div class="footer-divider"></div>
               <p class="credits">
-                Â¿Problemas con tu gift card? ContactÃ¡ a la tienda directamente.<br/>
-                <span style="color: #6b7280;">Powered by GlowLab âœ¨</span>
+                ¿Problemas con tu gift card? Contact? a la tienda directamente.<br/>
+                <span style="color: #6b7280;">Powered by GlowLab ?</span>
               </p>
             </td>
           </tr>
@@ -719,9 +769,9 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
     
     // Enviar email con SendGrid
     if (!SENDGRID_API_KEY) {
-      console.warn('âš ï¸ SendGrid API key no configurada, solo logueando');
-      console.log(`âœ… Email preparado para ${recipientEmail}`);
-      console.log(`   CÃ³digo: ${code}`);
+      console.warn('?? SendGrid API key no configurada, solo logueando');
+      console.log(`? Email preparado para ${recipientEmail}`);
+      console.log(`   Código: ${code}`);
       console.log(`   Monto: $${amount}`);
       return { success: true, note: 'Email not sent - API key missing' };
     }
@@ -733,30 +783,32 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
           email: 'info@techdi.com.ar',
           name: storeName || 'GlowLab'
         },
-        subject: `🎁 Tu Gift Card de $${amount.toLocaleString('es-AR')} estÃ¡ lista`,
+        subject: `?? Tu Gift Card de $${amount.toLocaleString('es-AR')} est? lista`,
         html: emailHTML,
-        text: `Tu cÃ³digo de Gift Card es: ${code}\n\nMonto: $${amount}\n${expiryText}\n\nUsalo en cualquier compra ingresÃ¡ndolo en el campo de cupÃ³n de descuento.`
+        text: `Tu código de Gift Card es: ${code}\n\nMonto: $${amount}\n${expiryText}\n\nUsalo en cualquier compra ingresándolo en el campo de cupón de descuento.`
       };
       
       await sgMail.send(msg);
-      console.log(`âœ… Email enviado exitosamente a ${recipientEmail}`);
+      console.log(`? Email enviado exitosamente a ${recipientEmail}`);
       return { success: true, emailSent: true };
       
     } catch (emailError) {
-      console.error('âŒ Error enviando email con SendGrid:', emailError);
+      console.error('? Error enviando email con SendGrid:', emailError);
       // No fallar el proceso por error de email
       return { success: true, emailSent: false, error: emailError.message };
     }
   } catch (error) {
-    console.error('âŒ Error enviando email:', error);
+    console.error('? Error enviando email:', error);
     return { success: false, error: error.message };
   }
 }
 
 // Helper para generar imagen de gift card con Canvas
 async function generateGiftCardImage(templateImageUrl, amount, textPosition = "center", textColor = "#FFFFFF", fontSize = 60) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { createCanvas, loadImage } = require("canvas"); // lazy load ? solo para gift cards
   try {
-    console.log(`ðŸŽ¨ Generando imagen de gift card con $${amount}...`);
+    console.log(`?? Generando imagen de gift card con $${amount}...`);
     
     // Cargar imagen del template
     const image = await loadImage(templateImageUrl);
@@ -780,7 +832,7 @@ async function generateGiftCardImage(templateImageUrl, amount, textPosition = "c
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
     
-    // Determinar posiciÃ³n Y segÃºn configuraciÃ³n
+    // Determinar posición Y según configuración
     let yPosition;
     if (textPosition === 'top') {
       yPosition = image.height * 0.25;
@@ -797,16 +849,16 @@ async function generateGiftCardImage(templateImageUrl, amount, textPosition = "c
     // Convertir a buffer
     const buffer = canvas.toBuffer('image/png');
     
-    console.log(`âœ… Imagen generada: ${buffer.length} bytes`);
+    console.log(`? Imagen generada: ${buffer.length} bytes`);
     return buffer;
     
   } catch (error) {
-    console.error('âŒ Error generando imagen:', error);
+    console.error('? Error generando imagen:', error);
     throw error;
   }
 }
 
-// Helper para subir imagen a Firebase Storage y obtener URL pÃºblica
+// Helper para subir imagen a Firebase Storage y obtener URL pública
 async function uploadGiftCardImage(imageBuffer, storeId, productId) {
   try {
     const filename = `giftcards/${storeId}/${productId}_${Date.now()}.png`;
@@ -823,17 +875,17 @@ async function uploadGiftCardImage(imageBuffer, storeId, productId) {
       }
     });
     
-    // Hacer el archivo pÃºblico
+    // Hacer el archivo público
     await file.makePublic();
     
-    // Obtener URL pÃºblica
+    // Obtener URL pública
     const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
     
-    console.log(`âœ… Imagen subida: ${publicUrl}`);
+    console.log(`? Imagen subida: ${publicUrl}`);
     return publicUrl;
     
   } catch (error) {
-    console.error('âŒ Error subiendo imagen:', error);
+    console.error('? Error subiendo imagen:', error);
     throw error;
   }
 }
@@ -844,7 +896,7 @@ app.use(cors({ origin: true }));
 app.use(express.json());
 
 // ============================================
-// CONFIGURACIÃ“N OAUTH TIENDANUBE
+// CONFIGURACIÓN OAUTH TIENDANUBE
 // ============================================
 const CLIENT_ID = "23137";
 const CLIENT_SECRET = "4aa553dd36bcad0848bfbe73f2b7894299b38226beab859d";
@@ -857,7 +909,7 @@ const REDIRECT_URI_PROD = "https://glowlab.techdi.com.ar/callback";
 app.get("/", (req, res) => {
   res.json({
     success: true,
-    message: "GlowLab API - Running ðŸš€",
+    message: "GlowLab API - Running ??",
     version: "1.0.0",
     endpoints: {
       auth: "/auth/callback",
@@ -882,7 +934,7 @@ app.get("/auth/callback", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ” Intercambiando code por access_token...");
+    console.log("?? Intercambiando code por access_token...");
 
     // Intercambiar code por access_token
     const tokenResponse = await fetch("https://www.tiendanube.com/apps/authorize/token", {
@@ -897,10 +949,10 @@ app.get("/auth/callback", async (req, res) => {
     });
 
     const tokenData = await tokenResponse.json();
-    console.log("ðŸ“¦ Respuesta de TiendaNube:", JSON.stringify(tokenData, null, 2));
+    console.log("?? Respuesta de TiendaNube:", JSON.stringify(tokenData, null, 2));
 
     if (!tokenData.access_token) {
-      console.error("âŒ Error: No se recibiÃ³ access_token. Respuesta completa:", tokenData);
+      console.error("? Error: No se recibi? access_token. Respuesta completa:", tokenData);
       return res.status(400).json({
         success: false,
         message: "Error during authentication",
@@ -912,7 +964,7 @@ app.get("/auth/callback", async (req, res) => {
     const { access_token, user_id } = tokenData;
     const storeId = user_id.toString();
 
-    console.log(`âœ… Token obtenido para store: ${storeId}`);
+    console.log(`? Token obtenido para store: ${storeId}`);
 
     // Obtener info de la tienda
     const storeResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/store`, {
@@ -939,62 +991,85 @@ app.get("/auth/callback", async (req, res) => {
       active: true
     }, { merge: true });
 
-    console.log(`âœ… Store guardada: ${storeId}`);
+    console.log(`? Store guardada: ${storeId}`);
 
-    // Registrar webhook automÃ¡ticamente para recibir notificaciones de pedidos
+    // Registrar webhook automáticamente para recibir notificaciones de pedidos
     await registerOrderWebhook(storeId, access_token);
 
     // Instalar templates predeterminados para nueva tienda
     await installDefaultTemplates(storeId);
 
-    // Crear suscripciÃ³n trial si no existe
-    const subDoc = await db.collection("subscriptions").doc(storeId).get();
-    if (!subDoc.exists) {
-      const trialEndDate = new Date();
-      trialEndDate.setDate(trialEndDate.getDate() + 30);
+    // Siempre actualizar suscripción a plan PRO ilimitado (enterprise)
+    const farFuture = new Date('2099-12-31T00:00:00.000Z');
+    const allModules = {
+      coupons: true, giftCards: true, spinWheel: true, countdown: true,
+      badges: true, style: true, integrations: true, popups: true,
+      announcementBar: true, topHeader: true, menu: true, banners: true
+    };
 
-      await db.collection("subscriptions").doc(storeId).set({
-        storeId,
-        plan: "trial",
-        status: "active",
-        price: 0,
-        currency: "ARS",
-        startDate: FieldValue.serverTimestamp(),
-        endDate: admin.firestore.Timestamp.fromDate(trialEndDate),
-        trialDays: 30,
-        features: {
-          maxPromos: 2,
-          analytics: false,
-          automation: false
+    await db.collection("subscriptions").doc(storeId).set({
+      storeId,
+      plan: "enterprise",
+      status: "active",
+      price: 0,
+      currency: "ARS",
+      startDate: FieldValue.serverTimestamp(),
+      endDate: admin.firestore.Timestamp.fromDate(farFuture),
+      trialDays: 36500,
+      isDemoAccount: true,
+      demoExpiresAt: farFuture.toISOString(),
+      features: { maxPromos: 999, analytics: true, automation: true },
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
+      plan: 'pro',
+      status: "demo",
+      modules: allModules,
+      isDemoAccount: true,
+      demoExpiresAt: farFuture.toISOString(),
+      activatedBy: "install",
+      activatedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    // Intentar crear cargo con trial de 36500 días (no bloquea si falla)
+    try {
+      const chargeRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/recurring_application_charges`, {
+        method: 'POST',
+        headers: {
+          'Authentication': `bearer ${access_token}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'PromoNube (contacto@promonube.com)'
         },
-        createdAt: FieldValue.serverTimestamp()
+        body: JSON.stringify({
+          name: 'PromoNube Pro - Todo Incluido',
+          price: '0',
+          trial_days: 36500,
+          return_url: `${process.env.FRONTEND_URL || 'https://pedidos-lett-2.web.app'}/#/dashboard`
+        })
       });
-
-      // Crear tambiÃ©n en stores/{storeId}/subscription/current
-      // DEMO: Todas las tiendas nuevas tienen acceso completo por 30 dÃ­as
-      await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
-        plan: 'trial',
-        status: "active",
-        modules: {
-          coupons: true,
-          giftCards: true,
-          spinWheel: true,
-          countdown: true,
-          badges: true,
-          style: true,
-          integrations: true,
-          popups: true
-        },
-        isDemoAccount: true,
-        demoStartDate: FieldValue.serverTimestamp(),
-        demoEndDate: admin.firestore.Timestamp.fromDate(trialEndDate),
-        createdAt: FieldValue.serverTimestamp(),
-        installedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp()
-      });
-
-      console.log(`âœ… SuscripciÃ³n trial creada para: ${storeId}`);
+      const chargeData = await chargeRes.json();
+      if (chargeData.id) {
+        console.log(`? Cargo gratuito creado para ${storeId}: ID ${chargeData.id}`);
+        // Si tiene confirmation_url, activarlo
+        if (chargeData.confirmation_url) {
+          await fetch(`https://api.tiendanube.com/v1/${storeId}/recurring_application_charges/${chargeData.id}/activate`, {
+            method: 'POST',
+            headers: {
+              'Authentication': `bearer ${access_token}`,
+              'User-Agent': 'PromoNube (contacto@promonube.com)'
+            }
+          });
+        }
+      } else {
+        console.log(`??  No se pudo crear cargo para ${storeId}:`, chargeRes.status, JSON.stringify(chargeData).substring(0,100));
+      }
+    } catch (chargeErr) {
+      console.log(`??  Error creando cargo (no crítico): ${chargeErr.message}`);
     }
+
+    console.log(`? Suscripción PRO ilimitada activada para: ${storeId}`);
 
     // Verificar si ya existe un usuario para esta tienda
     const usersSnapshot = await db.collection("promonube_users")
@@ -1007,18 +1082,18 @@ app.get("/auth/callback", async (req, res) => {
 
     if (!usersSnapshot.empty) {
       // Usuario ya existe, redirigir a login
-      console.log(`ðŸ‘¤ Usuario ya existe para store ${storeId}, redirigiendo a login`);
-      redirectUrl = `${frontendUrl}/#/login?message=${encodeURIComponent('Ya tenÃ©s una cuenta, iniciÃ¡ sesiÃ³n')}`;
+      console.log(`?? Usuario ya existe para store ${storeId}, redirigiendo a login`);
+      redirectUrl = `${frontendUrl}/#/login?message=${encodeURIComponent('Ya tenés una cuenta, inició sesión')}`;
     } else {
-      // Nueva instalaciÃ³n, redirigir a registro
-      console.log(`ðŸ†• Store ${storeId} necesita registro, redirigiendo a register`);
+      // Nueva instalación, redirigir a registro
+      console.log(`?? Store ${storeId} necesita registro, redirigiendo a register`);
       redirectUrl = `${frontendUrl}/#/?installed=true&store_id=${storeId}`;
     }
 
     res.redirect(redirectUrl);
 
   } catch (error) {
-    console.error("âŒ Error en OAuth callback:", error);
+    console.error("? Error en OAuth callback:", error);
     res.status(500).json({
       success: false,
       message: "Error during authentication",
@@ -1029,7 +1104,7 @@ app.get("/auth/callback", async (req, res) => {
 
 // ============================================
 // ENDPOINT: GET /store-info
-// Obtiene informaciÃ³n de la tienda
+// Obtiene información de la tienda
 // ============================================
 app.get("/store-info", async (req, res) => {
   const { storeId } = req.query;
@@ -1053,7 +1128,7 @@ app.get("/store-info", async (req, res) => {
 
     const storeData = storeDoc.data();
 
-    // Obtener suscripciÃ³n
+    // Obtener suscripción
     const subDoc = await db.collection("subscriptions").doc(storeId).get();
     const subscription = subDoc.exists ? subDoc.data() : null;
 
@@ -1078,7 +1153,7 @@ app.get("/store-info", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error getting store info:", error);
+    console.error("? Error getting store info:", error);
     res.status(500).json({
       success: false,
       message: "Error getting store info",
@@ -1120,7 +1195,7 @@ app.post("/api/auth/register", async (req, res) => {
     if (!existingUser.empty) {
       return res.json({ 
         success: false, 
-        message: 'El email ya estÃ¡ registrado' 
+        message: 'El email ya est? registrado' 
       });
     }
 
@@ -1146,7 +1221,7 @@ app.post("/api/auth/register", async (req, res) => {
     // Obtener datos del store para la respuesta
     const store = storeDoc.data();
 
-    console.log(`âœ… Usuario registrado: ${email} para store ${storeId}`);
+    console.log(`? Usuario registrado: ${email} para store ${storeId}`);
     
     res.json({ 
       success: true,
@@ -1162,7 +1237,7 @@ app.post("/api/auth/register", async (req, res) => {
       message: 'Registro exitoso' 
     });
   } catch (error) {
-    console.error('âŒ Register error:', error);
+    console.error('? Register error:', error);
     res.json({ 
       success: false, 
       message: 'Error al registrar usuario' 
@@ -1181,7 +1256,7 @@ app.post("/api/auth/login", async (req, res) => {
     if (!email || !password) {
       return res.json({ 
         success: false, 
-        message: 'Email y contraseÃ±a son requeridos' 
+        message: 'Email y contraseña son requeridos' 
       });
     }
 
@@ -1193,7 +1268,7 @@ app.post("/api/auth/login", async (req, res) => {
     if (usersSnapshot.empty) {
       return res.json({ 
         success: false, 
-        message: 'Email o contraseÃ±a incorrectos' 
+        message: 'Email o contraseña incorrectos' 
       });
     }
 
@@ -1203,20 +1278,20 @@ app.post("/api/auth/login", async (req, res) => {
     if (userData.passwordHash !== hashPassword(password)) {
       return res.json({ 
         success: false, 
-        message: 'Email o contraseÃ±a incorrectos' 
+        message: 'Email o contraseña incorrectos' 
       });
     }
 
-    // Obtener informaciÃ³n de la tienda
+    // Obtener información de la tienda
     const storeDoc = await db.collection("promonube_stores").doc(userData.storeId).get();
     const storeData = storeDoc.data();
 
-    // Actualizar Ãºltimo login
+    // Actualizar último login
     await userDoc.ref.update({ 
       lastLogin: FieldValue.serverTimestamp() 
     });
 
-    console.log(`âœ… Login exitoso: ${email}`);
+    console.log(`? Login exitoso: ${email}`);
     
     res.json({ 
       success: true,
@@ -1232,10 +1307,10 @@ app.post("/api/auth/login", async (req, res) => {
       message: 'Login exitoso' 
     });
   } catch (error) {
-    console.error('âŒ Login error:', error);
+    console.error('? Login error:', error);
     res.json({ 
       success: false, 
-      message: 'Error al iniciar sesiÃ³n' 
+      message: 'Error al iniciar sesión' 
     });
   }
 });
@@ -1255,7 +1330,7 @@ app.post("/dev-login", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ” Dev login para store:", storeId);
+    console.log("?? Dev login para store:", storeId);
 
     // Obtener info de la tienda
     const storeResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/store`, {
@@ -1277,7 +1352,7 @@ app.post("/dev-login", async (req, res) => {
       lastLogin: FieldValue.serverTimestamp()
     }, { merge: true });
 
-    console.log(`âœ… Usuario creado: ${userId}`);
+    console.log(`? Usuario creado: ${userId}`);
 
     // Guardar store
     await db.collection("promonube_stores").doc(storeId).set({
@@ -1295,9 +1370,9 @@ app.post("/dev-login", async (req, res) => {
       active: true
     }, { merge: true });
 
-    console.log(`âœ… Store guardada: ${storeId}`);
+    console.log(`? Store guardada: ${storeId}`);
 
-    // Crear suscripciÃ³n trial
+    // Crear suscripción trial
     const trialEndDate = new Date();
     trialEndDate.setDate(trialEndDate.getDate() + 30);
 
@@ -1319,7 +1394,7 @@ app.post("/dev-login", async (req, res) => {
       createdAt: FieldValue.serverTimestamp()
     }, { merge: true });
 
-    console.log(`âœ… SuscripciÃ³n creada: ${storeId}`);
+    console.log(`? Suscripción creada: ${storeId}`);
 
     res.json({
       success: true,
@@ -1332,7 +1407,7 @@ app.post("/dev-login", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error en dev login:", error);
+    console.error("? Error en dev login:", error);
     res.status(500).json({
       success: false,
       message: "Error during dev login",
@@ -1375,7 +1450,7 @@ app.post("/api/register-missing-webhooks", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error registrando webhooks:", error);
+    console.error("? Error registrando webhooks:", error);
     res.status(500).json({
       success: false,
       message: "Error al registrar webhooks",
@@ -1386,7 +1461,7 @@ app.post("/api/register-missing-webhooks", async (req, res) => {
 
 // ============================================
 // ENDPOINT: GET /validate-token
-// Valida que el storeId existe y estÃ¡ activo
+// Valida que el storeId existe y est? activo
 // ============================================
 app.get("/validate-token", async (req, res) => {
   const { storeId } = req.query;
@@ -1421,7 +1496,7 @@ app.get("/validate-token", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error validating token:", error);
+    console.error("? Error validating token:", error);
     res.status(500).json({
       success: false,
       message: "Error validating token"
@@ -1441,7 +1516,7 @@ app.post("/api/install-light-toggle-script", async (req, res) => {
   }
 
   try {
-    console.log(`ðŸ“¦ Instalando Light Toggle script en tienda ${storeId}...`);
+    console.log(`?? Instalando Light Toggle script en tienda ${storeId}...`);
 
     // Obtener access token
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -1472,7 +1547,7 @@ app.post("/api/install-light-toggle-script", async (req, res) => {
     );
 
     if (existingScript) {
-      console.log(`âœ… Script ya existe (ID: ${existingScript.id})`);
+      console.log(`? Script ya existe (ID: ${existingScript.id})`);
       return res.json({ 
         success: true, 
         message: "Script ya instalado",
@@ -1480,7 +1555,7 @@ app.post("/api/install-light-toggle-script", async (req, res) => {
       });
     }
 
-    // Instalar el script usando el archivo estÃ¡tico
+    // Instalar el script usando el archivo estático
     const staticScriptUrl = 'https://pedidos-lett-2.web.app/style-widget-version.js';
     
     const installResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
@@ -1499,14 +1574,14 @@ app.post("/api/install-light-toggle-script", async (req, res) => {
 
     if (!installResponse.ok) {
       const errorText = await installResponse.text();
-      console.error(`âŒ Error instalando script: ${installResponse.status} - ${errorText}`);
+      console.error(`? Error instalando script: ${installResponse.status} - ${errorText}`);
       
-      // Si falla, es porque estÃ¡ en modo producciÃ³n
+      // Si falla, es porque est? en modo producción
       if (installResponse.status === 422) {
         return res.status(422).json({ 
           success: false, 
-          message: "La app estÃ¡ en modo producciÃ³n. Necesitas activar la versiÃ³n v.3 del script desde TiendaNube Partners.",
-          instructions: "Ve a https://partners.tiendanube.com â†’ PromoNube â†’ Scripts â†’ Light Toggle â†’ Publicar v.3"
+          message: "La app est? en modo producción. Necesitas activar la versión v.3 del script desde TiendaNube Partners.",
+          instructions: "Ve a https://partners.tiendanube.com ? PromoNube ? Scripts ? Light Toggle ? Publicar v.3"
         });
       }
       
@@ -1518,7 +1593,7 @@ app.post("/api/install-light-toggle-script", async (req, res) => {
     }
 
     const installedScript = await installResponse.json();
-    console.log(`âœ… Script instalado exitosamente: ID ${installedScript.id}`);
+    console.log(`? Script instalado exitosamente: ID ${installedScript.id}`);
 
     res.json({
       success: true,
@@ -1527,14 +1602,14 @@ app.post("/api/install-light-toggle-script", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error en install-light-toggle-script:", error);
+    console.error("? Error en install-light-toggle-script:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // ============================================
 // ENDPOINT: POST /api/coupons/create
-// Crear cupÃ³n individual
+// Crear cupón individual
 // ============================================
 app.post("/api/coupons/create", async (req, res) => {
   const { storeId, code, type, value, minAmount, maxDiscount, startDate, endDate, maxUses, description, restrictedEmail, freeProductId, freeProductName } = req.body;
@@ -1556,7 +1631,7 @@ app.post("/api/coupons/create", async (req, res) => {
     const storeData = storeDoc.data();
     const accessToken = storeData.accessToken;
 
-    // Crear cupÃ³n en TiendaNube
+    // Crear cupón en TiendaNube
     const couponData = {
       code: code.toUpperCase(),
       type: type, // "percentage" o "absolute"
@@ -1581,15 +1656,15 @@ app.post("/api/coupons/create", async (req, res) => {
     const tiendanubeCoupon = await tiendanubeResponse.json();
 
     if (tiendanubeResponse.status !== 201) {
-      console.error("Error creando cupÃ³n en TiendaNube:", tiendanubeCoupon);
+      console.error("Error creando cupón en TiendaNube:", tiendanubeCoupon);
       return res.json({
         success: false,
-        message: "Error al crear cupÃ³n en TiendaNube",
+        message: "Error al crear cupón en TiendaNube",
         error: tiendanubeCoupon
       });
     }
 
-    // Guardar cupÃ³n en Firestore
+    // Guardar cupón en Firestore
     const couponId = `coupon_${Date.now()}`;
     await db.collection("promonube_coupons").doc(couponId).set({
       couponId,
@@ -1615,7 +1690,7 @@ app.post("/api/coupons/create", async (req, res) => {
 
     res.json({
       success: true,
-      message: "CupÃ³n creado exitosamente",
+      message: "Cupón creado exitosamente",
       coupon: {
         couponId,
         code: code.toUpperCase(),
@@ -1624,10 +1699,10 @@ app.post("/api/coupons/create", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error creando cupÃ³n:", error);
+    console.error("? Error creando cupón:", error);
     res.status(500).json({
       success: false,
-      message: "Error al crear cupÃ³n",
+      message: "Error al crear cupón",
       error: error.message
     });
   }
@@ -1660,7 +1735,7 @@ app.post("/api/coupons/create-bulk", async (req, res) => {
     const createdCoupons = [];
     const errors = [];
 
-    // Generar cÃ³digos Ãºnicos
+    // Generar códigos únicos
     for (let i = 0; i < quantity; i++) {
       const randomCode = `${prefix || 'PROMO'}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
@@ -1738,7 +1813,7 @@ app.post("/api/coupons/create-bulk", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error creando cupones masivos:", error);
+    console.error("? Error creando cupones masivos:", error);
     res.status(500).json({
       success: false,
       message: "Error al crear cupones masivos",
@@ -1762,7 +1837,7 @@ app.post("/api/coupons/import", async (req, res) => {
   }
 
   try {
-    console.log(`ðŸ“¥ Importando ${coupons.length} cupones para store ${storeId}`);
+    console.log(`?? Importando ${coupons.length} cupones para store ${storeId}`);
 
     // Verificar que la tienda existe
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -1776,7 +1851,7 @@ app.post("/api/coupons/import", async (req, res) => {
     const imported = [];
     const errors = [];
 
-    // Procesar cada cupÃ³n
+    // Procesar cada cupón
     for (let i = 0; i < coupons.length; i++) {
       const coupon = coupons[i];
 
@@ -1791,7 +1866,7 @@ app.post("/api/coupons/import", async (req, res) => {
           continue;
         }
 
-        // Verificar si el cupÃ³n ya existe en TiendaNube
+        // Verificar si el cupón ya existe en TiendaNube
         const checkResponse = await fetch(
           `https://api.tiendanube.com/v1/${storeId}/coupons?code=${coupon.code}`,
           {
@@ -1809,7 +1884,7 @@ app.post("/api/coupons/import", async (req, res) => {
           errors.push({ 
             index: i + 1, 
             code: coupon.code, 
-            error: 'El cupÃ³n ya existe en TiendaNube' 
+            error: 'El cupón ya existe en TiendaNube' 
           });
           continue;
         }
@@ -1861,14 +1936,14 @@ app.post("/api/coupons/import", async (req, res) => {
           });
 
           imported.push(coupon.code);
-          console.log(`âœ… CupÃ³n importado: ${coupon.code}`);
+          console.log(`? Cupón importado: ${coupon.code}`);
         } else {
           errors.push({ 
             index: i + 1, 
             code: coupon.code, 
             error: tiendanubeCoupon.description || 'Error en TiendaNube' 
           });
-          console.error(`âŒ Error con ${coupon.code}:`, tiendanubeCoupon);
+          console.error(`? Error con ${coupon.code}:`, tiendanubeCoupon);
         }
 
         // Pausa para no saturar la API (300ms entre requests)
@@ -1880,11 +1955,11 @@ app.post("/api/coupons/import", async (req, res) => {
           code: coupon.code, 
           error: error.message 
         });
-        console.error(`âŒ Error procesando ${coupon.code}:`, error);
+        console.error(`? Error procesando ${coupon.code}:`, error);
       }
     }
 
-    console.log(`âœ… ImportaciÃ³n completada: ${imported.length} exitosos, ${errors.length} errores`);
+    console.log(`? Importación completada: ${imported.length} exitosos, ${errors.length} errores`);
 
     res.json({
       success: true,
@@ -1896,7 +1971,7 @@ app.post("/api/coupons/import", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error en importaciÃ³n:", error);
+    console.error("? Error en importación:", error);
     res.status(500).json({
       success: false,
       message: "Error al importar cupones",
@@ -1920,7 +1995,7 @@ app.get("/api/coupons", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ“‹ Obteniendo cupones para storeId:", storeId);
+    console.log("?? Obteniendo cupones para storeId:", storeId);
     
     const couponsSnapshot = await db.collection("promonube_coupons")
       .where("storeId", "==", storeId)
@@ -1931,7 +2006,7 @@ app.get("/api/coupons", async (req, res) => {
       coupons.push(doc.data());
     });
 
-    console.log("âœ… Cupones encontrados:", coupons.length);
+    console.log("? Cupones encontrados:", coupons.length);
 
     res.json({
       success: true,
@@ -1940,7 +2015,7 @@ app.get("/api/coupons", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo cupones:", error);
+    console.error("? Error obteniendo cupones:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener cupones",
@@ -1964,7 +2039,7 @@ app.get("/api/coupons/with-cap", async (req, res) => {
   }
 
   try {
-    console.log("âš¡ Obteniendo cupones con tope para storeId:", storeId);
+    console.log("? Obteniendo cupones con tope para storeId:", storeId);
     
     const couponsSnapshot = await db.collection("promonube_coupons")
       .where("storeId", "==", storeId)
@@ -1986,7 +2061,7 @@ app.get("/api/coupons/with-cap", async (req, res) => {
       }
     });
 
-    console.log(`âœ… Cupones con tope encontrados: ${cuponesConTope.length}`);
+    console.log(`? Cupones con tope encontrados: ${cuponesConTope.length}`);
 
     // Permitir CORS para que el checkout pueda acceder
     res.set('Access-Control-Allow-Origin', '*');
@@ -1998,7 +2073,7 @@ app.get("/api/coupons/with-cap", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo cupones con tope:", error);
+    console.error("? Error obteniendo cupones con tope:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener cupones",
@@ -2009,7 +2084,7 @@ app.get("/api/coupons/with-cap", async (req, res) => {
 
 // ============================================
 // ENDPOINT: PATCH /api/coupons/:couponId/toggle
-// Activar/Desactivar cupÃ³n
+// Activar/Desactivar cupón
 // ============================================
 app.patch("/api/coupons/:couponId/toggle", async (req, res) => {
   const { couponId } = req.params;
@@ -2023,15 +2098,15 @@ app.patch("/api/coupons/:couponId/toggle", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ”„ Cambiando estado de cupÃ³n:", couponId);
+    console.log("?? Cambiando estado de cupón:", couponId);
 
-    // Obtener cupÃ³n actual
+    // Obtener cupón actual
     const couponDoc = await db.collection("promonube_coupons").doc(couponId).get();
     
     if (!couponDoc.exists) {
       return res.json({
         success: false,
-        message: "CupÃ³n no encontrado"
+        message: "Cupón no encontrado"
       });
     }
 
@@ -2067,19 +2142,19 @@ app.patch("/api/coupons/:couponId/toggle", async (req, res) => {
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    console.log("âœ… Estado actualizado:", newStatus ? "Activo" : "Inactivo");
+    console.log("? Estado actualizado:", newStatus ? "Activo" : "Inactivo");
 
     res.json({
       success: true,
-      message: `CupÃ³n ${newStatus ? 'activado' : 'desactivado'} correctamente`,
+      message: `Cupón ${newStatus ? 'activado' : 'desactivado'} correctamente`,
       active: newStatus
     });
 
   } catch (error) {
-    console.error("âŒ Error cambiando estado:", error);
+    console.error("? Error cambiando estado:", error);
     res.status(500).json({
       success: false,
-      message: "Error al cambiar estado del cupÃ³n",
+      message: "Error al cambiar estado del cupón",
       error: error.message
     });
   }
@@ -2087,7 +2162,7 @@ app.patch("/api/coupons/:couponId/toggle", async (req, res) => {
 
 // ============================================
 // ENDPOINT: DELETE /api/coupons/:couponId
-// Eliminar cupÃ³n
+// Eliminar cupón
 // ============================================
 app.delete("/api/coupons/:couponId", async (req, res) => {
   const { couponId } = req.params;
@@ -2101,15 +2176,15 @@ app.delete("/api/coupons/:couponId", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ—‘ï¸ Eliminando cupÃ³n:", couponId);
+    console.log("??? Eliminando cupón:", couponId);
 
-    // Obtener cupÃ³n
+    // Obtener cupón
     const couponDoc = await db.collection("promonube_coupons").doc(couponId).get();
     
     if (!couponDoc.exists) {
       return res.json({
         success: false,
-        message: "CupÃ³n no encontrado"
+        message: "Cupón no encontrado"
       });
     }
 
@@ -2137,18 +2212,18 @@ app.delete("/api/coupons/:couponId", async (req, res) => {
     // Eliminar de Firestore
     await db.collection("promonube_coupons").doc(couponId).delete();
 
-    console.log("âœ… CupÃ³n eliminado correctamente");
+    console.log("? Cupón eliminado correctamente");
 
     res.json({
       success: true,
-      message: "CupÃ³n eliminado correctamente"
+      message: "Cupón eliminado correctamente"
     });
 
   } catch (error) {
-    console.error("âŒ Error eliminando cupÃ³n:", error);
+    console.error("? Error eliminando cupón:", error);
     res.status(500).json({
       success: false,
-      message: "Error al eliminar cupÃ³n",
+      message: "Error al eliminar cupón",
       error: error.message
     });
   }
@@ -2156,16 +2231,16 @@ app.delete("/api/coupons/:couponId", async (req, res) => {
 
 // ============================================
 // ENDPOINT: GET /api/coupons/:couponId/usage
-// Obtener historial de uso de un cupÃ³n
+// Obtener historial de uso de un cupón
 // ============================================
 app.get("/api/coupons/:couponId/usage", async (req, res) => {
   const { couponId } = req.params;
 
   try {
-    console.log("ðŸ“Š Obteniendo historial de uso para cupÃ³n:", couponId);
+    console.log("?? Obteniendo historial de uso para cupón:", couponId);
 
     // Por ahora devolvemos datos simulados hasta implementar el webhook
-    // En el futuro, leeremos de la colecciÃ³n "coupon_usage"
+    // En el futuro, leeremos de la colección "coupon_usage"
     const usageSnapshot = await db.collection("coupon_usage")
       .where("couponId", "==", couponId)
       .orderBy("usedAt", "desc")
@@ -2176,7 +2251,7 @@ app.get("/api/coupons/:couponId/usage", async (req, res) => {
       usage.push(doc.data());
     });
 
-    console.log("âœ… Historial encontrado:", usage.length, "usos");
+    console.log("? Historial encontrado:", usage.length, "usos");
 
     res.json({
       success: true,
@@ -2185,9 +2260,9 @@ app.get("/api/coupons/:couponId/usage", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo historial de uso:", error);
+    console.error("? Error obteniendo historial de uso:", error);
     
-    // Si no existe el Ã­ndice aÃºn, devolver array vacÃ­o
+    // Si no existe el índice aún, devolver array vacío
     res.json({
       success: true,
       usage: [],
@@ -2202,7 +2277,7 @@ app.get("/api/coupons/:couponId/usage", async (req, res) => {
 // ============================================
 app.post("/webhook/order-paid", async (req, res) => {
   try {
-    console.log("ðŸ”” Webhook de pedido pagado recibido");
+    console.log("?? Webhook de pedido pagado recibido");
     const order = req.body;
 
     // ==========================================
@@ -2214,7 +2289,7 @@ app.post("/webhook/order-paid", async (req, res) => {
         
         // Detectar si el producto es una gift card por el nombre
         if (productName.includes('gift card') || productName.includes('tarjeta regalo')) {
-          console.log(`🎁 Gift Card detectada en pedido! Producto: ${product.name}`);
+          console.log(`?? Gift Card detectada en pedido! Producto: ${product.name}`);
           
           // Buscar metadata del producto
           const productMetadata = await db.collection("giftcard_products")
@@ -2238,14 +2313,14 @@ app.post("/webhook/order-paid", async (req, res) => {
             finalAmountPerCard = amountPerCard * discountRatio;
           }
           
-          console.log(`ðŸ’° Monto calculado por gift card: $${finalAmountPerCard.toFixed(2)} (base: $${baseAmount})`);
+          console.log(`?? Monto calculado por gift card: $${finalAmountPerCard.toFixed(2)} (base: $${baseAmount})`);
           
-          // Generar un cÃ³digo por cada gift card comprada
+          // Generar un código por cada gift card comprada
           for (let i = 0; i < quantity; i++) {
             const newCode = generateGiftCardCode();
             const newGiftCardId = `gift_${Date.now()}_${i}`;
             
-            // Calcular fecha de expiraciÃ³n si existe en metadata
+            // Calcular fecha de expiración si existe en metadata
             let expiresAt = null;
             if (productMetadata.exists && productMetadata.data().expiresInDays) {
               expiresAt = new Date();
@@ -2262,7 +2337,7 @@ app.post("/webhook/order-paid", async (req, res) => {
               recipientEmail: order.customer?.email || null,
               recipientName: order.customer?.name || null,
               senderName: null,
-              message: `Â¡Gracias por tu compra! AquÃ­ estÃ¡ tu Gift Card.`,
+              message: `¡Gracias por tu compra! Aquí está tu Gift Card.`,
               status: 'active',
               tiendanubeProductId: product.product_id,
               isProductBased: true,
@@ -2276,16 +2351,17 @@ app.post("/webhook/order-paid", async (req, res) => {
             };
 
             await db.collection("promonube_giftcards").doc(newGiftCardId).set(newGiftCardData);
-            console.log(`âœ… Gift Card generada: ${newCode} para ${order.customer?.email} - Monto: $${finalAmountPerCard.toFixed(2)}`);
+            console.log(`? Gift Card generada: ${newCode} para ${order.customer?.email} - Monto: $${finalAmountPerCard.toFixed(2)}`);
 
-            // Enviar email con el cÃ³digo
+            // Enviar email con el código
             if (order.customer?.email) {
               await sendGiftCardEmail(
                 order.customer.email, 
                 newCode, 
                 finalAmountPerCard,
                 order.store?.name || 'Tu tienda',
-                expiresAt
+                expiresAt,
+                order.store?.url || ''
               );
               
               // Marcar como enviada
@@ -2302,17 +2378,23 @@ app.post("/webhook/order-paid", async (req, res) => {
     // PARTE 2: TRACKING DE CUPONES (EXISTENTE)
     // ==========================================
     
-    // Verificar si el pedido tiene cupÃ³n
-    if (!order.coupon || !order.coupon.code) {
+    // Verificar si el pedido tiene cupón (TN puede devolver array u objeto)
+    let rawCouponCode = null;
+    if (Array.isArray(order.coupon) && order.coupon.length > 0) {
+      rawCouponCode = order.coupon[0].code || null;
+    } else if (order.coupon && typeof order.coupon === 'object') {
+      rawCouponCode = order.coupon.code || null;
+    }
+    if (!rawCouponCode) {
       return res.json({ success: true, message: "Procesado correctamente" });
     }
 
-    const couponCode = order.coupon.code.toUpperCase();
+    const couponCode = rawCouponCode.toUpperCase();
     const storeId = order.store_id?.toString();
 
-    console.log("ðŸŽŸï¸ Pedido con cupÃ³n:", couponCode, "| Store:", storeId);
+    console.log("??? Pedido con cupón:", couponCode, "| Store:", storeId);
 
-    // Buscar el cupÃ³n en Firestore
+    // Buscar el cupón en Firestore
     const couponsSnapshot = await db.collection("promonube_coupons")
       .where("storeId", "==", storeId)
       .where("code", "==", couponCode)
@@ -2320,15 +2402,15 @@ app.post("/webhook/order-paid", async (req, res) => {
       .get();
 
     if (couponsSnapshot.empty) {
-      console.log("âš ï¸ CupÃ³n no encontrado en PromoNube");
-      return res.json({ success: true, message: "CupÃ³n no gestionado por PromoNube" });
+      console.log("?? Cupón no encontrado en PromoNube");
+      return res.json({ success: true, message: "Cupón no gestionado por PromoNube" });
     }
 
     const couponDoc = couponsSnapshot.docs[0];
     const couponData = couponDoc.data();
     const couponId = couponData.couponId;
 
-    // ðŸ” VALIDACIÃ“N: Email restringido
+    // ?? VALIDACIÓN: Email restringido
     let emailAutorizado = true;
     let motivoRechazo = null;
 
@@ -2338,25 +2420,29 @@ app.post("/webhook/order-paid", async (req, res) => {
 
       if (emailCliente !== emailCupon) {
         emailAutorizado = false;
-        motivoRechazo = `CupÃ³n exclusivo para ${couponData.restrictedEmail}. Usado por: ${emailCliente}`;
-        console.log(`âš ï¸ USO NO AUTORIZADO - ${motivoRechazo}`);
+        motivoRechazo = `Cupón exclusivo para ${couponData.restrictedEmail}. Usado por: ${emailCliente}`;
+        console.log(`?? USO NO AUTORIZADO - ${motivoRechazo}`);
       }
     }
 
-    // ðŸŽ¯ VALIDACIÃ“N: Tope de descuento excedido
+    // Normalizar acceso a value/discount del cupón (puede venir como array u objeto)
+    const couponObj = Array.isArray(order.coupon) ? order.coupon[0] : order.coupon;
+    const couponValueRaw = parseFloat(order.discount_coupon || couponObj?.discount || couponObj?.value || 0);
+
+    // ?? VALIDACIÓN: Tope de descuento excedido
     let topeExcedido = false;
-    let descuentoEsperado = parseFloat(order.coupon.value || 0);
+    let descuentoEsperado = couponValueRaw;
 
     if (couponData.type === "percentage" && couponData.maxDiscount) {
       const descuentoCalculado = (parseFloat(order.total) * couponData.value) / 100;
       if (descuentoCalculado > couponData.maxDiscount) {
         topeExcedido = true;
         descuentoEsperado = couponData.maxDiscount;
-        console.log(`âš ï¸ TOPE EXCEDIDO - Esperado: $${descuentoEsperado}, Aplicado: $${order.coupon.value}`);
+        console.log(`?? TOPE EXCEDIDO - Esperado: $${descuentoEsperado}, Aplicado: $${couponValueRaw}`);
       }
     }
 
-    // Registrar el uso (con flags de validaciÃ³n)
+    // Registrar el uso (con flags de validación)
     const usageId = `${couponId}_${order.id}`;
     await db.collection("coupon_usage").doc(usageId).set({
       couponId,
@@ -2367,8 +2453,8 @@ app.post("/webhook/order-paid", async (req, res) => {
       customerEmail: order.customer?.email || null,
       customerName: order.customer?.name || null,
       orderTotal: parseFloat(order.total),
-      discountAmount: parseFloat(order.coupon.value || 0),
-      // ðŸ†• Campos de validaciÃ³n
+      discountAmount: couponValueRaw,
+      // ?? Campos de validación
       emailAutorizado: emailAutorizado,
       motivoRechazo: motivoRechazo,
       topeExcedido: topeExcedido,
@@ -2396,7 +2482,7 @@ app.post("/webhook/order-paid", async (req, res) => {
       }
     }
 
-    console.log("✅ Uso de cupón registrado:", usageId);
+    console.log("? Uso de cupón registrado:", usageId);
 
     res.json({
       success: true,
@@ -2404,7 +2490,7 @@ app.post("/webhook/order-paid", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error en webhook de pedido:", error);
+    console.error("? Error en webhook de pedido:", error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -2414,7 +2500,7 @@ app.post("/webhook/order-paid", async (req, res) => {
 
 // ============================================
 // ENDPOINT: POST /api/promotions/create
-// Crear promociÃ³n avanzada
+// Crear promoción avanzada
 // ============================================
 app.post("/api/promotions/create", async (req, res) => {
   const {
@@ -2449,7 +2535,7 @@ app.post("/api/promotions/create", async (req, res) => {
   }
 
   try {
-    console.log("🎁 Creando promociÃ³n:", type, "para tienda:", storeId);
+    console.log("?? Creando promoción:", type, "para tienda:", storeId);
 
     // Obtener access token
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -2463,7 +2549,7 @@ app.post("/api/promotions/create", async (req, res) => {
     const accessToken = storeDoc.data().accessToken;
     const promotionId = `promo-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
-    // Preparar datos para TiendaNube segÃºn el tipo de promociÃ³n
+    // Preparar datos para TiendaNube según el tipo de promoción
     let tiendanubeData = {};
     let tiendanubeEndpoint = "";
     let tiendanubePromotionId = null;
@@ -2471,12 +2557,12 @@ app.post("/api/promotions/create", async (req, res) => {
     switch(type) {
       case 'buy_x_pay_y':
         // Por ahora guardamos en Firestore
-        // TiendaNube puede requerir configuraciÃ³n adicional
-        console.log("ðŸ’¾ Guardando promociÃ³n Buy X Pay Y en Firestore");
+        // TiendaNube puede requerir configuración adicional
+        console.log("?? Guardando promoción Buy X Pay Y en Firestore");
         break;
 
       case 'price_discount':
-        // Intentar crear como cupÃ³n automÃ¡tico con descuento
+        // Intentar crear como cupón automático con descuento
         tiendanubeEndpoint = `https://api.tiendanube.com/v1/${storeId}/coupons`;
         const autoCode = `PROMO-${Date.now().toString().slice(-6)}`;
         tiendanubeData = {
@@ -2491,12 +2577,12 @@ app.post("/api/promotions/create", async (req, res) => {
         break;
 
       case 'progressive_discount':
-        // Guardar en Firestore - requiere lÃ³gica personalizada
-        console.log("ðŸ’¾ Guardando promociÃ³n progresiva en Firestore");
+        // Guardar en Firestore - requiere lógica personalizada
+        console.log("?? Guardando promoción progresiva en Firestore");
         break;
 
       case 'cart_discount':
-        // Crear como cupÃ³n automÃ¡tico
+        // Crear como cupón automático
         tiendanubeEndpoint = `https://api.tiendanube.com/v1/${storeId}/coupons`;
         const cartCode = `AUTO-${Date.now().toString().slice(-6)}`;
         tiendanubeData = {
@@ -2512,21 +2598,21 @@ app.post("/api/promotions/create", async (req, res) => {
 
       case 'cross_selling':
         // Cross selling - Guardar solo en Firestore
-        console.log("ðŸ’¾ Guardando promociÃ³n cross-selling en Firestore");
+        console.log("?? Guardando promoción cross-selling en Firestore");
         break;
 
       default:
         return res.json({
           success: false,
-          message: "Tipo de promociÃ³n no soportado"
+          message: "Tipo de promoción no soportado"
         });
     }
 
     // Crear en TiendaNube (si aplica)
     if (tiendanubeEndpoint && Object.keys(tiendanubeData).length > 0) {
       try {
-        console.log("ðŸ“¤ Enviando a TiendaNube:", tiendanubeEndpoint);
-        console.log("ðŸ“¦ Datos:", JSON.stringify(tiendanubeData, null, 2));
+        console.log("?? Enviando a TiendaNube:", tiendanubeEndpoint);
+        console.log("?? Datos:", JSON.stringify(tiendanubeData, null, 2));
         
         const tiendanubeResponse = await fetch(tiendanubeEndpoint, {
           method: "POST",
@@ -2540,16 +2626,16 @@ app.post("/api/promotions/create", async (req, res) => {
 
         if (!tiendanubeResponse.ok) {
           const errorText = await tiendanubeResponse.text();
-          console.error("âŒ Error de TiendaNube:", tiendanubeResponse.status, errorText);
+          console.error("? Error de TiendaNube:", tiendanubeResponse.status, errorText);
           // No fallar completamente, solo guardar en Firestore
-          console.log("âš ï¸ Guardando solo en PromoNube sin sincronizar con TiendaNube");
+          console.log("?? Guardando solo en PromoNube sin sincronizar con TiendaNube");
         } else {
           const tiendanubePromotion = await tiendanubeResponse.json();
           tiendanubePromotionId = tiendanubePromotion.id;
-          console.log("âœ… PromociÃ³n creada en TiendaNube:", tiendanubePromotionId);
+          console.log("? Promoción creada en TiendaNube:", tiendanubePromotionId);
         }
       } catch (apiError) {
-        console.error("âš ï¸ Error al conectar con TiendaNube:", apiError.message);
+        console.error("?? Error al conectar con TiendaNube:", apiError.message);
         // Continuar guardando en Firestore
       }
     }
@@ -2565,7 +2651,7 @@ app.post("/api/promotions/create", async (req, res) => {
       startDate: startDate || null,
       endDate: endDate || null,
       active: active !== false,
-      // ConfiguraciÃ³n especÃ­fica
+      // Configuración específica
       buyQuantity: buyQuantity || null,
       payQuantity: payQuantity || null,
       discountType: discountType || null,
@@ -2580,20 +2666,20 @@ app.post("/api/promotions/create", async (req, res) => {
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    console.log("âœ… PromociÃ³n guardada en Firestore:", promotionId);
+    console.log("? Promoción guardada en Firestore:", promotionId);
 
     res.json({
       success: true,
-      message: "PromociÃ³n creada exitosamente",
+      message: "Promoción creada exitosamente",
       promotionId,
       tiendanubeId: tiendanubePromotionId
     });
 
   } catch (error) {
-    console.error("âŒ Error creando promociÃ³n:", error);
+    console.error("? Error creando promoción:", error);
     res.status(500).json({
       success: false,
-      message: "Error al crear promociÃ³n",
+      message: "Error al crear promoción",
       error: error.message
     });
   }
@@ -2614,7 +2700,7 @@ app.get("/api/promotions", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ“‹ Obteniendo promociones para storeId:", storeId);
+    console.log("?? Obteniendo promociones para storeId:", storeId);
 
     const promotionsSnapshot = await db.collection("promonube_promotions")
       .where("storeId", "==", storeId)
@@ -2625,7 +2711,7 @@ app.get("/api/promotions", async (req, res) => {
       promotions.push(doc.data());
     });
 
-    console.log("âœ… Promociones encontradas:", promotions.length);
+    console.log("? Promociones encontradas:", promotions.length);
 
     res.json({
       success: true,
@@ -2634,7 +2720,7 @@ app.get("/api/promotions", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo promociones:", error);
+    console.error("? Error obteniendo promociones:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener promociones",
@@ -2647,7 +2733,7 @@ app.get("/api/promotions", async (req, res) => {
 // GIFT CARDS SYSTEM
 // ============================================
 
-// Helper: Generar cÃ³digo Ãºnico de gift card
+// Helper: Generar código único de gift card
 function generateGiftCardCode() {
   const prefix = "GIFT";
   const random = crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -2681,10 +2767,10 @@ app.post("/api/giftcards/create", async (req, res) => {
   }
 
   try {
-    console.log("🎁 Creando gift card:", { storeId, amount, publishAsProduct });
+    console.log("?? Creando gift card:", { storeId, amount, publishAsProduct });
 
     // Si es producto, solo crear el producto en TiendaNube
-    // Los cÃ³digos se generan cuando alguien compra (vÃ­a webhook)
+    // Los códigos se generan cuando alguien compra (vía webhook)
     if (publishAsProduct) {
       try {
         const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -2694,88 +2780,88 @@ app.post("/api/giftcards/create", async (req, res) => {
 
         const accessToken = storeDoc.data().accessToken;
         
-        // Generar descripciÃ³n automÃ¡tica con instrucciones
-        const expiryText = expiresInDays ? `VÃ¡lida por ${Math.floor(expiresInDays / 30)} meses desde la compra.` : 'Sin vencimiento';
+        // Generar descripción automática con instrucciones
+        const expiryText = expiresInDays ? `Válida por ${Math.floor(expiresInDays / 30)} meses desde la compra.` : 'Sin vencimiento';
         const autoDescription = productDescription || `
-🎁 GIFT CARD POR $${amount.toLocaleString('es-AR')}
+?? GIFT CARD POR $${amount.toLocaleString('es-AR')}
 
-La manera perfecta de regalar! ComprÃ¡ esta Gift Card y recibÃ­ un cÃ³digo Ãºnico por email que podrÃ¡s usar o regalar.
+La manera perfecta de regalar! Comprá esta Gift Card y recib? un código único por email que podrás usar o regalar.
 
-â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-ðŸ“– CÃ“MO FUNCIONA - PASO A PASO
-â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+??????????????????????????????
+?? CÓMO FUNCIONA - PASO A PASO
+??????????????????????????????
 
-PASO 1: COMPRAR ðŸ›’
-â€¢ AgregÃ¡ esta Gift Card al carrito y completÃ¡ tu compra
-â€¢ Asegurate de ingresar un email vÃ¡lido en el checkout
-â€¢ PagÃ¡ con cualquier mÃ©todo disponible
+PASO 1: COMPRAR ???
+� Agreg? esta Gift Card al carrito y complet? tu compra
+� Asegurate de ingresar un email válido en el checkout
+� Pag? con cualquier método disponible
 
-PASO 2: RECIBIR EL CÃ“DIGO ðŸ“§
-â€¢ Inmediatamente despuÃ©s de confirmar tu compra, recibirÃ¡s un email
-â€¢ El email contiene tu cÃ³digo Ãºnico de Gift Card
-â€¢ GuardÃ¡ ese cÃ³digo en un lugar seguro
+PASO 2: RECIBIR EL CÓDIGO ??
+� Inmediatamente después de confirmar tu compra, recibirás un email
+� El email contiene tu código único de Gift Card
+� Guard? ese código en un lugar seguro
 
-PASO 3: USAR O REGALAR ðŸŽ‰
-â€¢ Vos podÃ©s usar el cÃ³digo o regalÃ¡rselo a quien quieras
-â€¢ El cÃ³digo no tiene tu nombre, es totalmente transferible
-â€¢ Ideal para compartir por WhatsApp, email o imprimirlo
+PASO 3: USAR O REGALAR ??
+� Vos podés usar el código o regalárselo a quien quieras
+� El código no tiene tu nombre, es totalmente transferible
+� Ideal para compartir por WhatsApp, email o imprimirlo
 
-PASO 4: CANJEAR EN CUALQUIER COMPRA ðŸ’³
-â€¢ Al momento de hacer una compra, ingresÃ¡ el cÃ³digo en el campo de "CupÃ³n de descuento"
-â€¢ El descuento se aplicarÃ¡ automÃ¡ticamente
-â€¢ Si el total de tu compra es menor al valor de la Gift Card, el saldo restante queda guardado para futuras compras
+PASO 4: CANJEAR EN CUALQUIER COMPRA ??
+� Al momento de hacer una compra, ingres? el código en el campo de "Cupón de descuento"
+� El descuento se aplicar? automáticamente
+� Si el total de tu compra es menor al valor de la Gift Card, el saldo restante queda guardado para futuras compras
 
-â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-â“ PREGUNTAS FRECUENTES
-â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+??????????????????????????????
+? PREGUNTAS FRECUENTES
+??????????????????????????????
 
-Â¿El cÃ³digo tiene el valor del precio que veo aquÃ­?
-No necesariamente. El cÃ³digo tendrÃ¡ el valor del monto REAL que pagaste. Si usÃ¡s un descuento (ejemplo: 15% off con transferencia), tu cÃ³digo tendrÃ¡ ese valor final.
+¿El código tiene el valor del precio que veo aquí??
+No necesariamente. El código tendr? el valor del monto REAL que pagaste. Si usás un descuento (ejemplo: 15% off con transferencia), tu código tendr? ese valor final.
 
-ðŸ”¹ Ejemplo: 
+?? Ejemplo: 
    Precio de la Gift Card: $100.000
-   PagÃ¡s con 15% descuento: $85.000
-   â†’ CÃ³digo que recibÃ­s: $85.000 âœ…
+   Pagás con 15% descuento: $85.000
+   ? Código que recibís: $85.000 ?
 
-Â¿Puedo usar la Gift Card mÃ¡s de una vez?
-SÃ­! Si tu compra es menor al valor del cÃ³digo, el saldo restante queda disponible para usar en futuras compras.
+¿Puedo usar la Gift Card más de una vez?
+S?! Si tu compra es menor al valor del código, el saldo restante queda disponible para usar en futuras compras.
 
-Â¿CuÃ¡ndo vence?
-â€¢ ${expiryText}
-â€¢ La fecha de vencimiento cuenta desde el momento de la compra, no desde el primer uso
+¿Cuándo vence?
+� ${expiryText}
+� La fecha de vencimiento cuenta desde el momento de la compra, no desde el primer uso
 
-Â¿A quiÃ©n le llega el cÃ³digo?
-Al email que ingreses en el checkout. VerificÃ¡ que estÃ© bien escrito!
+¿A quién le llega el código?
+Al email que ingreses en el checkout. Verific? que est? bien escrito!
 
-Â¿Puedo regalÃ¡rselo a otra persona?
-SÃ­, totalmente! El cÃ³digo no tiene restricciones. PodÃ©s compartirlo por WhatsApp, email o imprimirlo.
+¿Puedo regalárselo a otra persona?
+S?, totalmente! El código no tiene restricciones. Podés compartirlo por WhatsApp, email o imprimirlo.
 
-Â¿Se puede combinar con otras promociones?
-SÃ­, el cÃ³digo funciona como un cupÃ³n y se puede usar junto con otros descuentos disponibles en la tienda.
+¿Se puede combinar con otras promociones?
+S?, el código funciona como un cupón y se puede usar junto con otros descuentos disponibles en la tienda.
 
-â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-ðŸŽ¯ IDEAL PARA
-â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+??????????????????????????????
+?? IDEAL PARA
+??????????????????????????????
 
-âœ… CumpleaÃ±os y celebraciones
-âœ… Regalos corporativos
-âœ… Cuando no sabÃ©s quÃ© talle o modelo elegir
-âœ… Incentivos y premios
-âœ… Sorpresas de Ãºltimo momento
+? Cumpleaños y celebraciones
+? Regalos corporativos
+? Cuando no sabés qué talle o modelo elegir
+? Incentivos y premios
+? Sorpresas de último momento
 
-â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-ðŸ’¡ TIPS IMPORTANTES
-â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+??????????????????????????????
+?? TIPS IMPORTANTES
+??????????????????????????????
 
-âœ“ VerificÃ¡ tu email antes de finalizar la compra
-âœ“ RevisÃ¡ tu carpeta de spam si no recibÃ­s el cÃ³digo en 5 minutos
-âœ“ GuardÃ¡ el cÃ³digo en un lugar seguro o compartilo inmediatamente
-âœ“ El cÃ³digo se puede usar desde cualquier dispositivo
+? Verific? tu email antes de finalizar la compra
+? Revis? tu carpeta de spam si no recibís el código en 5 minutos
+? Guard? el código en un lugar seguro o compartilo inmediatamente
+? El código se puede usar desde cualquier dispositivo
 
-🎁 Â¡El regalo perfecto que siempre queda bien!
+?? ?El regalo perfecto que siempre queda bien!
         `.trim();
         
-        // Obtener datos del template si se especificÃ³ uno
+        // Obtener datos del template si se especific? uno
         let imageUrl = "https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=800&h=600&fit=crop";
         
         if (templateId && templateId !== 'default') {
@@ -2795,10 +2881,10 @@ SÃ­, el cÃ³digo funciona como un cupÃ³n y se puede usar junto con otros de
               
               // Subir a Firebase Storage
               imageUrl = await uploadGiftCardImage(imageBuffer, storeId, `temp_${Date.now()}`);
-              console.log(`âœ… Imagen generada y subida: ${imageUrl}`);
+              console.log(`? Imagen generada y subida: ${imageUrl}`);
             }
           } catch (imgError) {
-            console.error("âš ï¸ Error generando imagen, usando imagen por defecto:", imgError);
+            console.error("?? Error generando imagen, usando imagen por defecto:", imgError);
             // Continuar con imagen por defecto si falla
           }
         }
@@ -2824,7 +2910,7 @@ SÃ­, el cÃ³digo funciona como un cupÃ³n y se puede usar junto con otros de
             price: parseFloat(amount),
             stock_management: false,
             stock: null,
-            values: [] // TiendaNube requiere este campo aunque estÃ© vacÃ­o
+            values: [] // TiendaNube requiere este campo aunque est? vacío
           }],
           attributes: []
         };
@@ -2840,7 +2926,7 @@ SÃ­, el cÃ³digo funciona como un cupÃ³n y se puede usar junto con otros de
         });
 
         if (!tnResponse.ok) {
-          console.error("âŒ Error creando producto TN:", await tnResponse.text());
+          console.error("? Error creando producto TN:", await tnResponse.text());
           return res.json({ 
             success: false, 
             error: "Error al crear producto en TiendaNube" 
@@ -2848,9 +2934,9 @@ SÃ­, el cÃ³digo funciona como un cupÃ³n y se puede usar junto con otros de
         } else {
           const tnProduct = await tnResponse.json();
           const tiendanubeProductId = tnProduct.id;
-          console.log("âœ… Producto TN creado:", tiendanubeProductId);
+          console.log("? Producto TN creado:", tiendanubeProductId);
           
-          // Guardar metadata del producto (NO es un cupÃ³n todavÃ­a)
+          // Guardar metadata del producto (NO es un cupón todavía)
           const productMetadata = {
             productId: tiendanubeProductId,
             storeId,
@@ -2867,11 +2953,11 @@ SÃ­, el cÃ³digo funciona como un cupÃ³n y se puede usar junto con otros de
             success: true,
             message: "Producto gift card creado exitosamente",
             productId: tiendanubeProductId,
-            note: "Los cÃ³digos se generarÃ¡n automÃ¡ticamente cuando alguien compre este producto"
+            note: "Los códigos se generarán automáticamente cuando alguien compre este producto"
           });
         }
       } catch (error) {
-        console.error("âŒ Error al crear producto:", error);
+        console.error("? Error al crear producto:", error);
         return res.json({ 
           success: false, 
           error: error.message 
@@ -2879,7 +2965,7 @@ SÃ­, el cÃ³digo funciona como un cupÃ³n y se puede usar junto con otros de
       }
     }
 
-    // Si NO es producto, crear gift card directa (cupÃ³n)
+    // Si NO es producto, crear gift card directa (cupón)
     const code = generateGiftCardCode();
     const giftCardId = `gift_${Date.now()}`;
     
@@ -2912,7 +2998,7 @@ SÃ­, el cÃ³digo funciona como un cupÃ³n y se puede usar junto con otros de
 
     await db.collection("promonube_giftcards").doc(giftCardId).set(giftCardData);
 
-    console.log("âœ… Gift card creada:", code);
+    console.log("? Gift card creada:", code);
 
     res.json({
       success: true,
@@ -2927,7 +3013,7 @@ SÃ­, el cÃ³digo funciona como un cupÃ³n y se puede usar junto con otros de
     });
 
   } catch (error) {
-    console.error("âŒ Error creando gift card:", error);
+    console.error("? Error creando gift card:", error);
     res.status(500).json({
       success: false,
       message: "Error al crear gift card",
@@ -2951,7 +3037,7 @@ app.get("/api/giftcards", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ“‹ Obteniendo gift cards para storeId:", storeId);
+    console.log("?? Obteniendo gift cards para storeId:", storeId);
 
     const snapshot = await db.collection("promonube_giftcards")
       .where("storeId", "==", storeId)
@@ -2963,14 +3049,14 @@ app.get("/api/giftcards", async (req, res) => {
       giftCards.push(doc.data());
     });
 
-    // Ordenar por fecha de creaciÃ³n (mÃ¡s recientes primero)
+    // Ordenar por fecha de creación (más recientes primero)
     giftCards.sort((a, b) => {
       const dateA = a.createdAt?._seconds || 0;
       const dateB = b.createdAt?._seconds || 0;
       return dateB - dateA;
     });
 
-    console.log("âœ… Gift cards encontradas:", giftCards.length);
+    console.log("? Gift cards encontradas:", giftCards.length);
 
     res.json({
       success: true,
@@ -2979,7 +3065,7 @@ app.get("/api/giftcards", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo gift cards:", error);
+    console.error("? Error obteniendo gift cards:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener gift cards",
@@ -2990,7 +3076,7 @@ app.get("/api/giftcards", async (req, res) => {
 
 // ============================================
 // ENDPOINT: GET /api/giftcard-products
-// Listar productos de gift cards (no los cÃ³digos)
+// Listar productos de gift cards (no los códigos)
 // ============================================
 app.get("/api/giftcard-products", async (req, res) => {
   const { storeId } = req.query;
@@ -3003,7 +3089,7 @@ app.get("/api/giftcard-products", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ›ï¸ Obteniendo productos gift card para storeId:", storeId);
+    console.log("???? Obteniendo productos gift card para storeId:", storeId);
 
     const snapshot = await db.collection("giftcard_products")
       .where("storeId", "==", storeId)
@@ -3014,14 +3100,14 @@ app.get("/api/giftcard-products", async (req, res) => {
       products.push(doc.data());
     });
 
-    // Ordenar por fecha de creaciÃ³n
+    // Ordenar por fecha de creación
     products.sort((a, b) => {
       const dateA = a.createdAt?._seconds || 0;
       const dateB = b.createdAt?._seconds || 0;
       return dateB - dateA;
     });
 
-    console.log("âœ… Productos gift card encontrados:", products.length);
+    console.log("? Productos gift card encontrados:", products.length);
 
     res.json({
       success: true,
@@ -3030,7 +3116,7 @@ app.get("/api/giftcard-products", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo productos:", error);
+    console.error("? Error obteniendo productos:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener productos",
@@ -3055,12 +3141,12 @@ app.delete("/api/giftcard-products/:productId", async (req, res) => {
   }
 
   try {
-    console.log(`ðŸ—‘ï¸ Eliminando producto gift card: ${productId}`);
+    console.log(`??? Eliminando producto gift card: ${productId}`);
 
     // Eliminar de Firestore
     await db.collection("giftcard_products").doc(productId).delete();
 
-    console.log("âœ… Producto eliminado");
+    console.log("? Producto eliminado");
 
     res.json({
       success: true,
@@ -3068,7 +3154,7 @@ app.delete("/api/giftcard-products/:productId", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error eliminando producto:", error);
+    console.error("? Error eliminando producto:", error);
     res.status(500).json({
       success: false,
       message: "Error al eliminar producto",
@@ -3092,7 +3178,7 @@ app.get("/api/giftcards/sold", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ›’ Obteniendo gift cards vendidas para storeId:", storeId);
+    console.log("??? Obteniendo gift cards vendidas para storeId:", storeId);
 
     const snapshot = await db.collection("promonube_giftcards")
       .where("storeId", "==", storeId)
@@ -3104,14 +3190,14 @@ app.get("/api/giftcards/sold", async (req, res) => {
       giftCards.push(doc.data());
     });
 
-    // Ordenar por fecha de creaciÃ³n
+    // Ordenar por fecha de creación
     giftCards.sort((a, b) => {
       const dateA = a.createdAt?._seconds || 0;
       const dateB = b.createdAt?._seconds || 0;
       return dateB - dateA;
     });
 
-    console.log("âœ… Gift cards vendidas encontradas:", giftCards.length);
+    console.log("? Gift cards vendidas encontradas:", giftCards.length);
 
     res.json({
       success: true,
@@ -3120,7 +3206,7 @@ app.get("/api/giftcards/sold", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo gift cards vendidas:", error);
+    console.error("? Error obteniendo gift cards vendidas:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener gift cards vendidas",
@@ -3170,7 +3256,7 @@ app.get("/api/giftcards/:giftCardId", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo gift card:", error);
+    console.error("? Error obteniendo gift card:", error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -3211,7 +3297,7 @@ app.get("/api/giftcards/:giftCardId/transactions", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo transacciones:", error);
+    console.error("? Error obteniendo transacciones:", error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -3239,7 +3325,7 @@ app.put("/api/giftcards/:giftCardId/update-email", async (req, res) => {
   if (!emailRegex.test(recipientEmail)) {
     return res.status(400).json({
       success: false,
-      message: "Email invÃ¡lido"
+      message: "Email inválido"
     });
   }
 
@@ -3268,7 +3354,7 @@ app.put("/api/giftcards/:giftCardId/update-email", async (req, res) => {
       recipientEmail: recipientEmail
     });
 
-    console.log(`âœ… Email actualizado para gift card ${giftCard.code}: ${recipientEmail}`);
+    console.log(`? Email actualizado para gift card ${giftCard.code}: ${recipientEmail}`);
 
     res.json({
       success: true,
@@ -3277,7 +3363,7 @@ app.put("/api/giftcards/:giftCardId/update-email", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error actualizando email:", error);
+    console.error("? Error actualizando email:", error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -3287,7 +3373,7 @@ app.put("/api/giftcards/:giftCardId/update-email", async (req, res) => {
 
 // ============================================
 // ENDPOINT: PUT /api/giftcards/:giftCardId/mark-used
-// Marcar gift card como usada manualmente (saldo = 0, status = used, desactivar cupÃ³n)
+// Marcar gift card como usada manualmente (saldo = 0, status = used, desactivar cupón)
 // ============================================
 app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
   const { giftCardId } = req.params;
@@ -3320,11 +3406,11 @@ app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
       });
     }
 
-    // Verificar que no estÃ© ya usada
+    // Verificar que no est? ya usada
     if (giftCard.status === 'used') {
       return res.status(400).json({
         success: false,
-        message: "Esta gift card ya estÃ¡ marcada como usada"
+        message: "Esta gift card ya est? marcada como usada"
       });
     }
 
@@ -3339,7 +3425,7 @@ app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
       usageCount: FieldValue.increment(1)
     });
 
-    // Registrar transacciÃ³n de uso manual
+    // Registrar transacción de uso manual
     const transactionId = `tx_manual_${Date.now()}`;
     await db.collection("giftcard_transactions").doc(transactionId).set({
       transactionId,
@@ -3355,9 +3441,9 @@ app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
       notes: 'Marcada como usada manualmente desde el panel'
     });
 
-    console.log(`âœ… Gift card ${giftCard.code} marcada como usada manualmente`);
+    console.log(`? Gift card ${giftCard.code} marcada como usada manualmente`);
 
-    // Desactivar cupÃ³n en TiendaNube si existe
+    // Desactivar cupón en TiendaNube si existe
     if (giftCard.tiendanubeCouponId) {
       try {
         const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -3374,15 +3460,15 @@ app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
                 'User-Agent': 'GlowLab (info@techdi.com.ar)'
               },
               body: JSON.stringify({
-                valid: false // Desactivar cupÃ³n
+                valid: false // Desactivar cupón
               })
             }
           );
 
           if (couponResponse.ok) {
-            console.log(`âœ… CupÃ³n ${giftCard.code} desactivado en TiendaNube`);
+            console.log(`? Cupón ${giftCard.code} desactivado en TiendaNube`);
             
-            // Actualizar en la colecciÃ³n de cupones tambiÃ©n
+            // Actualizar en la colección de cupones también
             const couponSnapshot = await db.collection("promonube_coupons")
               .where("storeId", "==", storeId)
               .where("code", "==", giftCard.code)
@@ -3396,18 +3482,18 @@ app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
               });
             }
           } else {
-            console.warn(`âš ï¸ No se pudo desactivar cupÃ³n en TiendaNube: ${couponResponse.status}`);
+            console.warn(`?? No se pudo desactivar cupón en TiendaNube: ${couponResponse.status}`);
           }
         }
       } catch (couponError) {
-        console.error('âŒ Error desactivando cupÃ³n:', couponError);
-        // No fallar la operaciÃ³n principal por esto
+        console.error('? Error desactivando cupón:', couponError);
+        // No fallar la operación principal por esto
       }
     }
 
     res.json({
       success: true,
-      message: "Gift card marcada como usada y cupÃ³n desactivado",
+      message: "Gift card marcada como usada y cupón desactivado",
       giftCard: {
         code: giftCard.code,
         previousBalance: balanceBefore,
@@ -3417,7 +3503,7 @@ app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error marcando gift card como usada:", error);
+    console.error("? Error marcando gift card como usada:", error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -3435,12 +3521,12 @@ app.get("/api/giftcards/:code/balance", async (req, res) => {
   if (!code) {
     return res.json({
       success: false,
-      message: "CÃ³digo es requerido"
+      message: "Código es requerido"
     });
   }
 
   try {
-    console.log("ðŸ’³ Consultando saldo de gift card:", code);
+    console.log("?? Consultando saldo de gift card:", code);
 
     const snapshot = await db.collection("promonube_giftcards")
       .where("code", "==", code.toUpperCase())
@@ -3456,7 +3542,7 @@ app.get("/api/giftcards/:code/balance", async (req, res) => {
 
     const giftCard = snapshot.docs[0].data();
 
-    // Verificar si está vencida
+    // Verificar si est? vencida
     if (giftCard.expiresAt && giftCard.expiresAt.toDate() < new Date()) {
       // Actualizar status en Firestore si todavía no fue marcada como expirada
       if (giftCard.status !== 'expired') {
@@ -3473,7 +3559,7 @@ app.get("/api/giftcards/:code/balance", async (req, res) => {
       });
     }
 
-    // Verificar si estÃ¡ usada
+    // Verificar si est? usada
     if (giftCard.balance <= 0) {
       return res.json({
         success: false,
@@ -3486,7 +3572,7 @@ app.get("/api/giftcards/:code/balance", async (req, res) => {
       });
     }
 
-    console.log("âœ… Saldo consultado:", giftCard.balance);
+    console.log("? Saldo consultado:", giftCard.balance);
 
     res.json({
       success: true,
@@ -3500,7 +3586,7 @@ app.get("/api/giftcards/:code/balance", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error consultando saldo:", error);
+    console.error("? Error consultando saldo:", error);
     res.status(500).json({
       success: false,
       message: "Error al consultar saldo",
@@ -3524,7 +3610,7 @@ app.post("/api/giftcards/redeem", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ’° Canjeando gift card:", { code, amount });
+    console.log("?? Canjeando gift card:", { code, amount });
 
     const snapshot = await db.collection("promonube_giftcards")
       .where("code", "==", code.toUpperCase())
@@ -3617,7 +3703,7 @@ app.post("/api/giftcards/redeem", async (req, res) => {
       createdAt: FieldValue.serverTimestamp()
     });
 
-    console.log("✅ Gift card canjeada. Nuevo saldo:", newBalance);
+    console.log("? Gift card canjeada. Nuevo saldo:", newBalance);
 
     res.json({
       success: true,
@@ -3631,7 +3717,7 @@ app.post("/api/giftcards/redeem", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error canjeando gift card:", error);
+    console.error("? Error canjeando gift card:", error);
     res.status(500).json({
       success: false,
       message: "Error al canjear gift card",
@@ -3656,7 +3742,7 @@ app.post("/api/giftcards/:id/reload", async (req, res) => {
   }
 
   try {
-    console.log("ðŸ’µ Recargando gift card:", { id, amount });
+    console.log("?? Recargando gift card:", { id, amount });
 
     const giftCardDoc = await db.collection("promonube_giftcards").doc(id).get();
 
@@ -3676,7 +3762,7 @@ app.post("/api/giftcards/:id/reload", async (req, res) => {
       status: 'active'
     });
 
-    // Registrar transacciÃ³n
+    // Registrar transacción
     const transactionId = `tx_${Date.now()}`;
     await db.collection("giftcard_transactions").doc(transactionId).set({
       transactionId,
@@ -3690,7 +3776,7 @@ app.post("/api/giftcards/:id/reload", async (req, res) => {
       createdAt: FieldValue.serverTimestamp()
     });
 
-    console.log("âœ… Gift card recargada. Nuevo saldo:", newBalance);
+    console.log("? Gift card recargada. Nuevo saldo:", newBalance);
 
     res.json({
       success: true,
@@ -3703,7 +3789,7 @@ app.post("/api/giftcards/:id/reload", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error recargando gift card:", error);
+    console.error("? Error recargando gift card:", error);
     res.status(500).json({
       success: false,
       message: "Error al recargar gift card",
@@ -3713,33 +3799,349 @@ app.post("/api/giftcards/:id/reload", async (req, res) => {
 });
 
 // ============================================
+// GIFT CARD V2 � Sistema con variantes (F�sica/Digital � Montos)
+// ============================================
+
+// Helper: agregar nota interna a una orden de TiendaNube
+async function addOrderNote(storeId, accessToken, orderId, noteText) {
+  try {
+    // Primero obtener la nota actual
+    const orderRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/orders/${orderId}`, {
+      headers: {
+        'Authentication': `bearer ${accessToken}`,
+        'User-Agent': 'GlowLab (info@techdi.com.ar)'
+      }
+    });
+    let existingNote = '';
+    if (orderRes.ok) {
+      const orderData = await orderRes.json();
+      existingNote = orderData.owner_note || '';
+    }
+    const newNote = existingNote ? `${existingNote}\n${noteText}` : noteText;
+    const updateRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/orders/${orderId}`, {
+      method: 'PUT',
+      headers: {
+        'Authentication': `bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'GlowLab (info@techdi.com.ar)'
+      },
+      body: JSON.stringify({ owner_note: newNote })
+    });
+    if (!updateRes.ok) {
+      const err = await updateRes.text();
+      console.error(`? Error agregando nota a orden ${orderId}: ${err}`);
+      return false;
+    }
+    console.log(`?? Nota agregada a orden #${orderId}`);
+    return true;
+  } catch (e) {
+    console.error('? addOrderNote error:', e);
+    return false;
+  }
+}
+
+// ENDPOINT: GET /api/giftcard-v2/config
+app.get("/api/giftcard-v2/config", async (req, res) => {
+  try {
+    const { storeId } = req.query;
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId required" });
+    const doc = await db.collection("giftcard_v2_config").doc(storeId).get();
+    if (!doc.exists) return res.json({ success: true, config: null });
+    return res.json({ success: true, config: doc.data() });
+  } catch (error) {
+    console.error("Error getting giftcard v2 config:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ENDPOINT: POST /api/giftcard-v2/setup � crea el producto en TiendaNube y guarda config
+app.post("/api/giftcard-v2/setup", async (req, res) => {
+  try {
+    const { storeId, amounts, productName = "Gift Card", description = "Gift Card � eleg� el tipo y el monto que quer�s regalar." } = req.body;
+    if (!storeId || !amounts || !amounts.length) {
+      return res.status(400).json({ success: false, message: "storeId y amounts son requeridos" });
+    }
+    const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
+    if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Store not found" });
+    const accessToken = storeDoc.data().accessToken;
+
+    // Construir variantes: para cada monto ? F�sica + Digital
+    const variants = [];
+    for (const amount of amounts) {
+      variants.push({ price: amount.toString(), stock_management: false, values: [{ es: "F�sica" }, { es: `$${amount}` }] });
+      variants.push({ price: amount.toString(), stock_management: false, values: [{ es: "Digital" }, { es: `$${amount}` }] });
+    }
+
+    const productBody = {
+      name: { es: productName },
+      description: { es: description },
+      attributes: [{ es: "Tipo" }, { es: "Monto" }],
+      variants
+    };
+
+    const response = await fetch(`https://api.tiendanube.com/v1/${storeId}/products`, {
+      method: 'POST',
+      headers: {
+        'Authentication': `bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'GlowLab (info@techdi.com.ar)'
+      },
+      body: JSON.stringify(productBody)
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("? TiendaNube product creation error:", err);
+      return res.status(500).json({ success: false, message: `Error en TiendaNube: ${err}` });
+    }
+
+    const product = await response.json();
+    const config = {
+      storeId,
+      enabled: true,
+      productId: product.id.toString(),
+      productName,
+      amounts,
+      description,
+      emailMessage: '',
+      imageUrl: null,
+      digitalValue: 'Digital',
+      physicalValue: 'F�sica',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    await db.collection("giftcard_v2_config").doc(storeId).set(config);
+    console.log(`? Gift Card V2 configurada para store ${storeId}, producto TN: ${product.id}`);
+    return res.json({ success: true, productId: product.id, productName, config });
+  } catch (error) {
+    console.error("Error en giftcard v2 setup:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ENDPOINT: PUT /api/giftcard-v2/config � actualiza montos y/o estado habilitado
+app.put("/api/giftcard-v2/config", async (req, res) => {
+  try {
+    const { storeId, amounts, enabled } = req.body;
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId required" });
+
+    const configDoc = await db.collection("giftcard_v2_config").doc(storeId).get();
+    if (!configDoc.exists) return res.status(404).json({ success: false, message: "Config no encontrada, ejecut� setup primero." });
+
+    const config = configDoc.data();
+    const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
+    const accessToken = storeDoc.data().accessToken;
+    const updates = { updatedAt: FieldValue.serverTimestamp() };
+
+    if (enabled !== undefined) updates.enabled = enabled;
+
+    if (amounts !== undefined) {
+      updates.amounts = amounts;
+      // Sincronizar variantes con TiendaNube
+      const variantsRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/products/${config.productId}/variants`, {
+        headers: { 'Authentication': `bearer ${accessToken}`, 'User-Agent': 'GlowLab (info@techdi.com.ar)' }
+      });
+
+      if (variantsRes.ok) {
+        const existingVariants = await variantsRes.json();
+        const existingAmounts = [...new Set(existingVariants.map(v => parseFloat(v.price)))];
+
+        // Eliminar variantes de montos que ya no est�n
+        for (const variant of existingVariants) {
+          if (!amounts.includes(parseFloat(variant.price))) {
+            await fetch(`https://api.tiendanube.com/v1/${storeId}/products/${config.productId}/variants/${variant.id}`, {
+              method: 'DELETE',
+              headers: { 'Authentication': `bearer ${accessToken}`, 'User-Agent': 'GlowLab (info@techdi.com.ar)' }
+            });
+          }
+        }
+
+        // Agregar variantes para nuevos montos
+        for (const amount of amounts) {
+          if (!existingAmounts.includes(amount)) {
+            for (const tipo of ['F�sica', 'Digital']) {
+              await fetch(`https://api.tiendanube.com/v1/${storeId}/products/${config.productId}/variants`, {
+                method: 'POST',
+                headers: { 'Authentication': `bearer ${accessToken}`, 'Content-Type': 'application/json', 'User-Agent': 'GlowLab (info@techdi.com.ar)' },
+                body: JSON.stringify({ price: amount.toString(), stock_management: false, values: [{ es: tipo }, { es: `$${amount}` }] })
+              });
+            }
+          }
+        }
+      }
+    }
+
+    await db.collection("giftcard_v2_config").doc(storeId).update(updates);
+    const updated = await db.collection("giftcard_v2_config").doc(storeId).get();
+    return res.json({ success: true, config: updated.data() });
+  } catch (error) {
+    console.error("Error actualizando giftcard v2 config:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ENDPOINT: GET /api/giftcard-v2/orders � lista �rdenes de gift cards v2
+app.get("/api/giftcard-v2/orders", async (req, res) => {
+  try {
+    const { storeId, limit = 100 } = req.query;
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId required" });
+    const snapshot = await db.collection("giftcard_v2_orders")
+      .where("storeId", "==", storeId)
+      .orderBy("createdAt", "desc")
+      .limit(parseInt(limit))
+      .get();
+    const orders = snapshot.docs.map(doc => {
+      const d = doc.data();
+      return { id: doc.id, ...d, createdAt: d.createdAt?.toDate?.()?.toISOString() || null, expiresAt: d.expiresAt ? new Date(d.expiresAt).toISOString() : null };
+    });
+    return res.json({ success: true, orders });
+  } catch (error) {
+    console.error("Error obteniendo giftcard v2 orders:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ENDPOINT: POST /api/giftcard-v2/resend-email � reenv�a email de gift card digital
+app.post("/api/giftcard-v2/resend-email", async (req, res) => {
+  try {
+    const { storeId, orderId } = req.body;
+    if (!storeId || !orderId) return res.status(400).json({ success: false, message: "storeId y orderId requeridos" });
+    const doc = await db.collection("giftcard_v2_orders").doc(orderId).get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: "Orden no encontrada" });
+    const order = doc.data();
+    if (order.type !== 'digital') return res.status(400).json({ success: false, message: "Solo se pueden reenviar gift cards digitales" });
+    const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
+    const storeName = storeDoc.data()?.storeName || storeDoc.data()?.name || 'Tu Tienda';
+    const configDocResend = await db.collection("giftcard_v2_config").doc(storeId).get();
+    const emailMessageResend = configDocResend.exists ? (configDocResend.data().emailMessage || '') : '';
+    await sendGiftCardEmail(order.buyerEmail, order.code, order.amount, storeName, order.expiresAt, null, emailMessageResend);
+    await db.collection("giftcard_v2_orders").doc(orderId).update({ emailSent: true, emailSentAt: FieldValue.serverTimestamp() });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Error reenviando email giftcard v2:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ENDPOINT: POST /api/giftcard-v2/upload-image � sube imagen a Storage y la asigna al producto TN
+app.post("/api/giftcard-v2/upload-image", async (req, res) => {
+  try {
+    const { storeId, imageBase64, mimeType = 'image/jpeg' } = req.body;
+    if (!storeId || !imageBase64) return res.status(400).json({ success: false, message: "storeId e imageBase64 son requeridos" });
+
+    const configDoc = await db.collection("giftcard_v2_config").doc(storeId).get();
+    if (!configDoc.exists) return res.status(404).json({ success: false, message: "Config no encontrada, ejecut� setup primero." });
+    const config = configDoc.data();
+
+    const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
+    if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Store not found" });
+    const accessToken = storeDoc.data().accessToken;
+
+    // Decodificar base64 y subir a Firebase Storage
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+    const ext = mimeType.includes('png') ? 'png' : (mimeType.includes('gif') ? 'gif' : 'jpg');
+    const filename = `giftcard_v2/${storeId}/product_image_${Date.now()}.${ext}`;
+
+    const bucket = admin.storage().bucket();
+    const file = bucket.file(filename);
+    await file.save(imageBuffer, { metadata: { contentType: mimeType }, public: true });
+    const imageUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+
+    // Agregar imagen al producto en TiendaNube
+    const tnImgRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/products/${config.productId}/images`, {
+      method: 'POST',
+      headers: {
+        'Authentication': `bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'GlowLab (info@techdi.com.ar)'
+      },
+      body: JSON.stringify({ src: imageUrl })
+    });
+    if (!tnImgRes.ok) {
+      const err = await tnImgRes.text();
+      console.error("?? Error agregando imagen en TiendaNube:", err);
+    }
+
+    await db.collection("giftcard_v2_config").doc(storeId).update({ imageUrl, updatedAt: FieldValue.serverTimestamp() });
+    console.log(`? Imagen gift card v2 subida para store ${storeId}: ${imageUrl}`);
+    return res.json({ success: true, imageUrl });
+  } catch (error) {
+    console.error("Error subiendo imagen gift card v2:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ENDPOINT: PUT /api/giftcard-v2/design � actualiza descripci�n y mensaje de email
+app.put("/api/giftcard-v2/design", async (req, res) => {
+  try {
+    const { storeId, description, emailMessage } = req.body;
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId required" });
+
+    const configDoc = await db.collection("giftcard_v2_config").doc(storeId).get();
+    if (!configDoc.exists) return res.status(404).json({ success: false, message: "Config no encontrada" });
+    const config = configDoc.data();
+
+    const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
+    if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Store not found" });
+    const accessToken = storeDoc.data().accessToken;
+
+    // Actualizar descripci�n del producto en TiendaNube
+    if (description !== undefined && description.trim()) {
+      const tnUpdate = await fetch(`https://api.tiendanube.com/v1/${storeId}/products/${config.productId}`, {
+        method: 'PUT',
+        headers: {
+          'Authentication': `bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'GlowLab (info@techdi.com.ar)'
+        },
+        body: JSON.stringify({ description: { es: description } })
+      });
+      if (!tnUpdate.ok) console.error("?? Error actualizando descripci�n en TN:", await tnUpdate.text());
+    }
+
+    const updates = { updatedAt: FieldValue.serverTimestamp() };
+    if (description !== undefined) updates.description = description;
+    if (emailMessage !== undefined) updates.emailMessage = emailMessage;
+
+    await db.collection("giftcard_v2_config").doc(storeId).update(updates);
+    const updated = await db.collection("giftcard_v2_config").doc(storeId).get();
+    console.log(`? Dise�o gift card v2 actualizado para store ${storeId}`);
+    return res.json({ success: true, config: updated.data() });
+  } catch (error) {
+    console.error("Error actualizando dise�o gift card v2:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
 // WEBHOOK: POST /api/webhooks/order
 // Recibe notificaciones de TiendaNube cuando se crea/paga una orden
 // ============================================
 app.post("/api/webhooks/order", async (req, res) => {
   try {
-    console.log("ðŸ“¦ Webhook recibido de TiendaNube:", JSON.stringify(req.body, null, 2));
+    console.log("?? Webhook recibido de TiendaNube:", JSON.stringify(req.body, null, 2));
     
     const webhookData = req.body;
     const storeId = webhookData.store_id ? webhookData.store_id.toString() : null;
     const orderId = webhookData.id;
     
     if (!storeId || !orderId) {
-      console.error("âŒ No se recibiÃ³ store_id u orderId en el webhook");
+      console.error("? No se recibi? store_id u orderId en el webhook");
       return res.status(400).json({ success: false, message: "Missing store_id or orderId" });
     }
 
     // Obtener access token de la tienda
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
     if (!storeDoc.exists) {
-      console.error(`âŒ Store ${storeId} no encontrada en Firestore`);
+      console.error(`? Store ${storeId} no encontrada en Firestore`);
       return res.status(404).json({ success: false, message: "Store not found" });
     }
     
     const accessToken = storeDoc.data().accessToken;
     
     // Consultar detalles completos de la orden desde TiendaNube API
-    console.log(`ðŸ” Consultando orden ${orderId} desde TiendaNube...`);
+    console.log(`?? Consultando orden ${orderId} desde TiendaNube...`);
     const orderResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/orders/${orderId}`, {
       headers: {
         'Authentication': `bearer ${accessToken}`,
@@ -3748,12 +4150,12 @@ app.post("/api/webhooks/order", async (req, res) => {
     });
     
     if (!orderResponse.ok) {
-      console.error(`âŒ Error consultando orden: ${orderResponse.status}`);
+      console.error(`? Error consultando orden: ${orderResponse.status}`);
       return res.status(500).json({ success: false, message: "Error fetching order" });
     }
     
     const order = await orderResponse.json();
-    console.log(`âœ… Orden obtenida: #${order.number}, payment_status: ${order.payment_status}`);
+    console.log(`? Orden obtenida: #${order.number}, payment_status: ${order.payment_status}`);
 
     // ============================================
     // 1. DETECTAR Y GENERAR GIFT CARDS
@@ -3764,7 +4166,7 @@ app.post("/api/webhooks/order", async (req, res) => {
       for (const product of order.products) {
         const productId = product.product_id || product.id;
         
-        // âœ… IMPORTANTE: Solo procesar si el producto estÃ¡ registrado como gift card en PromoNube
+        // ? IMPORTANTE: Solo procesar si el producto est? registrado como gift card en PromoNube
         const giftCardProduct = await db.collection("giftcard_products")
           .doc(productId.toString())
           .get();
@@ -3772,7 +4174,7 @@ app.post("/api/webhooks/order", async (req, res) => {
         const isGiftCard = giftCardProduct.exists;
         
         if (isGiftCard && order.payment_status === 'paid') {
-          console.log(`🎁 Gift Card de PromoNube detectada en orden #${order.number} (Producto ID: ${productId})`);
+          console.log(`?? Gift Card de PromoNube detectada en orden #${order.number} (Producto ID: ${productId})`);
           
           try {
             // Calcular monto REAL pagado por este producto
@@ -3785,9 +4187,9 @@ app.post("/api/webhooks/order", async (req, res) => {
             const discountRatio = orderTotal / orderSubtotal;
             const giftCardAmount = Math.round(productSubtotal * discountRatio);
             
-            console.log(`ðŸ’° Monto calculado: Precio: $${productSubtotal} | Descuento aplicado | Final: $${giftCardAmount}`);
+            console.log(`?? Monto calculado: Precio: $${productSubtotal} | Descuento aplicado | Final: $${giftCardAmount}`);
             
-            // Generar cÃ³digo Ãºnico
+            // Generar código único
             const code = generateGiftCardCode();
             const giftCardId = `gift_${Date.now()}_${order.id}_${product.id}`;
             
@@ -3829,15 +4231,15 @@ app.post("/api/webhooks/order", async (req, res) => {
             };
             
             await db.collection("promonube_giftcards").doc(giftCardId).set(giftCardData);
-            console.log(`âœ… Gift Card generada: ${code} por $${giftCardAmount}`);
+            console.log(`? Gift Card generada: ${code} por $${giftCardAmount}`);
             
-            // Crear cupÃ³n en TiendaNube para que funcione en el checkout
+            // Crear cupón en TiendaNube para que funcione en el checkout
             try {
               const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
               if (storeDoc.exists) {
                 const accessToken = storeDoc.data().accessToken;
                 
-                // Calcular fecha de expiraciÃ³n para el cupÃ³n (mismo que la gift card)
+                // Calcular fecha de expiración para el cupón (mismo que la gift card)
                 const expiryDate = new Date(expiresAt);
                 const expiryString = expiryDate.toISOString().split('T')[0]; // YYYY-MM-DD
                 
@@ -3853,21 +4255,21 @@ app.post("/api/webhooks/order", async (req, res) => {
                     type: 'absolute',
                     value: giftCardAmount.toString(),
                     valid: true,
-                    max_uses: 1, // Ãšnico uso
+                    max_uses: 1, // ?único uso
                     end_date: expiryString
                   })
                 });
                 
                 if (couponResponse.ok) {
                   const couponData = await couponResponse.json();
-                  console.log(`âœ… CupÃ³n creado en TiendaNube: ${code} (ID: ${couponData.id})`);
+                  console.log(`? Cupón creado en TiendaNube: ${code} (ID: ${couponData.id})`);
                   
-                  // Guardar referencia del cupÃ³n en la gift card
+                  // Guardar referencia del cupón en la gift card
                   await db.collection("promonube_giftcards").doc(giftCardId).update({
                     tiendanubeCouponId: couponData.id
                   });
                   
-                  // TambiÃ©n guardarlo en la colecciÃ³n de cupones para tracking
+                  // También guardarlo en la colección de cupones para tracking
                   const couponId = `coupon_giftcard_${Date.now()}`;
                   await db.collection("promonube_coupons").doc(couponId).set({
                     couponId,
@@ -3887,22 +4289,23 @@ app.post("/api/webhooks/order", async (req, res) => {
                   
                 } else {
                   const errorText = await couponResponse.text();
-                  console.error(`âŒ Error creando cupÃ³n en TiendaNube: ${couponResponse.status} - ${errorText}`);
+                  console.error(`? Error creando cupón en TiendaNube: ${couponResponse.status} - ${errorText}`);
                 }
               }
             } catch (couponError) {
-              console.error('âŒ Error al crear cupÃ³n:', couponError);
-              // No fallar todo el proceso si falla la creaciÃ³n del cupÃ³n
+              console.error('? Error al crear cupón:', couponError);
+              // No fallar todo el proceso si falla la creación del cupón
             }
             
-            // Enviar email con el cÃ³digo
+            // Enviar email con el código
             const recipientEmail = order.customer?.email || order.contact_email;
             if (recipientEmail) {
               // Obtener nombre de la tienda
               const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
               const storeName = storeDoc.exists ? storeDoc.data().storeName : 'Nuestra Tienda';
+              const storeUrl = storeDoc.exists ? storeDoc.data().storeUrl : '';
               
-              await sendGiftCardEmail(recipientEmail, code, giftCardAmount, storeName, expiresAt);
+              await sendGiftCardEmail(recipientEmail, code, giftCardAmount, storeName, expiresAt, storeUrl);
               
               // Marcar como enviada
               await db.collection("promonube_giftcards").doc(giftCardId).update({
@@ -3911,22 +4314,120 @@ app.post("/api/webhooks/order", async (req, res) => {
             }
             
           } catch (error) {
-            console.error(`âŒ Error generando gift card para orden ${order.id}:`, error);
+            console.error(`? Error generando gift card para orden ${order.id}:`, error);
           }
         }
       }
     }
 
     // ============================================
-    // 2. TRACKEAR USO DE CUPONES
+    // 2. GIFT CARD V2 � Producto con variantes (F�sica/Digital � Montos)
+    // ============================================
+    if (order.payment_status === 'paid' && order.products && Array.isArray(order.products)) {
+      try {
+        const v2ConfigDoc = await db.collection("giftcard_v2_config").doc(storeId).get();
+        if (v2ConfigDoc.exists) {
+          const v2Config = v2ConfigDoc.data();
+          if (v2Config.enabled && v2Config.productId) {
+            for (const product of order.products) {
+              const productIdStr = (product.product_id || product.id || '').toString();
+              if (productIdStr === v2Config.productId) {
+                console.log(`?? Gift Card V2 detectada en orden #${order.number}`);
+
+                // Detectar tipo (Digital / F�sica) de los valores de variante
+                const variantValues = product.variant_values || [];
+                const valuesStr = variantValues.map(v => (typeof v === 'string' ? v : (v?.es || v?.en || '')).toLowerCase()).join(' ');
+                const isDigital = valuesStr.includes('digital');
+                const type = isDigital ? 'digital' : 'physical';
+
+                const amount = parseFloat(product.price);
+                const code = generateGiftCardCode();
+                const expiresAt = new Date();
+                expiresAt.setMonth(expiresAt.getMonth() + 12);
+                const expiryString = expiresAt.toISOString().split('T')[0];
+                const v2OrderId = `giftv2_${storeId}_${order.id}_${Date.now()}`;
+
+                const buyerEmail = order.customer?.email || order.contact_email || null;
+                const buyerName = order.customer?.name || order.contact_name || null;
+                const storeName = storeDoc.data()?.storeName || 'Tu Tienda';
+
+                // Guardar en Firestore
+                const v2OrderData = {
+                  storeId, orderId: order.id.toString(), orderNumber: order.number || order.id,
+                  type, amount, code,
+                  buyerEmail, buyerName,
+                  quantity: product.quantity || 1,
+                  variantValues,
+                  tiendanubeCouponId: null,
+                  emailSent: false, emailSentAt: null,
+                  noteAdded: false,
+                  expiresAt, status: 'processing',
+                  createdAt: FieldValue.serverTimestamp()
+                };
+                await db.collection("giftcard_v2_orders").doc(v2OrderId).set(v2OrderData);
+
+                // Agregar nota en la orden de TiendaNube
+                const typeLabel = isDigital ? 'Digital ??' : 'F�sica ??';
+                const noteMsg = `?? Gift Card ${typeLabel} � $${amount.toLocaleString('es-AR')} | C�digo: ${code}${isDigital ? ' (Email enviado al comprador)' : ' (Despachar como producto f�sico)'}`;
+                const noteOk = await addOrderNote(storeId, accessToken, order.id, noteMsg);
+                await db.collection("giftcard_v2_orders").doc(v2OrderId).update({ noteAdded: noteOk });
+
+                // Si es digital: crear cup�n TN + enviar email
+                if (isDigital) {
+                  try {
+                    const couponRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/coupons`, {
+                      method: 'POST',
+                      headers: { 'Authentication': `bearer ${accessToken}`, 'Content-Type': 'application/json', 'User-Agent': 'GlowLab (info@techdi.com.ar)' },
+                      body: JSON.stringify({ code, type: 'absolute', value: amount.toString(), valid: true, max_uses: 1, end_date: expiryString })
+                    });
+                    if (couponRes.ok) {
+                      const couponData = await couponRes.json();
+                      await db.collection("giftcard_v2_orders").doc(v2OrderId).update({ tiendanubeCouponId: couponData.id });
+                      console.log(`? Cup�n TN creado para gift card v2: ${code} (ID: ${couponData.id})`);
+                    } else {
+                      console.error(`? Error creando cup�n TN para gift card v2: ${await couponRes.text()}`);
+                    }
+                  } catch (couponErr) {
+                    console.error('? Error cup�n gift card v2:', couponErr);
+                  }
+
+                  if (buyerEmail) {
+                    await sendGiftCardEmail(buyerEmail, code, amount, storeName, expiresAt, null, v2Config.emailMessage || '');
+                    await db.collection("giftcard_v2_orders").doc(v2OrderId).update({ emailSent: true, emailSentAt: FieldValue.serverTimestamp() });
+                  }
+                }
+
+                await db.collection("giftcard_v2_orders").doc(v2OrderId).update({ status: 'completed' });
+                console.log(`? Gift Card V2 procesada: ${code} (${type}) $${amount}`);
+              }
+            }
+          }
+        }
+      } catch (v2Err) {
+        console.error('? Error procesando Gift Card V2:', v2Err);
+      }
+    }
+
+    // ============================================
+    // 3. TRACKEAR USO DE CUPONES
     // ============================================
     
-    const couponCode = order.coupon?.code || order.discount_coupon?.code || null;
+    // TN puede devolver coupon como array, objeto, o string. Normalizamos:
+    let couponCode = null;
+    if (Array.isArray(order.coupon) && order.coupon.length > 0) {
+      couponCode = order.coupon[0].code || null;
+    } else if (order.coupon && typeof order.coupon === 'object') {
+      couponCode = order.coupon.code || null;
+    } else if (Array.isArray(order.discount_coupon) && order.discount_coupon.length > 0) {
+      couponCode = order.discount_coupon[0].code || null;
+    } else if (order.discount_coupon && typeof order.discount_coupon === 'object') {
+      couponCode = order.discount_coupon.code || null;
+    }
     
     if (couponCode) {
-      console.log(`ðŸŽŸï¸ CupÃ³n detectado: ${couponCode}`);
+      console.log(`??? Cupón detectado: ${couponCode}`);
       
-      // Buscar el cupÃ³n en Firestore
+      // Buscar el cupón en Firestore
       const couponSnapshot = await db.collection("promonube_coupons")
         .where("storeId", "==", storeId)
         .where("code", "==", couponCode)
@@ -3947,12 +4448,12 @@ app.post("/api/webhooks/order", async (req, res) => {
           orderId: order.id.toString(),
           orderNumber: order.number || order.id,
           
-          // InformaciÃ³n del cliente
+          // Información del cliente
           customerEmail: order.customer?.email || order.contact_email || null,
           customerName: order.customer?.name || order.contact_name || null,
           customerId: order.customer?.id ? order.customer.id.toString() : null,
           
-          // InformaciÃ³n de la orden
+          // Información de la orden
           subtotal: parseFloat(order.subtotal || 0),
           total: parseFloat(order.total || 0),
           discountValue: parseFloat(order.discount_coupon?.value || order.coupon?.value || 0),
@@ -3964,7 +4465,7 @@ app.post("/api/webhooks/order", async (req, res) => {
           orderDate: order.created_at || new Date().toISOString()
         });
 
-        console.log(`âœ… Registro de uso guardado: ${usageId}`);
+        console.log(`? Registro de uso guardado: ${usageId}`);
         
         // Actualizar contador de usos en el cupón (si existe el campo)
         if (typeof couponData.currentUses === 'number') {
@@ -3973,7 +4474,7 @@ app.post("/api/webhooks/order", async (req, res) => {
             lastUsedAt: FieldValue.serverTimestamp(),
             ...(couponData.source === 'spin_wheel' ? { used: true, usedAt: FieldValue.serverTimestamp() } : {})
           });
-          console.log(`📊 Contador de usos actualizado para ${couponCode}`);
+          console.log(`?? Contador de usos actualizado para ${couponCode}`);
 
           // Si es cupón de ruleta, marcar spin_wheel_results como usado
           if (couponData.source === 'spin_wheel' && couponCode) {
@@ -3987,7 +4488,7 @@ app.post("/api/webhooks/order", async (req, res) => {
           }
         }
       } else {
-        console.log(`â„¹ï¸ CupÃ³n ${couponCode} no encontrado en PromoNube (puede ser cupÃ³n nativo de TiendaNube)`);
+        console.log(`?? Cupón ${couponCode} no encontrado en PromoNube (puede ser cupón nativo de TiendaNube)`);
       }
     }
 
@@ -3995,7 +4496,7 @@ app.post("/api/webhooks/order", async (req, res) => {
     res.status(200).json({ success: true, message: "Webhook processed" });
     
   } catch (error) {
-    console.error("âŒ Error procesando webhook:", error);
+    console.error("? Error procesando webhook:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -4007,7 +4508,7 @@ app.post("/api/webhooks/order", async (req, res) => {
 // WEBHOOK: Store Redact - cuando una tienda desinstala la app
 app.post("/api/webhooks/store/redact", async (req, res) => {
   try {
-    console.log("ðŸª Webhook store/redact recibido:", JSON.stringify(req.body, null, 2));
+    console.log("?? Webhook store/redact recibido:", JSON.stringify(req.body, null, 2));
     
     const { store_id } = req.body;
     
@@ -4016,13 +4517,13 @@ app.post("/api/webhooks/store/redact", async (req, res) => {
     }
 
     const storeId = store_id.toString();
-    console.log(`ðŸ—‘ï¸ Procesando desinstalaciÃ³n de la tienda ${storeId}...`);
+    console.log(`??? Procesando desinstalación de la tienda ${storeId}...`);
 
-    // Obtener datos de la tienda antes de eliminar para registro histÃ³rico
+    // Obtener datos de la tienda antes de eliminar para registro histórico
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
     const storeData = storeDoc.exists ? storeDoc.data() : {};
     
-    // Guardar registro de desinstalaciÃ³n en colecciÃ³n histÃ³rica
+    // Guardar registro de desinstalación en colección histórica
     await db.collection("promonube_uninstalls").add({
       storeId: storeId,
       storeName: storeData.name || storeData.storeName || 'Sin nombre',
@@ -4035,11 +4536,11 @@ app.post("/api/webhooks/store/redact", async (req, res) => {
       isDemoAccount: storeData.isDemoAccount || false
     });
     
-    console.log(`ðŸ“ Registro de desinstalaciÃ³n guardado para ${storeId}`);
+    console.log(`?? Registro de desinstalación guardado para ${storeId}`);
 
     // Eliminar todos los datos de la tienda
     await db.collection("promonube_stores").doc(storeId).delete();
-    console.log(`âœ… Store ${storeId} eliminada`);
+    console.log(`? Store ${storeId} eliminada`);
 
     // Eliminar cupones de la tienda
     const couponsSnapshot = await db.collection("promonube_coupons")
@@ -4070,20 +4571,20 @@ app.post("/api/webhooks/store/redact", async (req, res) => {
     });
 
     await Promise.all(deletePromises);
-    console.log(`âœ… ${deletePromises.length} documentos eliminados para store ${storeId}`);
+    console.log(`? ${deletePromises.length} documentos eliminados para store ${storeId}`);
 
     res.status(200).json({ success: true, message: "Store data deleted" });
     
   } catch (error) {
-    console.error("âŒ Error en webhook store/redact:", error);
+    console.error("? Error en webhook store/redact:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// WEBHOOK: Customers Redact - cuando un cliente solicita eliminaciÃ³n de datos
+// WEBHOOK: Customers Redact - cuando un cliente solicita eliminación de datos
 app.post("/api/webhooks/customers/redact", async (req, res) => {
   try {
-    console.log("ðŸ‘¤ Webhook customers/redact recibido:", JSON.stringify(req.body, null, 2));
+    console.log("?? Webhook customers/redact recibido:", JSON.stringify(req.body, null, 2));
     
     const { store_id, customer } = req.body;
     
@@ -4095,7 +4596,7 @@ app.post("/api/webhooks/customers/redact", async (req, res) => {
     const customerEmail = customer.email;
     const customerId = customer.id?.toString();
 
-    console.log(`ðŸ—‘ï¸ Eliminando datos del cliente ${customerEmail} (ID: ${customerId}) de store ${storeId}...`);
+    console.log(`??? Eliminando datos del cliente ${customerEmail} (ID: ${customerId}) de store ${storeId}...`);
 
     // Buscar y anonimizar gift cards del cliente
     const giftCardsQuery = db.collection("promonube_giftcards")
@@ -4112,7 +4613,7 @@ app.post("/api/webhooks/customers/redact", async (req, res) => {
           giftCard.customerId === customerId ||
           giftCard.customerEmail === customerEmail) {
         
-        // Anonimizar datos personales pero mantener el cÃ³digo funcional
+        // Anonimizar datos personales pero mantener el código funcional
         anonymizePromises.push(
           doc.ref.update({
             recipientEmail: `deleted-user-${Date.now()}@anonymized.local`,
@@ -4149,12 +4650,12 @@ app.post("/api/webhooks/customers/redact", async (req, res) => {
     });
 
     await Promise.all(anonymizePromises);
-    console.log(`âœ… ${anonymizePromises.length} registros anonimizados para cliente ${customerEmail}`);
+    console.log(`? ${anonymizePromises.length} registros anonimizados para cliente ${customerEmail}`);
 
     res.status(200).json({ success: true, message: "Customer data anonymized" });
     
   } catch (error) {
-    console.error("âŒ Error en webhook customers/redact:", error);
+    console.error("? Error en webhook customers/redact:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -4162,7 +4663,7 @@ app.post("/api/webhooks/customers/redact", async (req, res) => {
 // WEBHOOK: Customers Data Request - cuando un cliente solicita sus datos
 app.post("/api/webhooks/customers/data-request", async (req, res) => {
   try {
-    console.log("ðŸ“‹ Webhook customers/data-request recibido:", JSON.stringify(req.body, null, 2));
+    console.log("?? Webhook customers/data-request recibido:", JSON.stringify(req.body, null, 2));
     
     const { store_id, customer } = req.body;
     
@@ -4174,7 +4675,7 @@ app.post("/api/webhooks/customers/data-request", async (req, res) => {
     const customerEmail = customer.email;
     const customerId = customer.id?.toString();
 
-    console.log(`ðŸ“Š Recopilando datos del cliente ${customerEmail} (ID: ${customerId}) de store ${storeId}...`);
+    console.log(`?? Recopilando datos del cliente ${customerEmail} (ID: ${customerId}) de store ${storeId}...`);
 
     const customerData = {
       customer: {
@@ -4231,7 +4732,7 @@ app.post("/api/webhooks/customers/data-request", async (req, res) => {
       }
     });
 
-    console.log(`âœ… Datos recopilados: ${customerData.giftCards.length} gift cards, ${customerData.couponUsage.length} usos de cupones`);
+    console.log(`? Datos recopilados: ${customerData.giftCards.length} gift cards, ${customerData.couponUsage.length} usos de cupones`);
 
     // Responder con los datos del cliente
     res.status(200).json({ 
@@ -4241,7 +4742,7 @@ app.post("/api/webhooks/customers/data-request", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("âŒ Error en webhook customers/data-request:", error);
+    console.error("? Error en webhook customers/data-request:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -4261,7 +4762,7 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
   }
 
   try {
-    console.log(`ðŸ’° Creando cargo para store ${storeId}, plan: ${planId}`);
+    console.log(`?? Creando cargo para store ${storeId}, plan: ${planId}`);
 
     // Obtener store y su currency
     const store = await getStoreById(storeId);
@@ -4271,7 +4772,7 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
 
     const currency = store.currency || 'ARS';
     
-    // Plan Ãºnico PRO (todos los planId mapean a 'pro')
+    // Plan único PRO (todos los planId mapean a 'pro')
     const plan = PLANS.pro;
     const normalizedPlanId = (planId === 'free') ? 'free' : 'pro';
 
@@ -4283,12 +4784,12 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
       });
     }
 
-    // Obtener precio segÃºn moneda
+    // Obtener precio según moneda
     const price = getPlanPrice(currency);
 
-    // NOTA: No necesitÃ¡s crear cargo manualmente si ya lo configuraste en Partner Panel
-    // TiendaNube crea el cargo automÃ¡ticamente cuando el usuario instala la app
-    // Este endpoint es OPCIONAL, solo si querÃ©s cambiar plan manualmente
+    // NOTA: No necesitás crear cargo manualmente si ya lo configuraste en Partner Panel
+    // TiendaNube crea el cargo automáticamente cuando el usuario instala la app
+    // Este endpoint es OPCIONAL, solo si querés cambiar plan manualmente
     
     // Crear el cargo en TiendaNube (OPCIONAL - solo para cambios manuales)
     const chargeData = {
@@ -4297,10 +4798,10 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
       price: price.toString(),
       currency: currency,
       trial_days: 7,
-      return_url: `https://pedidos-lett-2.web.app/dashboard?charge_status={{status}}&charge_id={{id}}`
+      return_url: `${process.env.FRONTEND_URL || 'https://promonube.techdi.com.ar'}/dashboard?charge_status={{status}}&charge_id={{id}}`
     };
 
-    console.log(`ðŸ“ Datos del cargo:`, chargeData);
+    console.log(`?? Datos del cargo:`, chargeData);
 
     const response = await fetch(`https://api.tiendanube.com/v1/${storeId}/apps/${process.env.TIENDANUBE_APP_ID}/charges`, {
       method: 'POST',
@@ -4314,7 +4815,7 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`âŒ Error creando cargo: ${response.status}`, errorText);
+      console.error(`? Error creando cargo: ${response.status}`, errorText);
       return res.json({ 
         success: false, 
         message: `Error creando cargo: ${response.status}` 
@@ -4323,7 +4824,7 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
 
     const charge = await response.json();
     
-    console.log(`âœ… Cargo creado:`, { id: charge.id, status: charge.status });
+    console.log(`? Cargo creado:`, { id: charge.id, status: charge.status });
 
     // Guardar el cargo pendiente en Firestore
     await db.collection("app_charges").doc(charge.id.toString()).set({
@@ -4338,7 +4839,7 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
       type: "recurrent"
     });
 
-    // Responder con la URL de confirmaciÃ³n para redirigir al usuario
+    // Responder con la URL de confirmación para redirigir al usuario
     res.json({ 
       success: true, 
       chargeId: charge.id,
@@ -4347,16 +4848,95 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error en create-charge:", error);
+    console.error("? Error en create-charge:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/subscription/confirm-charge
+// El frontend llama a este endpoint cuando TiendaNube redirige de vuelta con charge_status=accepted
+app.post("/api/subscription/confirm-charge", async (req, res) => {
+  const { storeId, chargeId, chargeStatus } = req.body;
+
+  if (!storeId || !chargeId) {
+    return res.status(400).json({ success: false, message: "storeId y chargeId son requeridos" });
+  }
+
+  try {
+    console.log(`?? Confirmando cargo ${chargeId} para store ${storeId}, status: ${chargeStatus}`);
+
+    // Obtener store y accessToken
+    const storeDoc = await db.collection("promonube_stores").doc(storeId.toString()).get();
+    if (!storeDoc.exists) {
+      return res.status(404).json({ success: false, message: "Tienda no encontrada" });
+    }
+    const { accessToken } = storeDoc.data();
+
+    // Consultar el estado real del cargo directamente a TiendaNube
+    const chargeResponse = await fetch(
+      `https://api.tiendanube.com/v1/${storeId}/apps/${process.env.TIENDANUBE_APP_ID}/charges/${chargeId}`,
+      {
+        headers: {
+          'Authentication': `bearer ${accessToken}`,
+          'User-Agent': 'PromoNube (info@techdi.com.ar)'
+        }
+      }
+    );
+
+    let realStatus = chargeStatus;
+    if (chargeResponse.ok) {
+      const chargeData = await chargeResponse.json();
+      realStatus = chargeData.status || chargeStatus;
+      console.log(`?? Estado real del cargo en TiendaNube: ${realStatus}`);
+    }
+
+    // Guardar/actualizar el cargo en Firestore
+    await db.collection("app_charges").doc(chargeId.toString()).set({
+      chargeId: chargeId.toString(),
+      storeId: storeId.toString(),
+      status: realStatus,
+      confirmedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    if (realStatus === "accepted") {
+      // Activar plan PRO con todos los m�dulos
+      const modules = {};
+      ALL_MODULES.forEach(m => { modules[m] = true; });
+
+      await db.collection("stores").doc(storeId.toString()).collection("subscription").doc("current").set({
+        plan: 'pro',
+        status: 'active',
+        modules,
+        chargeId: chargeId.toString(),
+        activatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      invalidateConfigCache(storeId.toString());
+      console.log(`? Plan PRO activado para store ${storeId}`);
+      return res.json({ success: true, activated: true, message: "Plan PRO activado correctamente" });
+
+    } else if (realStatus === "rejected" || realStatus === "cancelled") {
+      console.log(`? Cargo ${realStatus} para store ${storeId}`);
+      return res.json({ success: true, activated: false, message: `Cargo ${realStatus}` });
+
+    } else {
+      // Pendiente u otro estado
+      return res.json({ success: true, activated: false, status: realStatus, message: "El cargo a�n no fue aprobado" });
+    }
+
+  } catch (error) {
+    console.error("? Error en confirm-charge:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // WEBHOOK: POST /api/webhooks/app-charge
-// TiendaNube envÃ­a este webhook cuando el estado de un cargo cambia
+// TiendaNube envía este webhook cuando el estado de un cargo cambia
 app.post("/api/webhooks/app-charge", async (req, res) => {
   try {
-    console.log("ðŸ’³ Webhook app-charge recibido:", JSON.stringify(req.body, null, 2));
+    console.log("?? Webhook app-charge recibido:", JSON.stringify(req.body, null, 2));
 
     const { id, store_id, status, type } = req.body;
 
@@ -4367,13 +4947,13 @@ app.post("/api/webhooks/app-charge", async (req, res) => {
     const chargeId = id.toString();
     const storeId = store_id.toString();
 
-    console.log(`ðŸ’³ Procesando cargo ${chargeId} para store ${storeId}, status: ${status}`);
+    console.log(`?? Procesando cargo ${chargeId} para store ${storeId}, status: ${status}`);
 
     // Obtener el cargo guardado
     const chargeDoc = await db.collection("app_charges").doc(chargeId).get();
     
     if (!chargeDoc.exists) {
-      console.warn(`âš ï¸ Cargo ${chargeId} no encontrado en Firestore`);
+      console.warn(`?? Cargo ${chargeId} no encontrado en Firestore`);
       // Guardar de todas formas
       await db.collection("app_charges").doc(chargeId).set({
         chargeId: chargeId,
@@ -4393,17 +4973,17 @@ app.post("/api/webhooks/app-charge", async (req, res) => {
     const chargeData = chargeDoc.exists ? chargeDoc.data() : {};
     const planId = chargeData.planId;
 
-    // Si el cargo fue aceptado, activar PLAN PRO con TODOS los mÃ³dulos
+    // Si el cargo fue aceptado, activar PLAN PRO con TODOS los módulos
     if (status === "accepted") {
-      console.log(`âœ… Cargo aceptado, activando Plan PRO (todos los mÃ³dulos) para store ${storeId}`);
+      console.log(`? Cargo aceptado, activando Plan PRO (todos los módulos) para store ${storeId}`);
 
-      // Activar TODOS los mÃ³dulos
+      // Activar TODOS los módulos
       const modules = {};
       ALL_MODULES.forEach(moduleName => {
         modules[moduleName] = true;
       });
 
-      // Actualizar suscripciÃ³n a PRO
+      // Actualizar suscripción a PRO
       await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
         plan: 'pro',
         status: "active",
@@ -4413,10 +4993,10 @@ app.post("/api/webhooks/app-charge", async (req, res) => {
         activatedAt: new Date().toISOString()
       }, { merge: true });
 
-      console.log(`âœ… Plan PRO activado para store ${storeId}:`, modules);
+      console.log(`? Plan PRO activado para store ${storeId}:`, modules);
       
     } else if (status === "rejected" || status === "cancelled") {
-      console.log(`âŒ Cargo ${status} - Manteniendo plan FREE para store ${storeId}`);
+      console.log(`? Cargo ${status} - Manteniendo plan FREE para store ${storeId}`);
       
       // Desactivar todos excepto cupones
       await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
@@ -4430,16 +5010,16 @@ app.post("/api/webhooks/app-charge", async (req, res) => {
     res.status(200).json({ success: true, message: "Webhook procesado" });
 
   } catch (error) {
-    console.error("âŒ Error en webhook app-charge:", error);
+    console.error("? Error en webhook app-charge:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // WEBHOOK: POST /api/webhooks/app-suspended
-// TiendaNube envÃ­a cuando suspenden el acceso por falta de pago
+// TiendaNube envía cuando suspenden el acceso por falta de pago
 app.post("/api/webhooks/app-suspended", async (req, res) => {
   try {
-    console.log("âš ï¸ Webhook app/suspended recibido:", JSON.stringify(req.body, null, 2));
+    console.log("?? Webhook app/suspended recibido:", JSON.stringify(req.body, null, 2));
 
     const { store_id } = req.body;
 
@@ -4449,9 +5029,9 @@ app.post("/api/webhooks/app-suspended", async (req, res) => {
 
     const storeId = store_id.toString();
 
-    console.log(`âš ï¸ Suspendiendo acceso para store ${storeId} por falta de pago`);
+    console.log(`?? Suspendiendo acceso para store ${storeId} por falta de pago`);
 
-    // Desactivar suscripciÃ³n pero mantener datos
+    // Desactivar suscripción pero mantener datos
     await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
       status: "suspended",
       suspendedAt: new Date().toISOString(),
@@ -4466,21 +5046,21 @@ app.post("/api/webhooks/app-suspended", async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    console.log(`âœ… Store ${storeId} marcado como suspendido`);
+    console.log(`? Store ${storeId} marcado como suspendido`);
 
     res.status(200).json({ success: true, message: "Store suspendido" });
 
   } catch (error) {
-    console.error("âŒ Error en webhook app-suspended:", error);
+    console.error("? Error en webhook app-suspended:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // WEBHOOK: POST /api/webhooks/app-resumed
-// TiendaNube envÃ­a cuando se restablece el acceso despuÃ©s de pagar
+// TiendaNube envía cuando se restablece el acceso después de pagar
 app.post("/api/webhooks/app-resumed", async (req, res) => {
   try {
-    console.log("âœ… Webhook app/resumed recibido:", JSON.stringify(req.body, null, 2));
+    console.log("? Webhook app/resumed recibido:", JSON.stringify(req.body, null, 2));
 
     const { store_id } = req.body;
 
@@ -4490,28 +5070,28 @@ app.post("/api/webhooks/app-resumed", async (req, res) => {
 
     const storeId = store_id.toString();
 
-    console.log(`âœ… Restableciendo acceso para store ${storeId}`);
+    console.log(`? Restableciendo acceso para store ${storeId}`);
 
-    // Reactivar suscripciÃ³n
+    // Reactivar suscripción
     await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
       status: "active",
       resumedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }, { merge: true });
 
-    // Desmarcar suspensiÃ³n
+    // Desmarcar suspensión
     await db.collection("promonube_stores").doc(storeId).update({
       suspended: false,
       resumedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
 
-    console.log(`âœ… Store ${storeId} reactivado`);
+    console.log(`? Store ${storeId} reactivado`);
 
     res.status(200).json({ success: true, message: "Store reactivado" });
 
   } catch (error) {
-    console.error("âŒ Error en webhook app-resumed:", error);
+    console.error("? Error en webhook app-resumed:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -4534,40 +5114,40 @@ app.post("/api/admin/activate-demo", async (req, res) => {
   }
 
   try {
-    console.log(`ðŸŽ¯ Activando/Extendiendo tienda DEMO: ${storeId}`);
+    console.log(`?? Activando/Extendiendo tienda DEMO: ${storeId}`);
 
-    // Obtener suscripciÃ³n actual para verificar si ya existe demo
+    // Obtener suscripción actual para verificar si ya existe demo
     const currentSub = await db.collection("stores").doc(storeId).collection("subscription").doc("current").get();
     let expirationDate;
 
     if (expirationDays) {
-      // Modo DÃAS: Calcular desde hoy O desde fecha de expiraciÃ³n actual si estÃ¡ vigente
+      // Modo DÍAS: Calcular desde hoy O desde fecha de expiración actual si est? vigente
       const days = parseInt(expirationDays);
       const now = new Date();
       
       if (currentSub.exists && currentSub.data().demoExpiresAt) {
         const currentExpiration = new Date(currentSub.data().demoExpiresAt);
         
-        // Si la demo actual AÃšN NO expirÃ³, EXTENDER desde esa fecha
+        // Si la demo actual AÚN NO expir?, EXTENDER desde esa fecha
         if (currentExpiration > now) {
           expirationDate = new Date(currentExpiration.getTime() + days * 24 * 60 * 60 * 1000);
-          console.log(`ðŸ“… Extendiendo demo vigente: ${currentExpiration.toISOString()} + ${days} dÃ­as = ${expirationDate.toISOString()}`);
+          console.log(`?? Extendiendo demo vigente: ${currentExpiration.toISOString()} + ${days} días = ${expirationDate.toISOString()}`);
         } else {
-          // Si ya expirÃ³, calcular desde HOY
+          // Si ya expir?, calcular desde HOY
           expirationDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-          console.log(`ðŸ“… Demo expirada. Nueva desde HOY + ${days} dÃ­as = ${expirationDate.toISOString()}`);
+          console.log(`?? Demo expirada. Nueva desde HOY + ${days} días = ${expirationDate.toISOString()}`);
         }
       } else {
         // No hay demo previa, calcular desde HOY
         expirationDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-        console.log(`ðŸ“… Nueva demo desde HOY + ${days} dÃ­as = ${expirationDate.toISOString()}`);
+        console.log(`?? Nueva demo desde HOY + ${days} días = ${expirationDate.toISOString()}`);
       }
     } else {
-      // Default: 30 dÃ­as desde hoy
+      // Default: 30 días desde hoy
       expirationDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Activar TODOS los mÃ³dulos
+    // Activar TODOS los módulos
     const modules = {};
     ALL_MODULES.forEach(moduleName => {
       modules[moduleName] = true;
@@ -4592,7 +5172,9 @@ app.post("/api/admin/activate-demo", async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    console.log(`âœ… Tienda DEMO actualizada: ${storeId} hasta ${expirationDate.toISOString()}`);
+    console.log(`? Tienda DEMO actualizada: ${storeId} hasta ${expirationDate.toISOString()}`);
+
+    invalidateConfigCache(storeId);
 
     res.json({ 
       success: true, 
@@ -4603,7 +5185,7 @@ app.post("/api/admin/activate-demo", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error activando demo:", error);
+    console.error("? Error activando demo:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -4625,7 +5207,7 @@ app.post("/api/admin/deactivate-demo", async (req, res) => {
   }
 
   try {
-    console.log(`ðŸ”„ Desactivando tienda DEMO: ${storeId}`);
+    console.log(`?? Desactivando tienda DEMO: ${storeId}`);
 
     // Volver a plan FREE
     await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
@@ -4646,7 +5228,7 @@ app.post("/api/admin/deactivate-demo", async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    console.log(`âœ… Tienda DEMO desactivada: ${storeId}`);
+    console.log(`? Tienda DEMO desactivada: ${storeId}`);
 
     res.json({ 
       success: true, 
@@ -4654,7 +5236,7 @@ app.post("/api/admin/deactivate-demo", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error desactivando demo:", error);
+    console.error("? Error desactivando demo:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -4665,7 +5247,7 @@ app.get("/api/subscription/:storeId/charges", async (req, res) => {
   const { storeId } = req.params;
 
   try {
-    console.log(`ðŸ“Š Consultando cargos para store ${storeId}`);
+    console.log(`?? Consultando cargos para store ${storeId}`);
 
     const chargesSnapshot = await db.collection("app_charges")
       .where("storeId", "==", storeId)
@@ -4679,7 +5261,7 @@ app.get("/api/subscription/:storeId/charges", async (req, res) => {
       });
     });
 
-    // Ordenar por fecha (mÃ¡s reciente primero)
+    // Ordenar por fecha (más reciente primero)
     charges.sort((a, b) => {
       const dateA = new Date(a.createdAt || 0);
       const dateB = new Date(b.createdAt || 0);
@@ -4695,20 +5277,20 @@ app.get("/api/subscription/:storeId/charges", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error consultando cargos:", error);
+    console.error("? Error consultando cargos:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // GET /api/subscription/:storeId/status
-// Consulta el estado completo de la suscripciÃ³n incluyendo Ãºltimo cargo
+// Consulta el estado completo de la suscripción incluyendo último cargo
 app.get("/api/subscription/:storeId/status", async (req, res) => {
   const { storeId } = req.params;
 
   try {
-    console.log(`ðŸ“Š Consultando estado completo para store ${storeId}`);
+    console.log(`?? Consultando estado completo para store ${storeId}`);
 
-    // Obtener suscripciÃ³n actual
+    // Obtener suscripción actual
     const subscriptionDoc = await db.collection("stores")
       .doc(storeId)
       .collection("subscription")
@@ -4719,7 +5301,7 @@ app.get("/api/subscription/:storeId/status", async (req, res) => {
       ? subscriptionDoc.data()
       : { plan: 'free', status: 'inactive', modules: { coupons: true } };
 
-    // Para planes pro/trial, asegurar que los módulos nuevos estén incluidos
+    // Para planes pro/trial, asegurar que los módulos nuevos están incluidos
     const storedModules = subscription.modules || {};
     if (subscription.plan === 'trial' || subscription.plan === 'pro' || subscription.isDemoAccount) {
       for (const mod of ALL_MODULES) {
@@ -4728,7 +5310,7 @@ app.get("/api/subscription/:storeId/status", async (req, res) => {
       subscription.modules = storedModules;
     }
 
-    // Obtener Ãºltimo cargo
+    // Obtener último cargo
     const chargesSnapshot = await db.collection("app_charges")
       .where("storeId", "==", storeId)
       .get();
@@ -4760,18 +5342,18 @@ app.get("/api/subscription/:storeId/status", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error consultando estado:", error);
+    console.error("? Error consultando estado:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // GET /api/subscription/:storeId/charge/:chargeId
-// Consulta el detalle de un cargo especÃ­fico
+// Consulta el detalle de un cargo específico
 app.get("/api/subscription/:storeId/charge/:chargeId", async (req, res) => {
   const { storeId, chargeId } = req.params;
 
   try {
-    console.log(`ðŸ“Š Consultando cargo ${chargeId} para store ${storeId}`);
+    console.log(`?? Consultando cargo ${chargeId} para store ${storeId}`);
 
     const chargeDoc = await db.collection("app_charges").doc(chargeId).get();
 
@@ -4801,14 +5383,14 @@ app.get("/api/subscription/:storeId/charge/:chargeId", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error consultando cargo:", error);
+    console.error("? Error consultando cargo:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // ============================================
 // ENDPOINT: POST /api/giftcards/resend-email
-// ReenvÃ­a el email de una gift card existente
+// Reenvía el email de una gift card existente
 // ============================================
 app.post("/api/giftcards/resend-email", async (req, res) => {
   try {
@@ -4818,7 +5400,7 @@ app.post("/api/giftcards/resend-email", async (req, res) => {
       return res.status(400).json({ success: false, message: "code es requerido" });
     }
 
-    console.log(`ðŸ“§ Reenviando email para gift card: ${code}`);
+    console.log(`?? Reenviando email para gift card: ${code}`);
 
     // Buscar la gift card
     const giftCardSnapshot = await db.collection("promonube_giftcards")
@@ -4847,6 +5429,7 @@ app.post("/api/giftcards/resend-email", async (req, res) => {
     // Obtener nombre de la tienda
     const storeDoc = await db.collection("promonube_stores").doc(giftCard.storeId).get();
     const storeName = storeDoc.exists ? storeDoc.data().storeName : 'Nuestra Tienda';
+    const storeUrl = storeDoc.exists ? storeDoc.data().storeUrl : '';
 
     // Enviar email
     const emailResult = await sendGiftCardEmail(
@@ -4854,11 +5437,12 @@ app.post("/api/giftcards/resend-email", async (req, res) => {
       giftCard.code,
       giftCard.balance,
       storeName,
-      giftCard.expiresAt ? giftCard.expiresAt.toDate() : null
+      giftCard.expiresAt ? giftCard.expiresAt.toDate() : null,
+      storeUrl
     );
 
     if (emailResult.emailSent) {
-      // Actualizar fecha de envÃ­o
+      // Actualizar fecha de envío
       await giftCardDoc.ref.update({
         sentAt: FieldValue.serverTimestamp()
       });
@@ -4877,7 +5461,7 @@ app.post("/api/giftcards/resend-email", async (req, res) => {
     }
 
   } catch (error) {
-    console.error("âŒ Error reenviando email:", error);
+    console.error("? Error reenviando email:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -4935,7 +5519,7 @@ app.get("/api/coupons/usage", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo uso de cupones:", error);
+    console.error("? Error obteniendo uso de cupones:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener historial de cupones",
@@ -4979,7 +5563,7 @@ app.get("/api/giftcard-templates", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo templates:", error);
+    console.error("? Error obteniendo templates:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener templates",
@@ -5031,7 +5615,7 @@ app.post("/api/giftcard-templates/create", async (req, res) => {
 
     await db.collection("giftcard_templates").doc(templateId).set(templateData);
 
-    console.log("âœ… Template creado:", templateId);
+    console.log("? Template creado:", templateId);
 
     res.json({
       success: true,
@@ -5041,7 +5625,7 @@ app.post("/api/giftcard-templates/create", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error creando template:", error);
+    console.error("? Error creando template:", error);
     res.status(500).json({
       success: false,
       message: "Error al crear template",
@@ -5077,7 +5661,7 @@ app.put("/api/giftcard-templates/:templateId/set-default", async (req, res) => {
 
     await batch.commit();
 
-    console.log("âœ… Template marcado como default:", templateId);
+    console.log("? Template marcado como default:", templateId);
 
     res.json({
       success: true,
@@ -5085,7 +5669,7 @@ app.put("/api/giftcard-templates/:templateId/set-default", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error estableciendo default:", error);
+    console.error("? Error estableciendo default:", error);
     res.status(500).json({
       success: false,
       message: "Error al establecer template predeterminado",
@@ -5123,7 +5707,7 @@ app.delete("/api/giftcard-templates/:templateId", async (req, res) => {
 
     await templateRef.delete();
 
-    console.log("âœ… Template eliminado:", templateId);
+    console.log("? Template eliminado:", templateId);
 
     res.json({
       success: true,
@@ -5131,7 +5715,7 @@ app.delete("/api/giftcard-templates/:templateId", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Error eliminando template:", error);
+    console.error("? Error eliminando template:", error);
     res.status(500).json({
       success: false,
       message: "Error al eliminar template",
@@ -5140,10 +5724,15 @@ app.delete("/api/giftcard-templates/:templateId", async (req, res) => {
   }
 });
 
-// POST/GET /api/giftcard-templates/reset - Limpiar todos y crear predeterminados
+// POST/GET /api/giftcard-templates/reset - Limpiar todos y crear predeterminados (requiere admin key)
 app.all("/api/giftcard-templates/reset", async (req, res) => {
+  const adminKey = req.headers['x-admin-key'] || req.body?.adminKey || req.query?.adminKey;
+  const ADMIN_KEY = process.env.ADMIN_KEY || 'demo-secret-2026';
+  if (adminKey !== ADMIN_KEY) {
+    return res.status(401).json({ success: false, error: 'No autorizado' });
+  }
   try {
-    console.log("ðŸ—‘ï¸ Iniciando reset de templates...");
+    console.log("??? Iniciando reset de templates...");
     
     // 1. Borrar TODOS los templates
     const snapshot = await db.collection('giftcard_templates').get();
@@ -5155,7 +5744,7 @@ app.all("/api/giftcard-templates/reset", async (req, res) => {
     
     if (snapshot.size > 0) {
       await batch.commit();
-      console.log(`âœ… ${snapshot.size} templates eliminados`);
+      console.log(`? ${snapshot.size} templates eliminados`);
     }
     
     // 2. Crear 4 templates predeterminados
@@ -5221,7 +5810,7 @@ app.all("/api/giftcard-templates/reset", async (req, res) => {
     }
     
     await createBatch.commit();
-    console.log("âœ… 4 templates predeterminados creados");
+    console.log("? 4 templates predeterminados creados");
     
     res.json({
       success: true,
@@ -5232,7 +5821,7 @@ app.all("/api/giftcard-templates/reset", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("âŒ Error en reset de templates:", error);
+    console.error("? Error en reset de templates:", error);
     res.status(500).json({
       success: false,
       message: "Error al resetear templates",
@@ -5271,14 +5860,14 @@ async function getStoreById(storeId) {
 // Helper: Registrar script tag de countdown en TiendaNube
 async function registerCountdownScript(store) {
   try {
-    console.log(`ðŸ“œ Registrando script de countdown en store ${store.storeId}`);
+    console.log(`?? Registrando script de countdown en store ${store.storeId}`);
     
     const scriptUrl = `https://apipromonube-jlfopowzaq-uc.a.run.app/api/countdown-widget.js?store=${store.storeId}`;
     
     const accessToken = store.accessToken;
     
     if (!accessToken) {
-      console.error("âŒ No hay access token para el store:", store.storeId);
+      console.error("? No hay access token para el store:", store.storeId);
       return { success: false, error: 'No access token' };
     }
     
@@ -5287,7 +5876,7 @@ async function registerCountdownScript(store) {
     const existingScriptTagId = storeDoc.data()?.countdownScriptTagId;
 
     if (existingScriptTagId) {
-      console.log("âœ… Script tag de countdown ya existe:", existingScriptTagId);
+      console.log("? Script tag de countdown ya existe:", existingScriptTagId);
       return { success: true, scriptTagId: existingScriptTagId, alreadyExists: true };
     }
 
@@ -5307,7 +5896,7 @@ async function registerCountdownScript(store) {
     });
 
     const responseText = await response.text();
-    console.log(`ðŸ“¦ TiendaNube countdown response: ${response.status}`, responseText);
+    console.log(`?? TiendaNube countdown response: ${response.status}`, responseText);
 
     if (response.ok || response.status === 201) {
       const scriptTag = JSON.parse(responseText);
@@ -5319,14 +5908,14 @@ async function registerCountdownScript(store) {
         countdownInstalledAt: FieldValue.serverTimestamp()
       });
 
-      console.log("âœ… Script tag de countdown registrado:", scriptTag.id);
+      console.log("? Script tag de countdown registrado:", scriptTag.id);
       return { success: true, scriptTagId: scriptTag.id };
     } else {
-      console.error("âŒ Error registrando countdown script:", response.status, responseText);
+      console.error("? Error registrando countdown script:", response.status, responseText);
       return { success: false, error: responseText };
     }
   } catch (error) {
-    console.error("âŒ Error en registerCountdownScript:", error);
+    console.error("? Error en registerCountdownScript:", error);
     return { success: false, error: error.message };
   }
 }
@@ -5334,20 +5923,20 @@ async function registerCountdownScript(store) {
 // Helper: Eliminar script tag de countdown de TiendaNube
 async function unregisterCountdownScript(store) {
   try {
-    console.log(`ðŸ—‘ï¸ Eliminando script de countdown del store ${store.storeId}`);
+    console.log(`??? Eliminando script de countdown del store ${store.storeId}`);
     
     const storeDoc = await db.collection("promonube_stores").doc(store.storeId).get();
     const scriptTagId = storeDoc.data()?.countdownScriptTagId;
 
     if (!scriptTagId) {
-      console.log("âš ï¸ No hay script tag de countdown para eliminar");
+      console.log("?? No hay script tag de countdown para eliminar");
       return { success: true, message: 'No script tag to remove' };
     }
 
     const accessToken = store.accessToken;
 
     if (!accessToken) {
-      console.error("âŒ No hay access token para eliminar script");
+      console.error("? No hay access token para eliminar script");
       return { success: false, error: 'No access token' };
     }
 
@@ -5368,15 +5957,15 @@ async function unregisterCountdownScript(store) {
         countdownUninstalledAt: FieldValue.serverTimestamp()
       });
 
-      console.log("âœ… Script tag de countdown eliminado:", scriptTagId);
+      console.log("? Script tag de countdown eliminado:", scriptTagId);
       return { success: true };
     } else {
       const errorText = await response.text();
-      console.error("âŒ Error eliminando countdown script:", response.status, errorText);
+      console.error("? Error eliminando countdown script:", response.status, errorText);
       return { success: false, error: errorText };
     }
   } catch (error) {
-    console.error("âŒ Error en unregisterCountdownScript:", error);
+    console.error("? Error en unregisterCountdownScript:", error);
     return { success: false, error: error.message };
   }
 }
@@ -5384,14 +5973,14 @@ async function unregisterCountdownScript(store) {
 // Helper: Registrar script tag en TiendaNube
 async function registerSpinWheelScript(store, wheelId) {
   try {
-    console.log(`ðŸ“œ Registrando script para ruleta ${wheelId} en store ${store.storeId}`);
+    console.log(`?? Registrando script para ruleta ${wheelId} en store ${store.storeId}`);
     
     const scriptUrl = `https://apipromonube-jlfopowzaq-uc.a.run.app/api/spin-wheel-widget.js?wheelId=${wheelId}`;
     
     const accessToken = store.accessToken;
     
     if (!accessToken) {
-      console.error("âŒ No hay access token para el store:", store.storeId);
+      console.error("? No hay access token para el store:", store.storeId);
       return { success: false, error: 'No access token' };
     }
     
@@ -5400,12 +5989,12 @@ async function registerSpinWheelScript(store, wheelId) {
     const existingScriptTagId = wheelDoc.data()?.scriptTagId;
 
     if (existingScriptTagId) {
-      console.log("âœ… Script tag ya existe:", existingScriptTagId);
+      console.log("? Script tag ya existe:", existingScriptTagId);
       return { success: true, scriptTagId: existingScriptTagId, alreadyExists: true };
     }
 
     // Crear script tag en TiendaNube usando la API de Scripts
-    // IMPORTANTE: No incluir 'id' en el POST, TiendaNube lo genera automÃ¡ticamente
+    // IMPORTANTE: No incluir 'id' en el POST, TiendaNube lo genera automáticamente
     const response = await fetch(`https://api.tiendanube.com/v1/${store.storeId}/scripts`, {
       method: 'POST',
       headers: {
@@ -5421,7 +6010,7 @@ async function registerSpinWheelScript(store, wheelId) {
     });
 
     const responseText = await response.text();
-    console.log(`ðŸ“¦ TiendaNube response: ${response.status}`, responseText);
+    console.log(`?? TiendaNube response: ${response.status}`, responseText);
 
     if (response.ok || response.status === 201) {
       const scriptTag = JSON.parse(responseText);
@@ -5433,14 +6022,14 @@ async function registerSpinWheelScript(store, wheelId) {
         installedAt: FieldValue.serverTimestamp()
       });
 
-      console.log("âœ… Script tag registrado exitosamente:", scriptTag.id);
+      console.log("? Script tag registrado exitosamente:", scriptTag.id);
       return { success: true, scriptTagId: scriptTag.id };
     } else {
-      console.error("âŒ Error registrando script tag:", response.status, responseText);
+      console.error("? Error registrando script tag:", response.status, responseText);
       return { success: false, error: responseText };
     }
   } catch (error) {
-    console.error("âŒ Error en registerSpinWheelScript:", error);
+    console.error("? Error en registerSpinWheelScript:", error);
     return { success: false, error: error.message };
   }
 }
@@ -5448,20 +6037,20 @@ async function registerSpinWheelScript(store, wheelId) {
 // Helper: Eliminar script tag de TiendaNube
 async function unregisterSpinWheelScript(store, wheelId) {
   try {
-    console.log(`ðŸ—‘ï¸ Eliminando script para ruleta ${wheelId}`);
+    console.log(`??? Eliminando script para ruleta ${wheelId}`);
     
     const wheelDoc = await db.collection("promonube_spin_wheels").doc(wheelId).get();
     const scriptTagId = wheelDoc.data()?.scriptTagId;
 
     if (!scriptTagId) {
-      console.log("âš ï¸ No hay script tag para eliminar");
+      console.log("?? No hay script tag para eliminar");
       return { success: true, message: 'No script tag to remove' };
     }
 
     const accessToken = store.accessToken;
 
     if (!accessToken) {
-      console.error("âŒ No hay access token para eliminar script");
+      console.error("? No hay access token para eliminar script");
       return { success: false, error: 'No access token' };
     }
 
@@ -5482,15 +6071,15 @@ async function unregisterSpinWheelScript(store, wheelId) {
         uninstalledAt: FieldValue.serverTimestamp()
       });
 
-      console.log("âœ… Script tag eliminado:", scriptTagId);
+      console.log("? Script tag eliminado:", scriptTagId);
       return { success: true };
     } else {
       const errorText = await response.text();
-      console.error("âŒ Error eliminando script tag:", response.status, errorText);
+      console.error("? Error eliminando script tag:", response.status, errorText);
       return { success: false, error: errorText };
     }
   } catch (error) {
-    console.error("âŒ Error en unregisterSpinWheelScript:", error);
+    console.error("? Error en unregisterSpinWheelScript:", error);
     return { success: false, error: error.message };
   }
 }
@@ -5520,7 +6109,7 @@ app.get("/api/spin-wheels", async (req, res) => {
   }
 });
 
-// GET /api/spin-wheel/:wheelId - Obtiene configuraciÃ³n de una ruleta
+// GET /api/spin-wheel/:wheelId - Obtiene configuración de una ruleta
 app.get("/api/spin-wheel/:wheelId", async (req, res) => {
   const { wheelId } = req.params;
   const { storeId } = req.query;
@@ -5573,7 +6162,7 @@ app.post("/api/spin-wheel/create", async (req, res) => {
 
     await db.collection("promonube_spin_wheels").doc(wheelId).set(wheelData);
 
-    // Si estÃ¡ activada, registrar script tag automÃ¡ticamente
+    // Si est? activada, registrar script tag automáticamente
     if (config.enabled || config.active) {
       const store = await getStoreById(storeId);
       if (store) {
@@ -5581,7 +6170,7 @@ app.post("/api/spin-wheel/create", async (req, res) => {
       }
     }
 
-    console.log("âœ… Ruleta creada:", wheelId);
+    console.log("? Ruleta creada:", wheelId);
 
     res.json({ success: true, wheelId, wheel: wheelData });
   } catch (error) {
@@ -5590,7 +6179,7 @@ app.post("/api/spin-wheel/create", async (req, res) => {
   }
 });
 
-// PUT /api/spin-wheel/:wheelId - Actualiza configuraciÃ³n de ruleta
+// PUT /api/spin-wheel/:wheelId - Actualiza configuración de ruleta
 app.put("/api/spin-wheel/:wheelId", async (req, res) => {
   const { wheelId } = req.params;
   const { storeId, ...config } = req.body;
@@ -5621,7 +6210,7 @@ app.put("/api/spin-wheel/:wheelId", async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    // Si cambiÃ³ el estado de enabled, gestionar script tag en TiendaNube
+    // Si cambi? el estado de enabled, gestionar script tag en TiendaNube
     if (oldEnabled !== newEnabled) {
       const store = await getStoreById(storeId);
       if (store) {
@@ -5641,7 +6230,7 @@ app.put("/api/spin-wheel/:wheelId", async (req, res) => {
       }
     }
 
-    console.log("âœ… Ruleta actualizada:", wheelId);
+    console.log("? Ruleta actualizada:", wheelId);
 
     res.json({ success: true, message: "Ruleta actualizada" });
   } catch (error) {
@@ -5671,9 +6260,23 @@ app.delete("/api/spin-wheel/:wheelId", async (req, res) => {
       return res.status(403).json({ success: false, message: "Acceso denegado" });
     }
 
+    // Eliminar script tag de TiendaNube para que no quede inyectado en la tienda
+    const wheelData = wheelDoc.data();
+    if (wheelData.scriptTagId && wheelData.storeId) {
+      try {
+        const store = await db.collection('promonube_stores').doc(wheelData.storeId).get();
+        if (store.exists) {
+          await unregisterSpinWheelScript(store.data(), wheelId);
+        }
+      } catch (scriptErr) {
+        console.error('Error eliminando script tag de TN al borrar ruleta:', scriptErr);
+        // No falla el delete si el script tag ya no existe
+      }
+    }
+
     await wheelRef.delete();
 
-    console.log("âœ… Ruleta eliminada:", wheelId);
+    console.log("? Ruleta eliminada:", wheelId);
 
     res.json({ success: true, message: "Ruleta eliminada" });
   } catch (error) {
@@ -5709,7 +6312,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
       return res.json({ success: false, message: "Email requerido" });
     }
 
-    // ðŸ” VERIFICAR SI EL EMAIL YA JUGÃ“ EN ESTA RULETA (solo si hay email)
+    // ?? VERIFICAR SI EL EMAIL YA JUG?? EN ESTA RULETA (solo si hay email)
     if (email) {
       const maxSpinsPerEmail = wheelData.maxSpinsPerEmail || 1; // Por defecto 1 vez
       
@@ -5721,12 +6324,12 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
       const previousSpinsCount = previousSpinsQuery.size;
       
       if (previousSpinsCount >= maxSpinsPerEmail) {
-        console.log(`âš ï¸ Email ${email} ya participÃ³ ${previousSpinsCount} veces en ruleta ${wheelId} (mÃ¡ximo: ${maxSpinsPerEmail})`);
+        console.log(`?? Email ${email} ya particip? ${previousSpinsCount} veces en ruleta ${wheelId} (máximo: ${maxSpinsPerEmail})`);
         return res.json({ 
           success: false, 
           message: maxSpinsPerEmail === 1 
-            ? "Ya participaste en esta ruleta. Solo podÃ©s jugar una vez."
-            : `Ya alcanzaste el mÃ¡ximo de ${maxSpinsPerEmail} intentos en esta ruleta.`
+            ? "Ya participaste en esta ruleta. Solo podés jugar una vez."
+            : `Ya alcanzaste el máximo de ${maxSpinsPerEmail} intentos en esta ruleta.`
         });
       }
     }
@@ -5743,8 +6346,8 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
     let selectedPrize = null;
     let selectedPrizeIndex = 0;
 
-    console.log(`ðŸŽ² Iniciando selecciÃ³n de premio. Random: ${random.toFixed(2)}%`);
-    console.log(`ðŸ“Š Premios disponibles:`, prizes.map((p, i) => `${i}: ${p.label} (${p.probability}%)`));
+    console.log(`?? Iniciando selección de premio. Random: ${random.toFixed(2)}%`);
+    console.log(`?? Premios disponibles:`, prizes.map((p, i) => `${i}: ${p.label} (${p.probability}%)`));
 
     for (let i = 0; i < prizes.length; i++) {
       cumulative += prizes[i].probability;
@@ -5752,7 +6355,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
       if (random <= cumulative) {
         selectedPrize = prizes[i];
         selectedPrizeIndex = i;
-        console.log(`âœ… Premio seleccionado por probabilidad: Ã­ndice ${i} - ${prizes[i].label}`);
+        console.log(`? Premio seleccionado por probabilidad: índice ${i} - ${prizes[i].label}`);
         break;
       }
     }
@@ -5760,43 +6363,43 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
     if (!selectedPrize) {
       selectedPrize = prizes[prizes.length - 1]; // Fallback
       selectedPrizeIndex = prizes.length - 1;
-      console.log(`âš ï¸ Fallback al Ãºltimo premio: ${selectedPrize.label}`);
+      console.log(`?? Fallback al último premio: ${selectedPrize.label}`);
     }
     
-    // ðŸŽ¯ Calcular Ã¡ngulo del centro del segmento ganador
+    // ?? Calcular ángulo del centro del segmento ganador
     const segmentAngle = 360 / prizes.length;
     const segmentStartAngle = -90 + (selectedPrizeIndex * segmentAngle);
     const targetAngle = segmentStartAngle + (segmentAngle / 2);
     
-    console.log(`ðŸŽ¯ Premio seleccionado: [${selectedPrizeIndex}] ${selectedPrize.label} - Ã¡ngulo: ${targetAngle}Â°`);
+    console.log(`?? Premio seleccionado: [${selectedPrizeIndex}] ${selectedPrize.label} - ángulo: ${targetAngle}�`);
 
-    // Crear cupÃ³n si el premio no es "none"
+    // Crear cupón si el premio no es "none"
     let couponCode = null;
     let couponExpiresAt = null;
     
-    console.log(`ðŸ” Verificando tipo de premio: ${selectedPrize.type} (${selectedPrize.type !== 'none' ? 'CREARÃ CUPÃ“N' : 'NO CREARÃ CUPÃ“N'})`);
+    console.log(`?? Verificando tipo de premio: ${selectedPrize.type} (${selectedPrize.type !== 'none' ? 'CREAR?? CUPÓN' : 'NO CREAR?? CUPÓN'})`);
     
     if (selectedPrize.type !== 'none') {
-      console.log(`âœ… Creando cupÃ³n para premio: ${selectedPrize.label}`);
+      console.log(`? Creando cupón para premio: ${selectedPrize.label}`);
       const store = await getStoreById(wheelData.storeId);
       if (!store) {
-        console.error(`âŒ Tienda no encontrada: ${wheelData.storeId}`);
+        console.error(`? Tienda no encontrada: ${wheelData.storeId}`);
         return res.json({ success: false, message: "Tienda no encontrada" });
       }
       
-      console.log(`âœ… Store encontrado: ${store.storeId}, accessToken: ${store.accessToken ? 'SÃ' : 'NO'}`);
+      console.log(`? Store encontrado: ${store.storeId}, accessToken: ${store.accessToken ? 'S??' : 'NO'}`);
 
-      // ðŸŽ¯ GENERAR CUPÃ“N ÃšNICO con prefijo personalizable
+      // ?? GENERAR CUPÓN ?ÚNICO con prefijo personalizable
       const prefix = wheelData.couponPrefix || 'RULETA';
       const uniqueId = Date.now().toString().slice(-6) + Math.random().toString(36).substr(2, 4).toUpperCase();
       couponCode = `${prefix}${uniqueId}`;
       
-      // â° CUPÃ“N VÃLIDO POR 15 MINUTOS (configurable)
+      // ? CUPÓN V??LIDO POR 15 MINUTOS (configurable)
       const expirationMinutes = wheelData.couponExpirationMinutes || 15;
       const expirationDate = new Date(Date.now() + expirationMinutes * 60 * 1000);
       couponExpiresAt = expirationDate.toISOString();
       
-      // Crear cupÃ³n en TiendaNube con fecha de expiraciÃ³n
+      // Crear cupón en TiendaNube con fecha de expiración
       const couponData = {
         code: couponCode,
         type: selectedPrize.type,
@@ -5807,7 +6410,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
         end_date: expirationDate.toISOString().split('T')[0]
       };
 
-      console.log(`ðŸ“ Creando cupÃ³n en TiendaNube:`, {
+      console.log(`?? Creando cupón en TiendaNube:`, {
         code: couponCode,
         type: selectedPrize.type,
         value: selectedPrize.value,
@@ -5827,25 +6430,25 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
 
       if (!tnResponse.ok) {
         const errorText = await tnResponse.text();
-        console.error("âŒ Error creando cupÃ³n en TiendaNube:", {
+        console.error("? Error creando cupón en TiendaNube:", {
           status: tnResponse.status,
           statusText: tnResponse.statusText,
           error: errorText,
           couponData
         });
-        // NO retornar error, continuar sin cupÃ³n
+        // NO retornar error, continuar sin cupón
         couponCode = null;
         couponExpiresAt = null;
       } else {
         const tnCoupon = await tnResponse.json();
-        console.log(`âœ… CupÃ³n creado en TiendaNube exitosamente:`, { 
+        console.log(`? Cupón creado en TiendaNube exitosamente:`, { 
           code: couponCode, 
           id: tnCoupon.id,
           type: tnCoupon.type,
           value: tnCoupon.value
         });
         
-        // Guardar en Firestore con mÃ¡s detalles
+        // Guardar en Firestore con más detalles
         const couponId = `coupon_wheel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         await db.collection("promonube_coupons").doc(couponId).set({
           couponId: couponId,
@@ -5867,7 +6470,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
           tiendanubeCouponId: tnCoupon.id
         });
         
-        console.log(`âœ… CupÃ³n Ãºnico creado: ${couponCode} (expira en ${expirationMinutes} min)`);
+        console.log(`? Cupón único creado: ${couponCode} (expira en ${expirationMinutes} min)`);
       }
     }
 
@@ -5886,13 +6489,13 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
       timestamp: new Date().toISOString()
     });
 
-    // Actualizar estadÃ­sticas
+    // Actualizar estadísticas
     await wheelRef.update({
       totalSpins: (wheelData.totalSpins || 0) + 1,
       emailsCollected: (wheelData.emailsCollected || 0) + (email ? 1 : 0)
     });
 
-    // ðŸš€ SINCRONIZAR EMAIL CON INTEGRACIONES (Perfit, Mailchimp, etc) - Solo si hay email
+    // ?? SINCRONIZAR EMAIL CON INTEGRACIONES (Perfit, Mailchimp, etc) - Solo si hay email
     if (email) {
       const store = await getStoreById(wheelData.storeId);
       if (store) {
@@ -5915,7 +6518,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
           lists: parsedListId ? [parsedListId] : []
         };
 
-        console.log('ðŸ“§ [Spin Wheel] Sincronizando email con integraciones:', {
+        console.log('?? [Spin Wheel] Sincronizando email con integraciones:', {
           email,
           storeId: wheelData.storeId,
           perfitListId: wheelData.perfitListId,
@@ -5926,16 +6529,16 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
 
         // Sincronizar en background (no bloquear la respuesta)
         syncEmailToIntegrations(store, email, emailData).catch(err => {
-          console.error('âŒ Error sincronizando email:', err);
+          console.error('? Error sincronizando email:', err);
         });
       } else {
-        console.error('âŒ Store no encontrado para wheelData.storeId:', wheelData.storeId);
+        console.error('? Store no encontrado para wheelData.storeId:', wheelData.storeId);
       }
     }
 
-    console.log("âœ… Giro procesado:", { wheelId, email, prize: selectedPrize.label, couponCode });
+    console.log("? Giro procesado:", { wheelId, email, prize: selectedPrize.label, couponCode });
 
-    // Responder con TODOS los datos necesarios para el countdown + Ã¡ngulo de la ruleta
+    // Responder con TODOS los datos necesarios para el countdown + ángulo de la ruleta
     res.json({
       success: true,
       prize: selectedPrize,
@@ -5952,7 +6555,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
   }
 });
 
-// GET /api/spin-wheel/:wheelId/analytics - Obtiene estadÃ­sticas de una ruleta
+// GET /api/spin-wheel/:wheelId/analytics - Obtiene estadísticas de una ruleta
 app.get("/api/spin-wheel/:wheelId/analytics", async (req, res) => {
   const { wheelId } = req.params;
   const { storeId } = req.query;
@@ -5975,7 +6578,7 @@ app.get("/api/spin-wheel/:wheelId/analytics", async (req, res) => {
       return res.status(403).json({ success: false, message: "Acceso denegado" });
     }
 
-    // Obtener todos los resultados de giros (sin orderBy para evitar errores de Ã­ndice)
+    // Obtener todos los resultados de giros (sin orderBy para evitar errores de índice)
     const resultsSnapshot = await db.collection("spin_wheel_results")
       .where("wheelId", "==", wheelId)
       .get();
@@ -5993,7 +6596,7 @@ app.get("/api/spin-wheel/:wheelId/analytics", async (req, res) => {
         uniqueEmails.add(data.email);
       }
 
-      // Contar distribuciÃ³n de premios
+      // Contar distribución de premios
       const prizeLabel = data.prizeLabel || data.prizeType || 'Desconocido';
       prizeDistribution[prizeLabel] = (prizeDistribution[prizeLabel] || 0) + 1;
     });
@@ -6004,7 +6607,7 @@ app.get("/api/spin-wheel/:wheelId/analytics", async (req, res) => {
     // Obtener cupones generados y su uso
     const couponsGenerated = results.filter(r => r.couponCode).length;
     
-    // Buscar cupones usados (en la colecciÃ³n de uso de cupones)
+    // Buscar cupones usados (en la colección de uso de cupones)
     const usedCouponsSnapshot = await db.collection("coupon_usage")
       .where("storeId", "==", storeId)
       .get();
@@ -6024,11 +6627,11 @@ app.get("/api/spin-wheel/:wheelId/analytics", async (req, res) => {
       }
     });
 
-    // Calcular mÃ©tricas
+    // Calcular métricas
     const conversionRate = couponsGenerated > 0 ? (couponsUsed / couponsGenerated * 100).toFixed(2) : 0;
     const avgOrderValue = couponsUsed > 0 ? (totalRevenue / couponsUsed).toFixed(2) : 0;
 
-    // Timeline: agrupar por dÃ­a
+    // Timeline: agrupar por día
     const timeline = {};
     results.forEach(r => {
       const date = new Date(r.timestamp).toISOString().split('T')[0];
@@ -6039,7 +6642,7 @@ app.get("/api/spin-wheel/:wheelId/analytics", async (req, res) => {
       .sort()
       .map(date => ({ date, spins: timeline[date] }));
 
-    // Ãšltimos 10 giros
+    // ?últimos 10 giros
     const recentSpins = results.slice(0, 10).map(r => ({
       email: r.email,
       prize: r.prizeLabel,
@@ -6130,21 +6733,23 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
   
   // Configurar headers para JavaScript
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=1800'); // Cache de 30 minutos
+  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
 
   try {
     let wheelData;
     let finalWheelId;
 
-    // Si no hay wheelId, buscar por storeId (parÃ¡metro "store" que TiendaNube pasa automÃ¡ticamente)
+    // Si no hay wheelId, buscar por storeId (parámetro "store" que TiendaNube pasa automáticamente)
     if (!wheelId && store) {
-      console.log(`ðŸ” Buscando ruletas activas para store ${store}`);
+      console.log(`?? Buscando ruletas activas para store ${store}`);
       
-      const wheelsSnapshot = await db.collection("promonube_spin_wheels")
-        .where("storeId", "==", store)
-        .where("active", "==", true)
-        .limit(1)
-        .get();
+      const wheelsSnapshot = await getCachedData(`spin_wheels:${store}:active`, () =>
+        db.collection("promonube_spin_wheels")
+          .where("storeId", "==", store)
+          .where("active", "==", true)
+          .limit(1)
+          .get()
+      );
 
       if (wheelsSnapshot.empty) {
         return res.send("// No hay ruletas activas para esta tienda");
@@ -6154,9 +6759,9 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       wheelData = wheelDoc.data();
       finalWheelId = wheelDoc.id;
       
-      console.log(`âœ… Ruleta encontrada: ${finalWheelId} - ${wheelData.name}`);
+      console.log(`? Ruleta encontrada: ${finalWheelId} - ${wheelData.name}`);
     } else if (wheelId) {
-      // Si hay wheelId especÃ­fico, usarlo
+      // Si hay wheelId específico, usarlo
       const wheelDoc = await db.collection("promonube_spin_wheels").doc(wheelId).get();
 
       if (!wheelDoc.exists) {
@@ -6166,13 +6771,19 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       wheelData = wheelDoc.data();
       finalWheelId = wheelId;
       
-      // Verificar que estÃ© activa
+      // Verificar que est? activa
       const isActive = wheelData.active || wheelData.enabled;
       if (!isActive) {
         return res.send("// Ruleta desactivada");
       }
     } else {
       return res.status(400).send("// Error: wheelId o store requerido");
+    }
+
+    // Verificar que la tienda tenga plan activo
+    if (!(await checkStoreActive(wheelData.storeId))) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send('// PromoNube: plan inactivo');
     }
 
     // Generar script JavaScript optimizado
@@ -6185,42 +6796,103 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
 (function() {
   'use strict';
   
-  // ConfiguraciÃ³n de la ruleta
+  // Configuración de la ruleta
   const WHEEL_CONFIG = ${JSON.stringify({
     wheelId: finalWheelId,
     storeId: wheelData.storeId,
     name: wheelData.name,
-    title: wheelData.title || 'Â¡GirÃ¡ y GanÃ¡!',
-    subtitle: wheelData.subtitle || 'Dejanos tu email y ganÃ¡ descuentos exclusivos',
-    buttonText: wheelData.buttonText || 'ðŸŽ° GIRAR RULETA',
-    successMessage: wheelData.successMessage || 'Â¡Felicitaciones! Ganaste:',
+    title: wheelData.title || '¡Girá y Ganá!',
+    subtitle: wheelData.subtitle || 'Dejanos tu email y gan? descuentos exclusivos',
+    buttonText: wheelData.buttonText || '?? GIRAR RULETA',
+    successMessage: wheelData.successMessage || '¡Felicitaciones! Ganaste:',
     prizes: wheelData.prizes || wheelData.segments || [],
     primaryColor: wheelData.primaryColor || '#667eea',
     secondaryColor: wheelData.secondaryColor || '#764ba2',
     textColor: wheelData.textColor || '#FFFFFF',
+    buttonColor: wheelData.buttonColor || '#FFFFFF',
+    buttonTextColor: wheelData.buttonTextColor || wheelData.primaryColor || '#667eea',
+    // Nuevas opciones de diseño premium
+    fontFamily: wheelData.fontFamily || 'modern',
+    modalStyle: wheelData.modalStyle || 'gradient', // gradient | solid | glass
+    wheelBorderColor: wheelData.wheelBorderColor || '#FFFFFF',
+    pointerColor: wheelData.pointerColor || '#FF3860',
+    titleFontWeight: wheelData.titleFontWeight || '800',
+    borderRadiusStyle: wheelData.borderRadiusStyle || 'rounded', // sharp | rounded | pill
+    inputBgColor: wheelData.inputBgColor || 'rgba(255,255,255,0.08)',
+    inputTextColor: wheelData.inputTextColor || wheelData.textColor || '#FFFFFF',
+    inputBorderColor: wheelData.inputBorderColor || 'rgba(128,128,128,0.25)',
     showOnce: wheelData.showOnce !== false, // Por defecto true (mostrar solo una vez)
     delaySeconds: wheelData.delaySeconds || 3,
     exitIntent: wheelData.exitIntent || false,
     showEmailField: wheelData.showEmailField !== false, // Por defecto true (mostrar campo de email)
     requireEmail: wheelData.requireEmail !== false, // Por defecto true (email obligatorio)
-    centerEmoji: wheelData.centerEmoji || '\uD83C\uDF81' // Emoji del centro de la ruleta (🎁)
+    centerEmoji: wheelData.centerEmoji !== undefined ? wheelData.centerEmoji : '\uD83C\uDF81' // Emoji del centro (vac�o = sin emoji)
   }, null, 2)};
   
   const API_URL = "https://apipromonube-jlfopowzaq-uc.a.run.app";
   const STORAGE_KEY = 'promonube_wheel_' + WHEEL_CONFIG.wheelId;
   
-  // Verificar si ya participÃ³
+  // Verificar si ya particip?
   if (WHEEL_CONFIG.showOnce && localStorage.getItem(STORAGE_KEY)) {
-    console.log('[PromoNube] Usuario ya participÃ³ en esta ruleta');
+    console.log('[PromoNube] Usuario ya particip? en esta ruleta');
     return;
   }
   
+  // Font presets premium (cada uno carga Google Fonts específico)
+  const FONT_PRESETS = {
+    modern:    { stack: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", url: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap' },
+    poppins:   { stack: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif", url: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap' },
+    elegant:   { stack: "'Playfair Display', Georgia, 'Times New Roman', serif", url: 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800;900&display=swap' },
+    luxe:      { stack: "'Cormorant Garamond', Georgia, serif", url: 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&display=swap' },
+    minimal:   { stack: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif", url: 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap' },
+    bold:      { stack: "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif", url: 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap' },
+    editorial: { stack: "'Fraunces', Georgia, serif", url: 'https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700;800;900&display=swap' },
+    rounded:   { stack: "'Nunito', -apple-system, BlinkMacSystemFont, sans-serif", url: 'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap' },
+    mono:      { stack: "'JetBrains Mono', 'Courier New', monospace", url: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap' }
+  };
+  const fontPreset = FONT_PRESETS[WHEEL_CONFIG.fontFamily] || FONT_PRESETS.modern;
+
+  // Cargar Google Font
+  if (fontPreset.url && !document.querySelector('link[data-pn-font]')) {
+    const fontLink = document.createElement('link');
+    fontLink.rel = 'stylesheet';
+    fontLink.href = fontPreset.url;
+    fontLink.setAttribute('data-pn-font', WHEEL_CONFIG.fontFamily);
+    document.head.appendChild(fontLink);
+  }
+
+  // Radios según estilo
+  const RADIUS_PRESETS = { sharp: '4px', rounded: '20px', pill: '32px' };
+  const modalRadius = RADIUS_PRESETS[WHEEL_CONFIG.borderRadiusStyle] || '20px';
+  const buttonRadius = WHEEL_CONFIG.borderRadiusStyle === 'pill' ? '999px' : (WHEEL_CONFIG.borderRadiusStyle === 'sharp' ? '4px' : '12px');
+
+  // Estilos de fondo del modal
+  let modalBackground;
+  if (WHEEL_CONFIG.modalStyle === 'solid') {
+    modalBackground = WHEEL_CONFIG.primaryColor;
+  } else if (WHEEL_CONFIG.modalStyle === 'glass') {
+    modalBackground = 'rgba(20, 20, 30, 0.75)';
+  } else {
+    modalBackground = \`linear-gradient(135deg, \${WHEEL_CONFIG.primaryColor} 0%, \${WHEEL_CONFIG.secondaryColor} 100%)\`;
+  }
+  const glassBackdrop = WHEEL_CONFIG.modalStyle === 'glass' ? 'backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%); border: 1px solid rgba(255,255,255,0.15);' : '';
+
   // Inyectar CSS variables
   const cssVars = document.createElement('style');
   cssVars.textContent = \`:root {
     --pn-primary: \${WHEEL_CONFIG.primaryColor};
     --pn-secondary: \${WHEEL_CONFIG.secondaryColor};
     --pn-text: \${WHEEL_CONFIG.textColor};
+    --pn-btn-bg: \${WHEEL_CONFIG.buttonColor};
+    --pn-btn-text: \${WHEEL_CONFIG.buttonTextColor};
+    --pn-wheel-border: \${WHEEL_CONFIG.wheelBorderColor};
+    --pn-pointer: \${WHEEL_CONFIG.pointerColor};
+    --pn-font: \${fontPreset.stack};
+    --pn-title-weight: \${WHEEL_CONFIG.titleFontWeight};
+    --pn-radius: \${modalRadius};
+    --pn-btn-radius: \${buttonRadius};
+    --pn-input-bg: \${WHEEL_CONFIG.inputBgColor};
+    --pn-input-text: \${WHEEL_CONFIG.inputTextColor};
   }\`;
   document.head.appendChild(cssVars);
   
@@ -6228,277 +6900,308 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
   const styles = \`
     .pn-overlay {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.92);
-      backdrop-filter: blur(8px);
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.95) 100%);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 999999;
-      animation: pnFadeIn 0.3s ease-out;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      animation: pnFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      font-family: var(--pn-font);
+      padding: 16px;
     }
-    
+
     @keyframes pnFadeIn {
       from { opacity: 0; }
       to { opacity: 1; }
     }
-    
+
     .pn-modal {
-      background: linear-gradient(135deg, var(--pn-primary) 0%, var(--pn-secondary) 100%);
-      padding: 40px 30px;
-      border-radius: 24px;
-      max-width: 480px;
-      width: 90%;
-      max-height: 90vh;
+      background: \${modalBackground};
+      \${glassBackdrop}
+      padding: 40px 32px 32px;
+      border-radius: var(--pn-radius);
+      max-width: 440px;
+      width: 100%;
+      max-height: 92vh;
       overflow-y: auto;
       color: var(--pn-text);
       text-align: center;
       position: relative;
-      animation: pnSlideUp 0.4s ease-out;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      animation: pnSlideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 24px 80px -8px rgba(0, 0, 0, 0.5);
+      font-family: var(--pn-font);
     }
-    
+
     @keyframes pnSlideUp {
       from {
-        transform: translateY(60px) scale(0.85);
+        transform: translateY(40px) scale(0.94);
         opacity: 0;
+        filter: blur(8px);
       }
       to {
         transform: translateY(0) scale(1);
         opacity: 1;
+        filter: blur(0);
       }
     }
-    
+
     .pn-close {
       position: absolute;
-      top: 16px;
-      right: 16px;
-      background: transparent;
-      border: none;
-      color: #1a1a1a;
-      width: 40px;
-      height: 40px;
+      top: 14px;
+      right: 14px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: var(--pn-text);
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
       cursor: pointer;
-      font-size: 28px;
-      line-height: 1;
-      transition: all 0.2s ease;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+      backdrop-filter: blur(10px);
+      z-index: 2;
     }
-    
+
     .pn-close:hover {
-      background: rgba(0, 0, 0, 0.05);
-      transform: scale(1.1);
+      background: rgba(255,255,255,0.22);
+      transform: rotate(90deg);
+      border-color: rgba(255,255,255,0.35);
     }
-    
+
     .pn-title {
-      font-size: 32px;
+      font-family: var(--pn-font);
+      font-size: 28px;
       margin: 0 0 8px;
-      font-weight: 800;
-      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-      line-height: 1.2;
+      font-weight: var(--pn-title-weight);
+      letter-spacing: -0.015em;
+      line-height: 1.15;
+      position: relative;
+      z-index: 1;
     }
-    
+
     .pn-subtitle {
-      font-size: 16px;
+      font-size: 14px;
       margin: 0 0 24px;
-      opacity: 0.95;
-      line-height: 1.4;
+      opacity: 0.82;
+      line-height: 1.5;
+      font-weight: 400;
+      letter-spacing: 0.005em;
+      position: relative;
+      z-index: 1;
     }
-    
+
     .pn-wheel-container {
       position: relative;
       width: 320px;
       height: 320px;
-      margin: 0 auto 24px;
+      margin: 4px auto 28px;
+      z-index: 1;
+      padding: 6px;
+      box-sizing: border-box;
     }
-    
+
+    /* Aro exterior de marca (tipo target minimalista) */
+    .pn-wheel-container::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: var(--pn-wheel-border);
+      box-shadow:
+        0 18px 50px -12px rgba(0,0,0,0.5),
+        inset 0 0 0 1px rgba(0,0,0,0.08);
+      z-index: 0;
+    }
+
     .pn-wheel {
       width: 100%;
       height: 100%;
       border-radius: 50%;
       position: relative;
-      border: 10px solid rgba(255, 255, 255, 0.95);
       transition: transform 5s cubic-bezier(0.17, 0.67, 0.12, 0.99);
-      box-shadow: 
-        0 0 0 3px rgba(0, 0, 0, 0.1),
-        0 0 32px rgba(0, 0, 0, 0.2) inset,
-        0 16px 48px rgba(0, 0, 0, 0.3);
-      background: white;
+      background: #fff;
+      z-index: 1;
     }
-    
+
     .pn-wheel-pointer {
       position: absolute;
-      top: -20px;
+      top: -4px;
       left: 50%;
       transform: translateX(-50%);
-      width: 0;
-      height: 0;
-      border-left: 20px solid transparent;
-      border-right: 20px solid transparent;
-      border-top: 35px solid #FF0040;
-      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
+      width: 26px;
+      height: 32px;
       z-index: 10;
+      filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));
     }
-    
-    .pn-wheel-pointer::after {
-      content: '';
-      position: absolute;
-      top: -40px;
-      left: -6px;
-      width: 12px;
-      height: 12px;
-      background: #FF0040;
-      border-radius: 50%;
-      border: 2px solid white;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+
+    .pn-wheel-pointer svg {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
-    
+
+    /* Centro: disco blanco + anillo conc�ntrico */
     .pn-wheel-center {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 72px;
-      height: 72px;
-      background: linear-gradient(135deg, #FFFFFF 0%, #F5F5F5 100%);
+      width: 44px;
+      height: 44px;
+      background: #fff;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 32px;
-      box-shadow: 
-        0 0 0 4px rgba(0, 0, 0, 0.05),
-        0 8px 24px rgba(0, 0, 0, 0.3);
+      font-size: 20px;
+      box-shadow:
+        0 0 0 5px var(--pn-wheel-border),
+        0 0 0 6px rgba(0,0,0,0.1),
+        0 4px 14px rgba(0,0,0,0.22);
       z-index: 10;
-      font-weight: bold;
-      border: 3px solid rgba(255, 255, 255, 0.9);
     }
-    
+
     .pn-input {
       width: 100%;
-      padding: 16px;
-      border: none;
-      border-radius: 12px;
-      font-size: 16px;
+      padding: 15px 18px;
+      border: 1.5px solid var(--pn-input-border);
+      border-radius: var(--pn-btn-radius);
+      font-size: 15px;
       margin-bottom: 12px;
       text-align: center;
       box-sizing: border-box;
-      background: rgba(255, 255, 255, 0.95);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      color: #333333;
+      background: var(--pn-input-bg);
+      color: var(--pn-input-text);
       font-weight: 500;
+      font-family: var(--pn-font);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      letter-spacing: 0.01em;
     }
-    
+
     .pn-input::placeholder {
-      color: #999999;
-      opacity: 1;
+      color: var(--pn-input-text);
+      opacity: 0.55;
+      font-weight: 400;
     }
-    
+
     .pn-input:focus {
       outline: none;
-      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+      border-color: var(--pn-btn-bg);
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.08);
     }
-    
+
     .pn-button {
-      background: white;
-      color: var(--pn-primary);
+      background: var(--pn-btn-bg);
+      color: var(--pn-btn-text);
       border: none;
-      padding: 18px 32px;
-      border-radius: 12px;
-      font-size: 18px;
+      padding: 16px 32px;
+      border-radius: var(--pn-btn-radius);
+      font-size: 15px;
       font-weight: 700;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
       width: 100%;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      box-shadow:
+        0 8px 24px rgba(0,0,0,0.28),
+        0 1px 0 0 rgba(255,255,255,0.35) inset,
+        0 -1px 0 0 rgba(0,0,0,0.08) inset;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      font-family: var(--pn-font);
+      position: relative;
+      overflow: hidden;
     }
-    
+
+    .pn-button::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 50%, rgba(0,0,0,0.08) 100%);
+      pointer-events: none;
+    }
+
     .pn-button:hover:not(:disabled) {
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+      box-shadow:
+        0 12px 32px rgba(0,0,0,0.35),
+        0 1px 0 0 rgba(255,255,255,0.45) inset,
+        0 -1px 0 0 rgba(0,0,0,0.08) inset;
     }
-    
+
     .pn-button:active:not(:disabled) {
-      transform: translateY(-1px) scale(0.98);
+      transform: translateY(0) scale(0.98);
     }
-    
+
     .pn-button:disabled {
-      opacity: 0.6;
+      opacity: 0.55;
       cursor: not-allowed;
       transform: none !important;
     }
-    
+
     .pn-result {
       font-size: 22px;
       margin: 20px 0 12px;
       font-weight: 700;
       animation: pnBounce 0.6s;
     }
-    
+
     @keyframes pnBounce {
       0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
+      50% { transform: scale(1.06); }
     }
-    
+
     .pn-coupon {
-      background: rgba(255, 255, 255, 0.15);
-      padding: 24px 20px;
-      border-radius: 20px;
-      font-size: 32px;
-      font-weight: 900;
-      letter-spacing: 4px;
-      margin: 20px 0;
-      border: 3px dashed rgba(255, 255, 255, 0.4);
+      background: rgba(255,255,255,0.1);
+      padding: 18px 48px 18px 20px;
+      border-radius: 10px;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      margin: 18px 0;
+      border: 1px solid rgba(255,255,255,0.22);
       word-break: break-all;
-      backdrop-filter: blur(15px);
+      backdrop-filter: blur(10px);
       cursor: pointer;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
       position: relative;
-      box-shadow: 
-        0 8px 24px rgba(0, 0, 0, 0.2),
-        0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+      font-family: var(--pn-font);
     }
-    
-    .pn-coupon::before {
-      content: 'ðŸ“‹';
+
+    .pn-coupon::after {
+      content: '';
       position: absolute;
-      right: 20px;
+      right: 18px;
       top: 50%;
       transform: translateY(-50%);
-      font-size: 24px;
-      opacity: 0.7;
+      width: 18px;
+      height: 22px;
+      background: var(--pn-text);
+      mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2' ry='2'></rect><path d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'></path></svg>");
+      -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2' ry='2'></rect><path d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'></path></svg>");
+      opacity: 0.55;
       transition: all 0.3s;
     }
-    
+
     .pn-coupon:hover {
-      background: rgba(255, 255, 255, 0.25);
-      border-color: rgba(255, 255, 255, 0.6);
-      transform: scale(1.03);
-      box-shadow: 
-        0 12px 32px rgba(0, 0, 0, 0.3),
-        0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+      background: rgba(255,255,255,0.16);
+      border-color: rgba(255,255,255,0.45);
     }
-    
-    .pn-coupon:hover::before {
+
+    .pn-coupon:hover::after {
       opacity: 1;
-      transform: translateY(-50%) scale(1.2);
     }
-    
+
     .pn-hint {
-      font-size: 14px;
-      opacity: 0.9;
+      font-size: 13px;
+      opacity: 0.75;
       margin-top: 12px;
       line-height: 1.5;
+      font-weight: 400;
     }
     
     @media (max-width: 500px) {
@@ -6581,20 +7284,20 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
   styleEl.textContent = styles;
   document.head.appendChild(styleEl);
   
-  // FunciÃ³n para crear la rueda visual
+  // Función para crear la rueda visual
   function createWheel() {
     const prizes = WHEEL_CONFIG.prizes;
     if (!prizes || prizes.length === 0) {
       return '<div style="padding: 40px; color: white;">No hay premios configurados</div>';
     }
     
-    // ðŸ” Guardar premios en variable global para debugging
+    // ?? Guardar premios en variable global para debugging
     window.WHEEL_PRIZES = prizes;
-    console.log('ðŸŽ° ===== RUEDA INICIALIZADA =====');
-    console.log('ðŸ“Š Premios en orden visual (de arriba en sentido horario):');
+    console.log('?? ===== RUEDA INICIALIZADA =====');
+    console.log('?? Premios en orden visual (de arriba en sentido horario):');
     prizes.forEach((p, i) => {
       const angle = (i * (360 / prizes.length)) - 90;
-      console.log(\`  [\${i}] \${p.label} - comienza en \${angle}Â°\`);
+      console.log(\`  [\${i}] \${p.label} - comienza en \${angle}�\`);
     });
     console.log('================================');
     
@@ -6636,8 +7339,8 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         <path
           d="M 160 160 L \${x1} \${y1} A 150 150 0 \${largeArc} 1 \${x2} \${y2} Z"
           fill="\${color}"
-          stroke="white"
-          stroke-width="2"
+          stroke="rgba(255,255,255,0.9)"
+          stroke-width="1"
         />
       \`;
 
@@ -6647,7 +7350,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       const textX = 160 + textRadius * Math.cos(textRad);
       const textY = 160 + textRadius * Math.sin(textRad);
       const rawLabel = prize.label || prize.text || \`\${prize.value}%\`;
-      const label = rawLabel.length > maxLabelLen ? rawLabel.substring(0, maxLabelLen) + '…' : rawLabel;
+      const label = rawLabel.length > maxLabelLen ? rawLabel.substring(0, maxLabelLen) + '?' : rawLabel;
 
       segments += \`
         <text
@@ -6655,18 +7358,22 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
           y="\${textY}"
           fill="white"
           font-size="\${fontSize}"
-          font-weight="bold"
+          font-weight="600"
           text-anchor="middle"
           dominant-baseline="middle"
           transform="rotate(\${textAngle + 90}, \${textX}, \${textY})"
-          style="pointer-events: none; text-shadow: 0 2px 4px rgba(0,0,0,0.5);"
+          style="pointer-events: none; letter-spacing: 0.02em; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"
         >\${label}</text>
       \`;
     });
     
     return \`
       <div class="pn-wheel-container">
-        <div class="pn-wheel-pointer"></div>
+        <div class="pn-wheel-pointer" aria-hidden="true">
+          <svg viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 30 L2 4 Q12 -2 22 4 Z" fill="\${WHEEL_CONFIG.pointerColor}" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+        </div>
         <div style="position: relative;">
           <svg class="pn-wheel" id="pn-wheel" viewBox="0 0 320 320" style="width: 100%; height: 100%;">
             <g>
@@ -6679,7 +7386,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     \`;
   }
   
-  // FunciÃ³n para mostrar la ruleta
+  // Función para mostrar la ruleta
   function showWheel() {
     // Crear overlay
     const overlay = document.createElement('div');
@@ -6709,7 +7416,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     
     document.body.appendChild(overlay);
     
-    // Manejar el clic en el botÃ³n de girar
+    // Manejar el clic en el botón de girar
     const spinBtn = document.getElementById('pn-spin-btn');
     const emailInput = document.getElementById('pn-email');
     
@@ -6721,7 +7428,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     }
   }
   
-  // FunciÃ³n para manejar el giro
+  // Función para manejar el giro
   async function handleSpin() {
     const emailInput = document.getElementById('pn-email');
     const spinBtn = document.getElementById('pn-spin-btn');
@@ -6740,7 +7447,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     // Deshabilitar controles
     spinBtn.disabled = true;
     if (emailInput) emailInput.disabled = true;
-    spinBtn.textContent = 'ðŸŽ° GIRANDO...';
+    spinBtn.textContent = '?? GIRANDO...';
     
     try {
       // Llamar a la API para procesar el giro
@@ -6753,53 +7460,55 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       const data = await response.json();
       
       if (!data.success) {
-        alert(data.message || 'OcurriÃ³ un error');
+        alert(data.message || 'Ocurri? un error');
         spinBtn.disabled = false;
         if (emailInput) emailInput.disabled = false;
         spinBtn.textContent = WHEEL_CONFIG.buttonText;
         return;
       }
       
-      // ðŸŽ¯ ANIMAR RUEDA hacia el Ã¡ngulo exacto del premio ganado
+      // ?? ANIMAR RUEDA hacia el ángulo exacto del premio ganado
       const wheel = document.getElementById('pn-wheel');
       const targetAngle = data.targetAngle || 0;
       const prizeIndex = data.prizeIndex;
       const prizeLabel = data.prize.label;
       
-      // IMPORTANTE: El puntero estÃ¡ arriba (en la posiciÃ³n de las 12 del reloj)
-      // Los segmentos se dibujan empezando desde -90Â° (arriba)
-      // targetAngle es el Ã¡ngulo del CENTRO del segmento ganador (ya normalizado 0-360)
+      // IMPORTANTE: El puntero est? arriba (en la posición de las 12 del reloj)
+      // Los segmentos se dibujan empezando desde -90� (arriba)
+      // targetAngle es el ángulo del CENTRO del segmento ganador (ya normalizado 0-360)
       
       // Para que el segmento ganador quede bajo el puntero:
-      // 1. El puntero estÃ¡ en la posiciÃ³n 270Â° del cÃ­rculo (arriba = -90Â° = 270Â°)
-      // 2. Queremos rotar la rueda para que targetAngle llegue a 270Â°
-      // 3. RotaciÃ³n necesaria = 270 - targetAngle
+      // 1. El puntero est? en la posición 270� del círculo (arriba = -90� = 270�)
+      // 2. Queremos rotar la rueda para que targetAngle llegue a 270�
+      // 3. Rotación necesaria = 270 - targetAngle
       
-      // IMPORTANTE: randomSpins DEBE ser entero para que la posiciÃ³n final sea correcta
+      // IMPORTANTE: randomSpins DEBE ser entero para que la posición final sea correcta
       const randomSpins = 5 + Math.floor(Math.random() * 3); // 5, 6 o 7 vueltas completas
       
-      // Calcular rotaciÃ³n usando prizeIndex directamente (mÃ¡s robusto)
+      // Calcular rotación usando prizeIndex directamente (más robusto)
       const numPrizes = WHEEL_CONFIG.prizes.length;
       const segAngle = 360 / numPrizes;
-      // El centro del segmento N estÃ¡ a (N + 0.5) * segAngle grados CW desde el top
+      // El centro del segmento N est? a (N + 0.5) * segAngle grados CW desde el top
       // Para que quede bajo el puntero (top), rotar CW por: 360 - (N + 0.5) * segAngle
       const finalAngle = 360 - ((prizeIndex + 0.5) * segAngle);
-      // Agregar pequeÃ±o offset random dentro del segmento para que no caiga siempre en el centro exacto
-      const segmentOffset = (Math.random() - 0.5) * (segAngle * 0.6); // Â±30% del segmento
+      // Pequeño offset aleatorio para que no caiga SIEMPRE en el centro exacto,
+      // pero mantenido al 20% del segmento para garantizar que siempre quede
+      // visualmente sobre el premio correcto (sin ambigüedad en los bordes).
+      const segmentOffset = (Math.random() - 0.5) * (segAngle * 0.2);
       const totalRotation = (randomSpins * 360) + finalAngle + segmentOffset;
       
-      console.log(\`ðŸŽ¯ ============ SPINNING HACIA PREMIO ============\`);
-      console.log(\`   ðŸ† Premio: \${prizeLabel}\`);
-      console.log(\`   ðŸ“ Ãndice: \${prizeIndex}\`);
-      console.log(\`   ðŸŽ¯ Ãngulo del segmento: \${targetAngle}Â°\`);
-      console.log(\`   ðŸ”„ Ãngulo final (270 - \${targetAngle}): \${finalAngle}Â°\`);
-      console.log(\`   ðŸŒ€ RotaciÃ³n total: \${totalRotation}Â° (\${randomSpins.toFixed(1)} vueltas)\`);
-      console.log(\`   âš™ï¸ Segmentos totales: \${window.WHEEL_PRIZES?.length || 'unknown'}\`);
+      console.log(\`?? ============ SPINNING HACIA PREMIO ============\`);
+      console.log(\`   ?? Premio: \${prizeLabel}\`);
+      console.log(\`   ?? ?índice: \${prizeIndex}\`);
+      console.log(\`   ?? ?ángulo del segmento: \${targetAngle}�\`);
+      console.log(\`   ?? ?ángulo final (270 - \${targetAngle}): \${finalAngle}�\`);
+      console.log(\`   ?? Rotación total: \${totalRotation}� (\${randomSpins.toFixed(1)} vueltas)\`);
+      console.log(\`   ?? Segmentos totales: \${window.WHEEL_PRIZES?.length || 'unknown'}\`);
       console.log(\`============================================\`);
       
       wheel.style.transform = \`rotate(\${totalRotation}deg)\`;
       
-      // Esperar a que termine la animaciÃ³n (5 segundos)
+      // Esperar a que termine la animación (5 segundos)
       setTimeout(() => {
         showResult(data);
       }, 5000);
@@ -6809,16 +7518,16 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       spinBtn.disabled = false;
       if (emailInput) emailInput.disabled = false;
       spinBtn.textContent = WHEEL_CONFIG.buttonText;
-      alert('OcurriÃ³ un error. Por favor intentÃ¡ de nuevo.');
+      alert('Ocurrió un error. Por favor intentá de nuevo.');
     }
   }
   
-  // FunciÃ³n para mostrar el resultado
+  // Función para mostrar el resultado
   function showResult(data) {
     const overlay = document.getElementById('pn-wheel-overlay');
     
     if (data.success && data.couponCode) {
-      // ðŸŽ¯ PREMIO CON CUPÃ“N + COUNTDOWN
+      // PREMIO CON CUPON + COUNTDOWN
       const expiresAt = new Date(data.couponExpiresAt);
       const expirationMinutes = data.expirationMinutes || 15;
       
@@ -6827,14 +7536,13 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         <div class="pn-modal">
           <button class="pn-close" onclick="closeCouponModal()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
           <div style="text-align: center; padding: 20px 0;">
-            <div style="font-size: 48px; margin-bottom: 16px;">ðŸŽ‰</div>
-            <h1 class="pn-title" style="font-size: 38px; margin-bottom: 12px;">Â¡FELICITACIONES!</h1>
+            <h1 class="pn-title" style="font-size: 38px; margin-bottom: 12px;">¡FELICITACIONES!</h1>
             <p class="pn-subtitle" style="font-size: 18px; margin-bottom: 8px;">DESBLOQUEASTE</p>
             <div style="font-size: 52px; font-weight: 900; margin: 20px 0; text-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-              \${data.prize && data.prize.label ? data.prize.label : '🎁 DESCUENTO'}
+              \${data.prize && data.prize.label ? data.prize.label : 'DESCUENTO'}
             </div>
             
-            <p class="pn-subtitle" style="font-size: 16px; margin: 24px 0 12px;">TU CUPÃ“N DE DESCUENTO ES:</p>
+            <p class="pn-subtitle" style="font-size: 16px; margin: 24px 0 12px;">TU CUPÓN DE DESCUENTO ES:</p>
             <div class="pn-coupon" onclick="copyCoupon('\${data.couponCode}', this)">
               \${data.couponCode}
             </div>
@@ -6846,45 +7554,45 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
               margin: 20px 0;
               backdrop-filter: blur(10px);
             ">
-              <div style="font-size: 14px; margin-bottom: 8px; opacity: 0.9;">â° Tiempo restante:</div>
+              <div style="font-size: 14px; margin-bottom: 8px; opacity: 0.9;">Tiempo restante:</div>
               <div id="pn-countdown-display" style="font-size: 32px; font-weight: 800; letter-spacing: 2px;"></div>
             </div>
             
-            <button class="pn-button" style="margin-top: 20px; background: rgba(255,255,255,0.2); color: white;" 
+            <button class="pn-button" style="margin-top: 20px;" 
                     onclick="closeCouponModal()">
               USAR MI DESCUENTO
             </button>
             <p class="pn-hint" style="margin-top: 16px; font-size: 13px;">
-              ðŸ’¡ HacÃ© clic en el cupÃ³n para copiarlo
+              Hacé clic en el cupón para copiarlo
             </p>
           </div>
         </div>
       \`;
       
-      // ðŸ”¥ CREAR STICKY BAR (barra inferior persistente)
+      // ?? CREAR STICKY BAR (barra inferior persistente)
       createStickyBar(data.couponCode, expiresAt);
       
       // Iniciar countdown
       startCountdown(expiresAt, 'pn-countdown-display');
       
-      // Guardar cupÃ³n en localStorage para persistir
+      // Guardar cupón en localStorage para persistir
       localStorage.setItem('pn_active_coupon', JSON.stringify({
         code: data.couponCode,
         expiresAt: data.couponExpiresAt,
         prize: data.prize.label
       }));
       
-      // Guardar que ya participÃ³
+      // Guardar que ya particip?
       if (WHEEL_CONFIG.showOnce) {
         localStorage.setItem(STORAGE_KEY, Date.now().toString());
       }
       
     } else if (data.success && data.prize) {
-      // Premio sin cupÃ³n - verificar si es tipo "none" (no ganÃ³)
+      // Premio sin cup\u00f3n - verificar si es tipo "none" (no gan\u00f3)
       const isNoWin = data.prize.type === 'none' || data.prize.type === 'no_win';
-      const emoji = isNoWin ? 'ðŸ˜”' : 'ðŸ˜Š';
-      const title = isNoWin ? 'Â¡Ups! Esta vez no ganaste' : (data.prize.label || 'Â¡Gracias por participar!');
-      const subtitle = isNoWin ? 'Pero no te preocupes, seguÃ­ atento a nuestras promociones' : (data.prize.message || 'SeguÃ­ atento a nuestras prÃ³ximas promociones');
+      const emoji = isNoWin ? '\ud83d\ude14' : '\ud83c\udf89';
+      const title = isNoWin ? '\u00a1Ups! Esta vez no ganaste' : (data.prize.label || '\u00a1Gracias por participar!');
+      const subtitle = isNoWin ? 'Pero no te preocupes, segu\u00ed atento a nuestras promociones' : (data.prize.message || 'Segu\u00ed atento a nuestras pr\u00f3ximas promociones');
       
       overlay.innerHTML = \`
         <div class="pn-modal">
@@ -6906,12 +7614,12 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       
     } else {
       // Error
-      alert(data.message || 'OcurriÃ³ un error. Por favor intentÃ¡ de nuevo.');
+      alert(data.message || 'Ocurri\u00f3 un error. Por favor intent\u00e1 de nuevo.');
       document.getElementById('pn-wheel-overlay').remove();
     }
   }
   
-  // â° FunciÃ³n para countdown con animaciones mejoradas
+  // ? Función para countdown con animaciones mejoradas
   function startCountdown(expiresAt, elementId) {
     const countdownEl = document.getElementById(elementId);
     if (!countdownEl) return;
@@ -6921,11 +7629,11 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       const distance = new Date(expiresAt).getTime() - now;
       
       if (distance < 0) {
-        countdownEl.innerHTML = 'âŒ› EXPIRADO';
+        countdownEl.innerHTML = '?? EXPIRADO';
         countdownEl.style.color = '#ff4444';
         countdownEl.style.animation = 'none';
         
-        // Remover sticky bar y cupÃ³n del localStorage
+        // Remover sticky bar y cupón del localStorage
         const stickyBar = document.getElementById('pn-sticky-bar');
         if (stickyBar) stickyBar.remove();
         localStorage.removeItem('pn_active_coupon');
@@ -6938,7 +7646,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       
       countdownEl.innerHTML = \`\${minutes}:\${seconds.toString().padStart(2, '0')}\`;
       
-      // ðŸ”´ Cambiar color y animar cuando quede poco tiempo
+      // ?? Cambiar color y animar cuando quede poco tiempo
       if (minutes < 1) {
         countdownEl.style.color = '#ff3333';
         countdownEl.style.fontSize = '42px';
@@ -6952,7 +7660,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       setTimeout(updateCountdown, 1000);
     }
     
-    // Agregar animaciÃ³n de pulse si no existe
+    // Agregar animación de pulse si no existe
     if (!document.getElementById('pn-pulse-animation')) {
       const pulseStyle = document.createElement('style');
       pulseStyle.id = 'pn-pulse-animation';
@@ -6968,53 +7676,66 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     updateCountdown();
   }
   
-  // ðŸ“Œ Crear barra sticky inferior
+  // Crear barra sticky inferior
   function createStickyBar(couponCode, expiresAt) {
+    console.log('[PromoNube Wheel] createStickyBar llamado', { couponCode, expiresAt });
     // Remover sticky bar existente si hay
     const existing = document.getElementById('pn-sticky-bar');
     if (existing) existing.remove();
     
+    // Usar los mismos colores que la ruleta (inline, no vars) para garantizar contraste
+    const sbPrimary = WHEEL_CONFIG.primaryColor || '#6c5ce7';
+    const sbSecondary = WHEEL_CONFIG.secondaryColor || '#a29bfe';
+    const sbText = WHEEL_CONFIG.textColor || '#ffffff';
+    const sbBtnBg = WHEEL_CONFIG.buttonColor || '#ffffff';
+    const sbBtnText = WHEEL_CONFIG.buttonTextColor || sbPrimary;
+
     const stickyBar = document.createElement('div');
     stickyBar.id = 'pn-sticky-bar';
     stickyBar.innerHTML = \`
       <style>
         #pn-sticky-bar {
-          position: fixed;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          background: linear-gradient(135deg, var(--pn-primary) 0%, var(--pn-secondary) 100%);
-          color: white;
-          padding: 16px 20px;
-          box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
-          z-index: 999998;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 16px;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          animation: slideUp 0.4s ease-out;
+          position: fixed !important;
+          bottom: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          background: linear-gradient(135deg, \${sbPrimary} 0%, \${sbSecondary} 100%) !important;
+          color: \${sbText} !important;
+          padding: 16px 20px !important;
+          box-shadow: 0 -4px 20px rgba(0,0,0,0.25) !important;
+          z-index: 2147483647 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+          gap: 16px !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+          animation: slideUp 0.4s ease-out !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          pointer-events: auto !important;
         }
-        
+        #pn-sticky-bar, #pn-sticky-bar * { color: \${sbText} !important; }
+
         @keyframes slideUp {
           from { transform: translateY(100%); }
           to { transform: translateY(0); }
         }
-        
+
         @keyframes pulse {
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.05); }
         }
-        
+
         #pn-sticky-bar .sticky-content {
           display: flex;
           align-items: center;
           gap: 16px;
           flex: 1;
         }
-        
+
         #pn-sticky-bar .sticky-coupon {
-          background: rgba(255,255,255,0.2);
+          background: \${sbBtnBg} !important;
+          color: \${sbBtnText} !important;
           padding: 8px 16px;
           border-radius: 8px;
           font-weight: 800;
@@ -7022,24 +7743,25 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
           letter-spacing: 1px;
           cursor: pointer;
           transition: all 0.2s;
-          border: 2px dashed rgba(255,255,255,0.5);
+          border: 2px dashed \${sbBtnText}55;
         }
-        
+
         #pn-sticky-bar .sticky-coupon:hover {
-          background: rgba(255,255,255,0.3);
           transform: scale(1.05);
+          filter: brightness(0.95);
         }
-        
+
         #pn-sticky-bar .sticky-countdown {
           font-size: 20px;
           font-weight: 700;
           min-width: 80px;
+          color: \${sbText} !important;
         }
-        
+
         #pn-sticky-bar .sticky-close {
-          background: rgba(255,255,255,0.2);
+          background: \${sbBtnBg} !important;
           border: none;
-          color: white;
+          color: \${sbBtnText} !important;
           width: 32px;
           height: 32px;
           border-radius: 50%;
@@ -7047,10 +7769,10 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
           font-size: 20px;
           transition: all 0.2s;
         }
-        
+
         #pn-sticky-bar .sticky-close:hover {
-          background: rgba(255,255,255,0.3);
           transform: scale(1.1);
+          filter: brightness(0.95);
         }
         
         @media (max-width: 768px) {
@@ -7076,14 +7798,12 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       
       <div class="sticky-content">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span>🎁</span>
-          <span style="font-weight: 600;">Tu cupÃ³n:</span>
+          <span style="font-weight: 600;">Tu cupón:</span>
         </div>
         <div class="sticky-coupon" onclick="copyCoupon('\${couponCode}', this)">
           \${couponCode}
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span>â°</span>
           <div class="sticky-countdown" id="pn-sticky-countdown"></div>
         </div>
       </div>
@@ -7092,6 +7812,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     \`;
     
     document.body.appendChild(stickyBar);
+    console.log('[PromoNube Wheel] Sticky bar inyectada en el DOM', stickyBar);
     
     // Iniciar countdown en sticky bar
     startCountdown(expiresAt, 'pn-sticky-countdown');
@@ -7101,7 +7822,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
   window.copyCoupon = function(code, element) {
     navigator.clipboard.writeText(code).then(() => {
       const original = element.innerHTML;
-      element.innerHTML = 'âœ… COPIADO';
+      element.innerHTML = 'COPIADO';
       setTimeout(() => { element.innerHTML = original; }, 2000);
     });
   };
@@ -7119,7 +7840,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     }
   };
   
-  // Restaurar sticky bar si hay cupÃ³n activo
+  // Restaurar sticky bar si hay cupón activo
   function restoreStickyBar() {
     const savedCoupon = localStorage.getItem('pn_active_coupon');
     if (!savedCoupon) return;
@@ -7128,21 +7849,21 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       const couponData = JSON.parse(savedCoupon);
       const expiresAt = new Date(couponData.expiresAt);
       
-      // Verificar si no expirÃ³
+      // Verificar si no expir?
       if (new Date() < expiresAt) {
         createStickyBar(couponData.code, expiresAt);
       } else {
-        // Ya expirÃ³, limpiar
+        // Ya expir?, limpiar
         localStorage.removeItem('pn_active_coupon');
       }
     } catch (e) {
-      console.error('[PromoNube] Error restaurando cupÃ³n:', e);
+      console.error('[PromoNube] Error restaurando cupón:', e);
     }
   }
   
-  // Determinar cuÃ¡ndo mostrar la ruleta
+  // Determinar cuándo mostrar la ruleta
   function initWheel() {
-    // Restaurar sticky bar si hay cupÃ³n activo
+    // Restaurar sticky bar si hay cupón activo
     restoreStickyBar();
     
     const delay = (WHEEL_CONFIG.delaySeconds || 0) * 1000;
@@ -7156,12 +7877,12 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         }
       });
     } else {
-      // Mostrar despuÃ©s del delay
+      // Mostrar después del delay
       setTimeout(showWheel, delay);
     }
   }
   
-  // Iniciar cuando el DOM estÃ© listo
+  // Iniciar cuando el DOM est? listo
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initWheel);
   } else {
@@ -7174,7 +7895,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     res.send(script);
     
   } catch (error) {
-    console.error("âŒ Error generando script:", error);
+    console.error("? Error generando script:", error);
     res.status(500).send(`// Error: ${error.message}`);
   }
 });
@@ -7204,10 +7925,10 @@ app.get("/api/countdowns", async (req, res) => {
       });
     });
 
-    // Ordenar por fecha de creaciÃ³n (mÃ¡s recientes primero)
+    // Ordenar por fecha de creación (más recientes primero)
     countdowns.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    console.log(`âœ… ${countdowns.length} cuentas regresivas encontradas`);
+    console.log(`? ${countdowns.length} cuentas regresivas encontradas`);
 
     res.json({ success: true, countdowns });
   } catch (error) {
@@ -7216,7 +7937,7 @@ app.get("/api/countdowns", async (req, res) => {
   }
 });
 
-// GET /api/countdown/:countdownId - Obtiene configuraciÃ³n de una cuenta regresiva
+// GET /api/countdown/:countdownId - Obtiene configuración de una cuenta regresiva
 app.get("/api/countdown/:countdownId", async (req, res) => {
   const { countdownId } = req.params;
   const { storeId } = req.query;
@@ -7269,7 +7990,7 @@ app.post("/api/countdowns/create", async (req, res) => {
 
     await db.collection("promonube_countdowns").doc(countdownId).set(countdownData);
 
-    // Registrar script automÃ¡ticamente si el countdown estÃ¡ habilitado
+    // Registrar script automáticamente si el countdown est? habilitado
     if (countdownData.enabled) {
       const store = await getStoreById(storeId);
       if (store) {
@@ -7277,7 +7998,7 @@ app.post("/api/countdowns/create", async (req, res) => {
       }
     }
 
-    console.log("âœ… Countdown creado:", countdownId);
+    console.log("? Countdown creado:", countdownId);
 
     res.json({ success: true, countdownId, countdown: countdownData });
   } catch (error) {
@@ -7286,7 +8007,7 @@ app.post("/api/countdowns/create", async (req, res) => {
   }
 });
 
-// PUT /api/countdowns/:countdownId - Actualiza configuraciÃ³n de countdown
+// PUT /api/countdowns/:countdownId - Actualiza configuración de countdown
 app.put("/api/countdowns/:countdownId", async (req, res) => {
   const { countdownId } = req.params;
   const { storeId, ...config } = req.body;
@@ -7312,7 +8033,7 @@ app.put("/api/countdowns/:countdownId", async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    console.log("âœ… Countdown actualizado:", countdownId);
+    console.log("? Countdown actualizado:", countdownId);
 
     res.json({ success: true, message: "Countdown actualizado" });
   } catch (error) {
@@ -7346,7 +8067,7 @@ app.delete("/api/countdowns/:countdownId", async (req, res) => {
 
     await countdownRef.delete();
 
-    // Si era el Ãºltimo countdown activo, remover script
+    // Si era el último countdown activo, remover script
     if (wasEnabled) {
       const remainingCountdownsSnapshot = await db.collection("promonube_countdowns")
         .where("storeId", "==", storeId)
@@ -7361,7 +8082,7 @@ app.delete("/api/countdowns/:countdownId", async (req, res) => {
       }
     }
 
-    console.log("âœ… Countdown eliminado:", countdownId);
+    console.log("? Countdown eliminado:", countdownId);
 
     res.json({ success: true, message: "Countdown eliminado" });
   } catch (error) {
@@ -7407,7 +8128,7 @@ app.patch("/api/countdowns/:countdownId/toggle", async (req, res) => {
         // Primer countdown activo: instalar script
         await registerCountdownScript(store);
       } else if (!willHaveActiveCountdowns) {
-        // Ãšltimo countdown desactivado: remover script
+        // ?último countdown desactivado: remover script
         await unregisterCountdownScript(store);
       }
     }
@@ -7417,7 +8138,7 @@ app.patch("/api/countdowns/:countdownId/toggle", async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    console.log(`âœ… Countdown ${enabled ? 'activado' : 'desactivado'}:`, countdownId);
+    console.log(`? Countdown ${enabled ? 'activado' : 'desactivado'}:`, countdownId);
 
     res.json({ success: true, enabled });
   } catch (error) {
@@ -7463,18 +8184,25 @@ app.get("/api/countdown-widget.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=1800');
+  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
 
   try {
     if (!store) {
       return res.send("// Error: storeId requerido");
     }
 
-    // Buscar countdowns activos para esta tienda
-    const countdownsSnapshot = await db.collection("promonube_countdowns")
-      .where("storeId", "==", store)
-      .where("enabled", "==", true)
-      .get();
+    if (!(await checkStoreActive(store))) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send('// PromoNube: plan inactivo');
+    }
+
+    // Buscar countdowns activos para esta tienda (cach? en memoria)
+    const countdownsSnapshot = await getCachedData(`countdowns:${store}:enabled`, () =>
+      db.collection("promonube_countdowns")
+        .where("storeId", "==", store)
+        .where("enabled", "==", true)
+        .get()
+    );
 
     if (countdownsSnapshot.empty) {
       return res.send("// No hay countdowns activos");
@@ -7488,7 +8216,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       const startDate = data.startDate ? new Date(data.startDate) : null;
       const endDate = new Date(data.endDate);
 
-      // Filtrar segÃºn tipo y fechas
+      // Filtrar según tipo y fechas
       let shouldShow = false;
 
       if (data.type === 'active') {
@@ -7521,7 +8249,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
   const COUNTDOWN_CONFIG = ${JSON.stringify(countdown)};
   const API_URL = 'https://apipromonube-jlfopowzaq-uc.a.run.app';
 
-  // Prevenir mÃºltiples inicializaciones
+  // Prevenir múltiples inicializaciones
   if (window.promonubeCountdownLoaded) return;
   window.promonubeCountdownLoaded = true;
 
@@ -7558,7 +8286,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       animation: pnCountdownSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     \`;
 
-    // Agregar animaciÃ³n
+    // Agregar animación
     if (!document.getElementById('pn-countdown-styles')) {
       const style = document.createElement('style');
       style.id = 'pn-countdown-styles';
@@ -7583,7 +8311,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       document.head.appendChild(style);
     }
 
-    // Insertar la barra en la posiciÃ³n correcta
+    // Insertar la barra en la posición correcta
     if (COUNTDOWN_CONFIG.position === 'top' && COUNTDOWN_CONFIG.pushContent !== false) {
       document.body.insertBefore(bar, document.body.firstChild);
     } else {
@@ -7623,7 +8351,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
     bar.appendChild(message);
     bar.appendChild(timer);
 
-    // BotÃ³n CTA solo para tipo 'active'
+    // Botón CTA solo para tipo 'active'
     if (COUNTDOWN_CONFIG.type === 'active' && COUNTDOWN_CONFIG.buttonText && COUNTDOWN_CONFIG.buttonUrl) {
       const button = document.createElement('a');
       button.href = COUNTDOWN_CONFIG.buttonUrl;
@@ -7662,7 +8390,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       bar.appendChild(button);
     }
 
-    // BotÃ³n de cerrar opcional
+    // Botón de cerrar opcional
     if (COUNTDOWN_CONFIG.showCloseButton !== false) {
       const closeBtn = document.createElement('button');
       closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
@@ -7687,12 +8415,12 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       closeBtn.onclick = () => {
         bar.style.animation = 'pnCountdownSlideOut 0.3s ease-out forwards';
         setTimeout(() => bar.remove(), 300);
-        // Guardar en localStorage para no volver a mostrar en esta sesiÃ³n
+        // Guardar en localStorage para no volver a mostrar en esta sesión
         localStorage.setItem('pn_countdown_closed_' + COUNTDOWN_CONFIG.id, Date.now());
       };
       bar.appendChild(closeBtn);
 
-      // Agregar animaciÃ³n de salida
+      // Agregar animación de salida
       const style = document.getElementById('pn-countdown-styles');
       if (style && !style.textContent.includes('pnCountdownSlideOut')) {
         style.textContent += \`
@@ -7706,13 +8434,13 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       }
     }
 
-    // Verificar si fue cerrado previamente en esta sesiÃ³n
+    // Verificar si fue cerrado previamente en esta sesión
     const closedTime = localStorage.getItem('pn_countdown_closed_' + COUNTDOWN_CONFIG.id);
     if (closedTime && (Date.now() - closedTime < 3600000)) { // 1 hora
       return;
     }
 
-    // Registrar impresiÃ³n
+    // Registrar impresión
     trackCountdown('impression');
 
     // Iniciar countdown
@@ -7729,7 +8457,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
 
     if (distance < 0) {
       // Expirado
-      timerEl.innerHTML = 'âŒ› Expirado';
+      timerEl.innerHTML = '?? Expirado';
       const bar = document.getElementById('pn-countdown-bar');
       if (bar) {
         setTimeout(() => bar.remove(), 3000);
@@ -7763,7 +8491,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
     }).catch(err => console.error('Error tracking:', err));
   }
 
-  // Inicializar cuando el DOM estÃ© listo
+  // Inicializar cuando el DOM est? listo
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initCountdown);
   } else {
@@ -7785,7 +8513,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
 // ENDPOINTS: NEW PRODUCT BADGE (Badge "Nuevo")
 // ============================================
 
-// GET /api/new-badge-config/:storeId - Obtiene configuraciÃ³n del badge
+// GET /api/new-badge-config/:storeId - Obtiene configuración del badge
 app.get("/api/new-badge-config/:storeId", async (req, res) => {
   const { storeId } = req.params;
 
@@ -7793,7 +8521,7 @@ app.get("/api/new-badge-config/:storeId", async (req, res) => {
     const configDoc = await db.collection("promonube_new_badge_config").doc(storeId).get();
 
     if (!configDoc.exists) {
-      // Devolver configuraciÃ³n por defecto
+      // Devolver configuración por defecto
       return res.json({
         success: true,
         config: {
@@ -7822,11 +8550,11 @@ app.get("/api/new-badge-config/:storeId", async (req, res) => {
     });
   } catch (error) {
     console.error("Error obteniendo config badge:", error);
-    res.status(500).json({ success: false, message: "Error al obtener configuraciÃ³n" });
+    res.status(500).json({ success: false, message: "Error al obtener configuración" });
   }
 });
 
-// POST /api/new-badge-config/:storeId - Guarda o actualiza configuraciÃ³n del badge
+// POST /api/new-badge-config/:storeId - Guarda o actualiza configuración del badge
 app.post("/api/new-badge-config/:storeId", async (req, res) => {
   const { storeId } = req.params;
   const config = req.body;
@@ -7844,27 +8572,27 @@ app.post("/api/new-badge-config/:storeId", async (req, res) => {
 
     await db.collection("promonube_new_badge_config").doc(storeId).set(configData, { merge: true });
 
-    console.log("âœ… ConfiguraciÃ³n de badge guardada para store:", storeId);
+    console.log("? Configuración de badge guardada para store:", storeId);
 
-    res.json({ success: true, message: "ConfiguraciÃ³n guardada correctamente" });
+    res.json({ success: true, message: "Configuración guardada correctamente" });
   } catch (error) {
     console.error("Error guardando config badge:", error);
-    res.status(500).json({ success: false, message: "Error al guardar configuraciÃ³n" });
+    res.status(500).json({ success: false, message: "Error al guardar configuración" });
   }
 });
 
-// GET /api/product-dates/:storeId - Obtiene fechas de creaciÃ³n de productos
+// GET /api/product-dates/:storeId - Obtiene fechas de creación de productos
 app.get("/api/product-dates/:storeId", async (req, res) => {
   const { storeId } = req.params;
 
   try {
-    console.log(`ðŸ“… Obteniendo fechas de productos para store: ${storeId}`);
+    console.log(`?? Obteniendo fechas de productos para store: ${storeId}`);
     
     // Buscar el store en Firestore para obtener el accessToken
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
     
     if (!storeDoc.exists) {
-      console.warn(`âš ï¸ Tienda ${storeId} no encontrada en Firestore`);
+      console.warn(`?? Tienda ${storeId} no encontrada en Firestore`);
       return res.status(404).json({ success: false, message: "Tienda no encontrada" });
     }
 
@@ -7872,20 +8600,20 @@ app.get("/api/product-dates/:storeId", async (req, res) => {
     const accessToken = storeData.accessToken;
 
     if (!accessToken) {
-      console.warn(`âš ï¸ Tienda ${storeId} no tiene accessToken`);
+      console.warn(`?? Tienda ${storeId} no tiene accessToken`);
       return res.status(401).json({ success: false, message: "No hay token de acceso" });
     }
 
-    console.log(`ðŸ”‘ AccessToken encontrado para store ${storeId}`);
+    console.log(`?? AccessToken encontrado para store ${storeId}`);
 
-    // Obtener TODOS los productos usando paginaciÃ³n
+    // Obtener TODOS los productos usando paginación
     let allProducts = [];
     let page = 1;
     let hasMore = true;
     const perPage = 200;
 
     while (hasMore) {
-      console.log(`ðŸ“„ Obteniendo pÃ¡gina ${page}...`);
+      console.log(`?? Obteniendo página ${page}...`);
       
       const productsResponse = await fetch(
         `https://api.tiendanube.com/v1/${storeId}/products?per_page=${perPage}&page=${page}`,
@@ -7899,7 +8627,7 @@ app.get("/api/product-dates/:storeId", async (req, res) => {
 
       if (!productsResponse.ok) {
         const errorText = await productsResponse.text();
-        console.error(`âŒ Error de TiendaNube API: ${productsResponse.status}`, errorText);
+        console.error(`? Error de TiendaNube API: ${productsResponse.status}`, errorText);
         return res.status(productsResponse.status).json({ 
           success: false, 
           message: "Error al obtener productos de TiendaNube" 
@@ -7907,13 +8635,13 @@ app.get("/api/product-dates/:storeId", async (req, res) => {
       }
 
       const products = await productsResponse.json();
-      console.log(`âœ… PÃ¡gina ${page}: ${products.length} productos`);
+      console.log(`? Página ${page}: ${products.length} productos`);
       
       if (products.length > 0) {
         allProducts = allProducts.concat(products);
         page++;
         
-        // Si recibimos menos de perPage, es la Ãºltima pÃ¡gina
+        // Si recibimos menos de perPage, es la última página
         if (products.length < perPage) {
           hasMore = false;
         }
@@ -7922,7 +8650,7 @@ app.get("/api/product-dates/:storeId", async (req, res) => {
       }
     }
 
-    console.log(`âœ… Total productos obtenidos: ${allProducts.length}`);
+    console.log(`? Total productos obtenidos: ${allProducts.length}`);
 
     // Crear mapa de product_id => created_at
     const productDates = {};
@@ -7930,12 +8658,12 @@ app.get("/api/product-dates/:storeId", async (req, res) => {
       productDates[product.id] = product.created_at;
     });
 
-    console.log(`ðŸ“¦ Fechas procesadas: ${Object.keys(productDates).length} productos`);
+    console.log(`?? Fechas procesadas: ${Object.keys(productDates).length} productos`);
 
     res.json({ success: true, productDates });
 
   } catch (error) {
-    console.error("âŒ Error obteniendo fechas de productos:", error.message);
+    console.error("? Error obteniendo fechas de productos:", error.message);
     res.status(500).json({ 
       success: false, 
       message: "Error al obtener productos",
@@ -7949,18 +8677,23 @@ app.get("/api/new-badge-script.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=1800');
+  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
 
   try {
     if (!store) {
       return res.send("// Error: storeId requerido");
     }
 
-    // Obtener configuraciÃ³n del badge para esta tienda
-    const configDoc = await db.collection("promonube_new_badge_config").doc(store).get();
+    if (!(await checkStoreActive(store))) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send('// PromoNube: plan inactivo');
+    }
+
+    // Obtener configuración del badge para esta tienda (cach? en memoria)
+    const configDoc = await getCachedDoc("promonube_new_badge_config", store);
 
     if (!configDoc.exists || !configDoc.data().enabled) {
-      return res.send("// Badge de productos nuevos no estÃ¡ activo");
+      return res.send("// Badge de productos nuevos no est? activo");
     }
 
     const config = configDoc.data();
@@ -7972,13 +8705,13 @@ app.get("/api/new-badge-script.js", async (req, res) => {
   const BADGE_CONFIG = ${JSON.stringify(config)};
   const STORE_ID = "${store}";
 
-  // Prevenir mÃºltiples inicializaciones
+  // Prevenir múltiples inicializaciones
   if (window.promonubeNewBadgeLoaded) return;
   window.promonubeNewBadgeLoaded = true;
 
-  console.log('ðŸ·ï¸ PromoNube New Badge Script cargado');
+  console.log('??? PromoNube New Badge Script cargado');
 
-  // FunciÃ³n para calcular si un producto es "nuevo"
+  // Función para calcular si un producto es "nuevo"
   function isProductNew(createdAtString) {
     if (!createdAtString) return false;
     
@@ -7989,7 +8722,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     return daysDiff <= BADGE_CONFIG.daysToShowAsNew;
   }
 
-  // FunciÃ³n para crear el badge
+  // Función para crear el badge
   function createBadge() {
     const badge = document.createElement('div');
     badge.className = 'pn-new-product-badge';
@@ -8043,7 +8776,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
       \${BADGE_CONFIG.customCSS || ''}
     \`;
 
-    // AÃ±adir pseudo-elemento para ribbon si aplica
+    // A?adir pseudo-elemento para ribbon si aplica
     if (BADGE_CONFIG.badgeShape === 'ribbon') {
       const style = document.getElementById('pn-badge-ribbon-style') || document.createElement('style');
       if (!document.getElementById('pn-badge-ribbon-style')) {
@@ -8069,7 +8802,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     return badge;
   }
 
-  // FunciÃ³n para agregar badge a un producto
+  // Función para agregar badge a un producto
   function addBadgeToProduct(productElement, createdAt) {
     if (!isProductNew(createdAt)) return;
     
@@ -8081,7 +8814,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     
     if (!imageContainer) return;
 
-    // Asegurar que el contenedor tenga posiciÃ³n relativa
+    // Asegurar que el contenedor tenga posición relativa
     const currentPosition = window.getComputedStyle(imageContainer).position;
     if (currentPosition === 'static') {
       imageContainer.style.position = 'relative';
@@ -8094,7 +8827,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
   // Variable global para almacenar fechas de productos
   let productDatesMap = {};
 
-  // FunciÃ³n para obtener fechas de productos desde la API
+  // Función para obtener fechas de productos desde la API
   async function loadProductDates() {
     try {
       const response = await fetch(\`https://apipromonube-jlfopowzaq-uc.a.run.app/api/product-dates/\${STORE_ID}\`);
@@ -8102,7 +8835,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
       
       if (data.success && data.productDates) {
         productDatesMap = data.productDates;
-        console.log(\`ðŸ·ï¸ PromoNube: \${Object.keys(productDatesMap).length} fechas de productos cargadas\`);
+        console.log(\`??? PromoNube: \${Object.keys(productDatesMap).length} fechas de productos cargadas\`);
         return true;
       }
       return false;
@@ -8112,7 +8845,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     }
   }
 
-  // FunciÃ³n para procesar productos en TiendaNube
+  // Función para procesar productos en TiendaNube
   function processProducts() {
     // Selectores comunes para productos en TiendaNube
     const productSelectors = [
@@ -8135,7 +8868,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
                        product.getAttribute('data-id') ||
                        product.querySelector('[data-product-id]')?.getAttribute('data-product-id');
         
-        // Si no estÃ¡ en data attributes, buscar en el link del producto
+        // Si no est? en data attributes, buscar en el link del producto
         if (!productId) {
           const productLink = product.querySelector('a[href*="/products/"]');
           if (productLink) {
@@ -8161,9 +8894,9 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     });
 
     if (productsFound === 0) {
-      console.log('âš ï¸ PromoNube: No se encontraron IDs de productos. Verifica los selectores.');
+      console.log('?? PromoNube: No se encontraron IDs de productos. Verifica los selectores.');
     } else {
-      console.log(\`âœ… PromoNube: \${productsFound} badges de productos nuevos agregados\`);
+      console.log(\`? PromoNube: \${productsFound} badges de productos nuevos agregados\`);
     }
   }
 
@@ -8188,7 +8921,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     document.head.appendChild(style);
   }
 
-  // Observar cambios en el DOM para productos cargados dinÃ¡micamente
+  // Observar cambios en el DOM para productos cargados dinámicamente
   function observeDOM() {
     const observer = new MutationObserver((mutations) => {
       let shouldProcess = false;
@@ -8208,7 +8941,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     });
   }
 
-  // Inicializar cuando el DOM estÃ© listo
+  // Inicializar cuando el DOM est? listo
   async function init() {
     injectStyles();
     
@@ -8219,10 +8952,10 @@ app.get("/api/new-badge-script.js", async (req, res) => {
       processProducts();
       observeDOM();
 
-      // Re-procesar despuÃ©s de 1 segundo por si hay lazy loading
+      // Re-procesar después de 1 segundo por si hay lazy loading
       setTimeout(processProducts, 1000);
     } else {
-      console.warn('âš ï¸ PromoNube: No se pudieron cargar las fechas de productos');
+      console.warn('?? PromoNube: No se pudieron cargar las fechas de productos');
     }
   }
 
@@ -8273,7 +9006,7 @@ app.get("/api/badges", async (req, res) => {
     badges.sort((a, b) => {
       const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
       const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-      return dateB - dateA; // MÃ¡s recientes primero
+      return dateB - dateA; // Más recientes primero
     });
 
     res.json(badges);
@@ -8283,7 +9016,7 @@ app.get("/api/badges", async (req, res) => {
   }
 });
 
-// GET /api/badges/:badgeId - Obtener un badge especÃ­fico
+// GET /api/badges/:badgeId - Obtener un badge específico
 app.get("/api/badges/:badgeId", async (req, res) => {
   const { badgeId } = req.params;
   const { storeId } = req.query;
@@ -8352,7 +9085,7 @@ app.post("/api/badges", async (req, res) => {
         animation: 'pulse',
         borderRadius: 4,
         showIcon: false,
-        icon: 'â­'
+        icon: '?'
       },
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -8513,19 +9246,25 @@ app.get("/api/badges-script.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=1800');
+  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
 
   try {
     if (!store) {
       return res.send("// Error: storeId requerido");
     }
 
-    // Obtener todos los badges activos de esta tienda
-    const badgesSnapshot = await db
-      .collection("promonube_badges")
-      .where("storeId", "==", store)
-      .where("isActive", "==", true)
-      .get();
+    if (!(await checkStoreActive(store))) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send('// PromoNube: plan inactivo');
+    }
+
+    // Obtener todos los badges activos de esta tienda (cach? en memoria)
+    const badgesSnapshot = await getCachedData(`badges:${store}:active`, () =>
+      db.collection("promonube_badges")
+        .where("storeId", "==", store)
+        .where("isActive", "==", true)
+        .get()
+    );
 
     if (badgesSnapshot.empty) {
       return res.send("// No hay badges activos");
@@ -8546,11 +9285,11 @@ app.get("/api/badges-script.js", async (req, res) => {
   const BADGES_CONFIG = ${JSON.stringify(badges)};
   const STORE_ID = "${store}";
 
-  // Prevenir mÃºltiples inicializaciones
+  // Prevenir múltiples inicializaciones
   if (window.promonubeBadgesLoaded) return;
   window.promonubeBadgesLoaded = true;
 
-  console.log('ðŸ·ï¸ PromoNube Badges Script cargado - ${badges.length} badges activos');
+  console.log('??? PromoNube Badges Script cargado - ${badges.length} badges activos');
 
   let productDataMap = {};
 
@@ -8644,7 +9383,7 @@ app.get("/api/badges-script.js", async (req, res) => {
       const response = await fetch(\`https://apipromonube-jlfopowzaq-uc.a.run.app/api/products/metadata?storeId=\${STORE_ID}\`);
       const data = await response.json();
       productDataMap = data.products || {};
-      console.log('ðŸ“¦ Datos de productos cargados:', Object.keys(productDataMap).length);
+      console.log('?? Datos de productos cargados:', Object.keys(productDataMap).length);
       return true;
     } catch (error) {
       console.error('Error cargando datos de productos:', error);
@@ -8771,7 +9510,7 @@ app.get("/api/badges-script.js", async (req, res) => {
     // Evitar duplicados
     if (productElement.querySelector('.pn-badge-container')) return;
 
-    // OptimizaciÃ³n: Si hay badges de tipo "all_products", agregarlos directamente sin consultar metadata
+    // Optimización: Si hay badges de tipo "all_products", agregarlos directamente sin consultar metadata
     const allProductsBadges = BADGES_CONFIG.filter(badge => badge.ruleType === 'all_products');
     const otherBadges = BADGES_CONFIG.filter(badge => badge.ruleType !== 'all_products');
 
@@ -8794,7 +9533,7 @@ app.get("/api/badges-script.js", async (req, res) => {
     container.className = 'pn-badge-container';
 
     // Agregar solo el primer badge que coincida
-    // (para evitar superposiciÃ³n, se puede mejorar con lÃ³gica de mÃºltiples badges)
+    // (para evitar superposición, se puede mejorar con lógica de múltiples badges)
     const badgeEl = createBadgeElement(matchingBadges[0]);
     container.appendChild(badgeEl);
 
@@ -8852,7 +9591,7 @@ app.get("/api/badges-script.js", async (req, res) => {
       });
     });
 
-    console.log(\`âœ… Badges procesados en \${productsFound} productos\`);
+    console.log(\`? Badges procesados en \${productsFound} productos\`);
   }
 
   // Observar cambios en el DOM
@@ -8871,18 +9610,18 @@ app.get("/api/badges-script.js", async (req, res) => {
   async function init() {
     injectStyles();
     
-    // OptimizaciÃ³n: Solo cargar metadata si hay badges que la necesitan
+    // Optimización: Solo cargar metadata si hay badges que la necesitan
     const needsMetadata = BADGES_CONFIG.some(badge => badge.ruleType !== 'all_products');
     
     if (needsMetadata) {
-      console.log('ðŸ“Š Cargando metadata de productos...');
+      console.log('?? Cargando metadata de productos...');
       const dataLoaded = await loadProductData();
       
       if (!dataLoaded) {
-        console.warn('âš ï¸ PromoNube: No se pudieron cargar los datos de productos');
+        console.warn('?? PromoNube: No se pudieron cargar los datos de productos');
       }
     } else {
-      console.log('âœ… Modo rÃ¡pido: Todos los badges son "all_products", no se necesita metadata');
+      console.log('? Modo rápido: Todos los badges son "all_products", no se necesita metadata');
     }
 
     processProducts();
@@ -8908,7 +9647,7 @@ app.get("/api/badges-script.js", async (req, res) => {
   }
 });
 
-// GET /api/products/metadata - Obtener metadata de productos para evaluaciÃ³n de badges
+// GET /api/products/metadata - Obtener metadata de productos para evaluación de badges
 app.get("/api/products/metadata", async (req, res) => {
   const { storeId } = req.query;
 
@@ -8931,7 +9670,7 @@ app.get("/api/products/metadata", async (req, res) => {
       return res.status(401).json({ error: "No hay token de acceso" });
     }
 
-    // Obtener productos de TiendaNube con paginaciÃ³n
+    // Obtener productos de TiendaNube con paginación
     let allProducts = [];
     let page = 1;
     let hasMore = true;
@@ -8950,7 +9689,7 @@ app.get("/api/products/metadata", async (req, res) => {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`âŒ Error TiendaNube API (metadata) status ${response.status}:`, errorText);
+        console.error(`? Error TiendaNube API (metadata) status ${response.status}:`, errorText);
         // Si falla, devolver lo que tengamos hasta ahora
         break;
       }
@@ -8989,7 +9728,7 @@ app.get("/api/products/metadata", async (req, res) => {
       };
     });
 
-    console.log(`âœ… Metadata de productos: ${Object.keys(productsMap).length} productos para store ${storeId}`);
+    console.log(`? Metadata de productos: ${Object.keys(productsMap).length} productos para store ${storeId}`);
 
     res.json({
       products: productsMap,
@@ -9054,7 +9793,7 @@ app.get("/api/tiendanube/products/search", async (req, res) => {
   }
 });
 
-// GET /api/tiendanube/categories - Obtener categorÃ­as
+// GET /api/tiendanube/categories - Obtener categorías
 app.get("/api/tiendanube/categories", async (req, res) => {
   const { storeId } = req.query;
 
@@ -9089,14 +9828,14 @@ app.get("/api/tiendanube/categories", async (req, res) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Error TiendaNube categories:", response.status, errorText);
-      return res.status(response.status).json({ error: "Error obteniendo categorÃ­as" });
+      return res.status(response.status).json({ error: "Error obteniendo categorías" });
     }
 
     const data = await response.json();
     res.json(data);
 
   } catch (error) {
-    console.error("Error obteniendo categorÃ­as:", error);
+    console.error("Error obteniendo categorías:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -9105,7 +9844,7 @@ app.get("/api/tiendanube/categories", async (req, res) => {
 // STYLE CUSTOMIZATION ENDPOINTS
 // ============================================
 
-// GET /api/tiendanube/menus - Obtener menÃºs de TiendaNube con sus items
+// GET /api/tiendanube/menus - Obtener menús de TiendaNube con sus items
 app.get("/api/tiendanube/menus", async (req, res) => {
   const { storeId } = req.query;
 
@@ -9132,7 +9871,7 @@ app.get("/api/tiendanube/menus", async (req, res) => {
 
     console.log("Llamando a TiendaNube API para store:", storeId);
 
-    // Llamar a la API de TiendaNube para obtener los menÃºs
+    // Llamar a la API de TiendaNube para obtener los menús
     const menusResponse = await axios.get(
       `https://api.tiendanube.com/v1/${storeId}/navigation_menus`,
       {
@@ -9143,9 +9882,9 @@ app.get("/api/tiendanube/menus", async (req, res) => {
       }
     );
 
-    console.log("MenÃºs obtenidos:", menusResponse.data.length);
+    console.log("Menús obtenidos:", menusResponse.data.length);
 
-    // Para cada menÃº, obtener sus items
+    // Para cada men?, obtener sus items
     const menusWithItems = await Promise.all(
       menusResponse.data.map(async (menu) => {
         try {
@@ -9159,7 +9898,7 @@ app.get("/api/tiendanube/menus", async (req, res) => {
             }
           );
           
-          console.log(`MenÃº ${menu.name}: ${itemsResponse.data.length} items`);
+          console.log(`Men? ${menu.name}: ${itemsResponse.data.length} items`);
           
           return {
             id: menu.id,
@@ -9172,7 +9911,7 @@ app.get("/api/tiendanube/menus", async (req, res) => {
             }))
           };
         } catch (error) {
-          console.error(`Error obteniendo items del menÃº ${menu.id}:`, error.message);
+          console.error(`Error obteniendo items del men? ${menu.id}:`, error.message);
           return {
             id: menu.id,
             name: menu.name,
@@ -9183,25 +9922,25 @@ app.get("/api/tiendanube/menus", async (req, res) => {
       })
     );
 
-    console.log("Enviando respuesta con", menusWithItems.length, "menÃºs");
+    console.log("Enviando respuesta con", menusWithItems.length, "menús");
 
     res.json({
       success: true,
       menus: menusWithItems
     });
   } catch (error) {
-    console.error("Error obteniendo menÃºs de TiendaNube:", error.message);
+    console.error("Error obteniendo menús de TiendaNube:", error.message);
     console.error("Error completo:", error.response?.data || error);
     res.status(500).json({ 
       success: false, 
-      message: "Error al obtener menÃºs",
+      message: "Error al obtener menús",
       details: error.message,
       apiError: error.response?.data || null
     });
   }
 });
 
-// GET /api/style-config - Obtener configuraciÃ³n de personalizaciÃ³n
+// GET /api/style-config - Obtener configuración de personalización
 app.get("/api/style-config", async (req, res) => {
   const { storeId } = req.query;
 
@@ -9213,28 +9952,25 @@ app.get("/api/style-config", async (req, res) => {
     const styleDoc = await db.collection("promonube_style_config").doc(storeId).get();
     
     if (!styleDoc.exists) {
-      // Retornar configuraciÃ³n por defecto
+      // Retornar configuración por defecto completa
       return res.json({
         success: true,
         config: {
-          whatsapp: {
-            enabled: false,
-            backgroundColor: '#25D366',
-            hoverColor: '#128C7E'
-          },
-          menu: {
-            enabled: false,
-            items: []
-          },
-          banners: {
-            enabled: false,
-            slides: []
-          },
-          lightToggle: {
-            enabled: false,
-            categoryUrls: [],
-            label: 'Light:'
-          }
+          whatsapp: { enabled: false, backgroundColor: '#25D366', hoverColor: '#128C7E' },
+          menu: { enabled: false, items: [] },
+          banners: { enabled: false, slides: [] },
+          lightToggle: { enabled: false, categoryUrls: [], label: 'Ver:', position: 'top-right', style: 'variant', view1Label: 'Apagada', view2Label: 'Prendida' },
+          themeSwitch: { enabled: false, urls: [], backgroundColor: '#000000', textColor: '#ffffff', accentColor: '#f59e0b', invertColors: false },
+          topHeader: { enabled: false, backgroundColor: '#f5f5f5', textColor: '#333333', fontFamily: 'system-ui', alignment: 'center', items: [] },
+          announcementBar: { enabled: false, backgroundColor: '#8B0000', textColor: '#ffffff', fontSize: 13, fontWeight: 500, fontFamily: 'system-ui', padding: 11, visibility: 'both', messages: [], borderEnabled: false, borderTop: false, borderBottom: true, borderLeft: false, borderRight: false, borderStyle: 'solid', borderWidth: 1, borderColor: '#ffffff' },
+          topAnnouncementBar: { enabled: false, backgroundColor: '#1a1a1a', textColor: '#ffffff', fontSize: 13, fontWeight: 500, fontFamily: 'system-ui', padding: 11, visibility: 'both', messages: [], borderEnabled: false, borderTop: false, borderBottom: true, borderLeft: false, borderRight: false, borderStyle: 'solid', borderWidth: 1, borderColor: '#ffffff' },
+          enhancedSearch: { enabled: false, popularSearches: [], primaryColor: '#000000', textColor: '#1a1a1a', backgroundColor: '#ffffff', maxResults: 8, fontFamily: 'inherit', fontSize: '15', fontWeight: '500', headerText: 'Búsquedas Populares', showHeader: true, showIcons: true, defaultEmoji: '??', borderRadius: '12', animationType: 'fade', hoverBgColor: '' },
+          searchBar: { enabled: false, placeholder: '¿Qué estás buscando?', inputPlaceholder: 'Buscar productos...', buttonText: 'Buscar', backgroundColor: '#000000', backgroundOpacity: 0.85, buttonColor: '#000000', titleColor: '#ffffff', titleSize: 42, titlePosition: 'center', showLogo: false, logoUrl: '', logoSize: 100, suggestions: [], closeButtonColor: '#000000' },
+          shopTheLook: { enabled: false, title: 'Shop the Look', subtitle: '', hotspotColor: '#ffffff', hotspotTextColor: '#111111', hotspotBorderColor: 'rgba(255,255,255,0.35)', hotspotSize: 32, hotspotShape: 'circle', hotspotAnimation: 'pulse', hotspotLabelMode: 'auto', hotspotFontSize: 18, hotspotFontWeight: '700', hoverCardEnabled: true, hoverCardBg: '#ffffff', hoverCardText: '#111111', hoverCardButtonBg: '#111111', hoverCardButtonText: '#ffffff', hoverCardButtonLabel: 'Ver producto', injectSelector: '', injectPosition: 'after', looks: [] },
+          scrollReveal: { enabled: false, selectors: '.product-item, .js-item-product, .home-section, .banner, .featured-products .item', animation: 'fade-up', duration: 700, distance: 40, stagger: 80, once: true, threshold: 0.12 },
+          customCursor: { enabled: false, style: 'dot-ring', dotColor: '#111111', ringColor: '#111111', dotSize: 8, ringSize: 36, mixBlendMode: 'difference', hideOnMobile: true },
+          tabTitle: { enabled: false, messages: ['👋 ¡Volvé!', '🛍️ Te estamos esperando', '💝 Tus productos te extrañan'], interval: 2500, restoreOnFocus: true },
+          backToTop: { enabled: false, icon: '↑', position: 'bottom-right', offset: 30, size: 48, backgroundColor: '#111111', textColor: '#ffffff', borderRadius: 50, showAfter: 400, animation: 'fade', pulse: false }
         }
       });
     }
@@ -9250,16 +9986,97 @@ app.get("/api/style-config", async (req, res) => {
 });
 
 // ============================================
-// HELPER: Asegurar que el script de Style estÃ© instalado
+// HELPER: Asegurar que el script de Style est? instalado
 // ============================================
-async function ensureStyleScriptInstalled(storeId) {
+// Helper: Eliminar TODOS los scripts de PromoNube de una tienda (al desactivar)
+async function removeAllStoreScripts(storeId) {
   try {
-    console.log(`ðŸ” Verificando script de Style para store ${storeId}...`);
+    console.log(`??? Eliminando todos los scripts de PromoNube del store ${storeId}...`);
 
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
     if (!storeDoc.exists) {
-      console.log(`âš ï¸  Store ${storeId} no encontrado en Firestore`);
-      return;
+      console.log(`?? Store ${storeId} no encontrado, no hay scripts que eliminar`);
+      return { success: true, removed: 0 };
+    }
+
+    const accessToken = storeDoc.data().accessToken;
+    if (!accessToken) {
+      console.log(`?? No hay accessToken para store ${storeId}`);
+      return { success: false, error: 'No access token' };
+    }
+
+    // Listar todos los scripts instalados en la tienda
+    const scriptsResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
+      headers: {
+        'Authentication': `bearer ${accessToken}`,
+        'User-Agent': 'PromoNube (info@techdi.com.ar)'
+      }
+    });
+
+    if (!scriptsResponse.ok) {
+      console.log(`?? Error listando scripts: ${scriptsResponse.status}`);
+      return { success: false, error: `HTTP ${scriptsResponse.status}` };
+    }
+
+    const scriptsData = await scriptsResponse.json();
+    const scripts = Array.isArray(scriptsData) ? scriptsData : (scriptsData.result || []);
+
+    // Filtrar solo los scripts de PromoNube
+    const promonubeScripts = scripts.filter(s =>
+      s.src && (
+        s.src.includes('apipromonube') ||
+        s.src.includes('promonube') ||
+        s.src.includes('style-widget') ||
+        s.src.includes('spin-wheel-widget') ||
+        s.src.includes('countdown-widget') ||
+        s.src.includes('announcement-bar') ||
+        s.src.includes('top-header') ||
+        s.src.includes('badges-script') ||
+        s.src.includes('new-badge-script') ||
+        s.src.includes('enhanced-search-widget') ||
+        s.src.includes('popup-widget')
+      )
+    );
+
+    if (promonubeScripts.length === 0) {
+      console.log(`?? No hay scripts de PromoNube instalados en store ${storeId}`);
+      return { success: true, removed: 0 };
+    }
+
+    // Eliminar cada script
+    let removed = 0;
+    for (const script of promonubeScripts) {
+      const delResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts/${script.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authentication': `bearer ${accessToken}`,
+          'User-Agent': 'PromoNube (info@techdi.com.ar)'
+        }
+      });
+      if (delResponse.ok || delResponse.status === 404) {
+        removed++;
+        console.log(`? Script eliminado: ${script.id} (${script.src})`);
+      } else {
+        console.warn(`?? No se pudo eliminar script ${script.id}: ${delResponse.status}`);
+      }
+    }
+
+    console.log(`? ${removed}/${promonubeScripts.length} scripts de PromoNube eliminados del store ${storeId}`);
+    return { success: true, removed };
+  } catch (error) {
+    console.error(`? Error en removeAllStoreScripts:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+async function ensureStyleScriptInstalled(storeId) {
+  try {
+    console.log(`?? Verificando script de Style para store ${storeId}...`);
+
+    const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
+    if (!storeDoc.exists) {
+      console.log(`??  Store ${storeId} no encontrado en Firestore`);
+      return { scriptInstalled: false };
     }
 
     const accessToken = storeDoc.data().accessToken;
@@ -9274,8 +10091,8 @@ async function ensureStyleScriptInstalled(storeId) {
     });
 
     if (!scriptsResponse.ok) {
-      console.log(`âš ï¸  Error consultando scripts: ${scriptsResponse.status}`);
-      return;
+      console.log(`??  Error consultando scripts: ${scriptsResponse.status}`);
+      return { scriptInstalled: false };
     }
 
     const scriptsData = await scriptsResponse.json();
@@ -9287,12 +10104,12 @@ async function ensureStyleScriptInstalled(storeId) {
     );
 
     if (existingScript) {
-      console.log(`âœ… Script de Style ya instalado (ID: ${existingScript.id || 'N/A'})`);
-      return;
+      console.log(`? Script de Style ya instalado (ID: ${existingScript.id || 'N/A'})`);
+      return { scriptInstalled: true };
     }
 
     // Instalar el script
-    console.log(`ðŸ“¦ Instalando script de Style...`);
+    console.log(`?? Instalando script de Style...`);
     const installResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
       method: 'POST',
       headers: {
@@ -9309,18 +10126,20 @@ async function ensureStyleScriptInstalled(storeId) {
 
     if (!installResponse.ok) {
       const errorText = await installResponse.text();
-      console.log(`âš ï¸  No se pudo instalar script automÃ¡ticamente: ${errorText}`);
-      return;
+      console.log(`??  No se pudo instalar script automáticamente: ${errorText}`);
+      return { scriptInstalled: false };
     }
 
     const installedScript = await installResponse.json();
-    console.log(`âœ… Script de Style instalado exitosamente (ID: ${installedScript.id || 'N/A'})`);
+    console.log(`? Script de Style instalado exitosamente (ID: ${installedScript.id || 'N/A'})`);
+    return { scriptInstalled: true };
   } catch (error) {
-    console.error(`âŒ Error en ensureStyleScriptInstalled:`, error.message);
+    console.error(`? Error en ensureStyleScriptInstalled:`, error.message);
+    return { scriptInstalled: false };
   }
 }
 
-// POST /api/style-config - Guardar configuraciÃ³n de personalizaciÃ³n
+// POST /api/style-config - Guardar configuración de personalización
 app.post("/api/style-config", async (req, res) => {
   const { storeId, config } = req.body;
 
@@ -9329,22 +10148,30 @@ app.post("/api/style-config", async (req, res) => {
   }
 
   try {
-    // Guardar configuraciÃ³n
+    // Guardar configuración
     await db.collection("promonube_style_config").doc(storeId).set({
       ...config,
       updatedAt: new Date().toISOString()
     }, { merge: true });
 
-    console.log("âœ… Style config guardada para store:", storeId);
+    console.log("? Style config guardada para store:", storeId);
 
-    // Asegurar que el script estÃ© instalado (en background, no bloquea la respuesta)
-    ensureStyleScriptInstalled(storeId).catch(err => {
-      console.error("âš ï¸  Error asegurando script instalado:", err.message);
-    });
+    // Invalidar cach? en memoria para que el próximo request de widget use datos frescos
+    invalidateConfigCache(storeId);
+
+    // Verificar e instalar el script si es necesario
+    let scriptInstalled = false;
+    try {
+      const sr = await ensureStyleScriptInstalled(storeId);
+      scriptInstalled = sr?.scriptInstalled !== false;
+    } catch (err) {
+      console.error("??  Error asegurando script instalado:", err.message);
+    }
 
     res.json({
       success: true,
-      message: "ConfiguraciÃ³n guardada correctamente"
+      message: "Configuración guardada correctamente",
+      scriptInstalled
     });
   } catch (error) {
     console.error("Error guardando style config:", error);
@@ -9356,7 +10183,7 @@ app.post("/api/style-config", async (req, res) => {
 // ENHANCED SEARCH ENDPOINTS
 // ============================================
 
-// GET /api/enhanced-search-config/:storeId - Obtener configuraciÃ³n del buscador mejorado
+// GET /api/enhanced-search-config/:storeId - Obtener configuración del buscador mejorado
 app.get("/api/enhanced-search-config/:storeId", async (req, res) => {
   const { storeId } = req.params;
 
@@ -9369,7 +10196,7 @@ app.get("/api/enhanced-search-config/:storeId", async (req, res) => {
     const styleDoc = await db.collection("promonube_style_config").doc(storeId).get();
     
     if (!styleDoc.exists || !styleDoc.data().enhancedSearch) {
-      // ConfiguraciÃ³n por defecto
+      // Configuración por defecto
       return res.json({
         success: true,
         config: {
@@ -9377,12 +10204,22 @@ app.get("/api/enhanced-search-config/:storeId", async (req, res) => {
           popularSearches: [
             { text: 'sillas', link: '' },
             { text: 'mesas', link: '' },
-            { text: 'decoraciÃ³n', link: '' }
+            { text: 'decoración', link: '' }
           ],
           primaryColor: '#000000',
           textColor: '#1a1a1a',
           backgroundColor: '#ffffff',
-          maxResults: 8
+          maxResults: 8,
+          fontFamily: 'inherit',
+          fontSize: '15',
+          fontWeight: '500',
+          headerText: 'Búsquedas Populares',
+          showHeader: true,
+          showIcons: true,
+          defaultEmoji: '??',
+          borderRadius: '12',
+          animationType: 'fade',
+          hoverBgColor: ''
         }
       });
     }
@@ -9397,16 +10234,16 @@ app.get("/api/enhanced-search-config/:storeId", async (req, res) => {
   }
 });
 
-// GET /api/enhanced-search-script.js - Servir el script Enhanced Search dinÃ¡micamente (sin cache)
+// GET /api/enhanced-search-script.js - Servir el script Enhanced Search dinámicamente (sin cache)
 app.get("/api/enhanced-search-script.js", (req, res) => {
-  const scriptContent = `// ðŸ” PromoNube Enhanced Search - Script de Buscador Mejorado
-// Version: 1.2.0 - Servido dinÃ¡micamente
-// Ãšltima actualizaciÃ³n: Enero 13, 2026
+  const scriptContent = `// ?? PromoNube Enhanced Search - Script de Buscador Mejorado
+// Version: 1.2.0 - Servido dinámicamente
+// ?última actualizaci?n: Enero 13, 2026
 
 (function() {
   'use strict';
   
-  console.log('ðŸ” PromoNube Enhanced Search cargando... v1.2');
+  console.log('?? PromoNube Enhanced Search cargando... v1.2');
   
   const API_URL = 'https://apipromonube-jlfopowzaq-uc.a.run.app';
   
@@ -9431,14 +10268,14 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
   }
   
   if (!STORE_ID) {
-    console.error('âŒ PromoNube Enhanced Search: No se pudo detectar el storeId');
+    console.error('? PromoNube Enhanced Search: No se pudo detectar el storeId');
     return;
   }
   
-  console.log('âœ… PromoNube Enhanced Search: Store ID detectado:', STORE_ID);
+  console.log('? PromoNube Enhanced Search: Store ID detectado:', STORE_ID);
   
   if (window.promonubeEnhancedSearchLoaded) {
-    console.log('âš ï¸ PromoNube Enhanced Search: Ya estÃ¡ cargado');
+    console.log('?? PromoNube Enhanced Search: Ya est? cargado');
     return;
   }
   window.promonubeEnhancedSearchLoaded = true;
@@ -9447,22 +10284,22 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
     .then(response => response.json())
     .then(data => {
       if (!data.success || !data.config) {
-        console.log('âš ï¸ PromoNube Enhanced Search: No hay configuraciÃ³n');
+        console.log('?? PromoNube Enhanced Search: No hay configuración');
         return;
       }
       
       const CONFIG = data.config;
       
       if (!CONFIG.enabled) {
-        console.log('â„¹ï¸ PromoNube Enhanced Search: Desactivado en configuraciÃ³n');
+        console.log('?? PromoNube Enhanced Search: Desactivado en configuración');
         return;
       }
       
-      console.log('âœ… PromoNube Enhanced Search: ConfiguraciÃ³n cargada', CONFIG);
+      console.log('? PromoNube Enhanced Search: Configuración cargada', CONFIG);
       initEnhancedSearch(CONFIG);
     })
     .catch(error => {
-      console.error('âŒ PromoNube Enhanced Search: Error cargando configuraciÃ³n', error);
+      console.error('? PromoNube Enhanced Search: Error cargando configuración', error);
     });
   
   function findSearchInput() {
@@ -9481,7 +10318,7 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
     for (const sel of selectors) {
       const input = document.querySelector(sel);
       if (input) {
-        console.log('âœ… Input de bÃºsqueda encontrado:', sel);
+        console.log('? Input de búsqueda encontrado:', sel);
         return input;
       }
     }
@@ -9524,7 +10361,7 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
         border-bottom: 2px solid \${primaryColor}20;
         background: linear-gradient(135deg, \${primaryColor}05 0%, \${primaryColor}10 100%);
       \`;
-      header.innerHTML = 'ðŸ”¥ <span style="margin-left: 6px;">BÃºsquedas Populares</span>';
+      header.innerHTML = '?? <span style="margin-left: 6px;">Búsquedas Populares</span>';
       dropdown.appendChild(header);
       
       CONFIG.popularSearches.forEach(function(search) {
@@ -9560,7 +10397,7 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
           flex-shrink: 0;
           transition: all 0.25s;
         \`;
-        iconWrapper.innerHTML = '<span style="font-size: 18px;">ðŸ”</span>';
+        iconWrapper.innerHTML = '<span style="font-size: 18px;">??</span>';
         item.appendChild(iconWrapper);
         
         const textWrapper = document.createElement('div');
@@ -9572,7 +10409,7 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
         textWrapper.appendChild(text);
         
         const arrow = document.createElement('span');
-        arrow.innerHTML = 'â†’';
+        arrow.innerHTML = '?';
         arrow.style.cssText = \`
           font-size: 20px;
           color: \${primaryColor};
@@ -9628,12 +10465,12 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
     const searchInput = findSearchInput();
     
     if (!searchInput) {
-      console.log('âš ï¸ PromoNube Enhanced Search: Input de bÃºsqueda no encontrado');
+      console.log('?? PromoNube Enhanced Search: Input de búsqueda no encontrado');
       setTimeout(() => initEnhancedSearch(CONFIG), 1000);
       return;
     }
     
-    console.log('âœ… PromoNube Enhanced Search: Inicializando...');
+    console.log('? PromoNube Enhanced Search: Inicializando...');
     
     const container = searchInput.closest('form, .search-form, .search-container, .header-search') || searchInput.parentElement;
     const currentPosition = window.getComputedStyle(container).position;
@@ -9681,16 +10518,16 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
       searchInput.style.boxShadow = 'none';
     });
     
-    console.log('âœ… PromoNube Enhanced Search: Inicializado correctamente');
+    console.log('? PromoNube Enhanced Search: Inicializado correctamente');
   }
 })();`;
 
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=1800');
+  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
   res.send(scriptContent);
 });
 
-// POST /api/enhanced-search-config/:storeId - Guardar configuraciÃ³n del buscador mejorado
+// POST /api/enhanced-search-config/:storeId - Guardar configuración del buscador mejorado
 app.post("/api/enhanced-search-config/:storeId", async (req, res) => {
   const { storeId } = req.params;
   const config = req.body;
@@ -9700,17 +10537,16 @@ app.post("/api/enhanced-search-config/:storeId", async (req, res) => {
   }
 
   try {
-    await db.collection("promonube_enhanced_search").doc(storeId).set({
-      ...config,
-      storeId,
-      updatedAt: FieldValue.serverTimestamp()
+    // Escribe en promonube_style_config (misma colección que lee el widget y el GET)
+    await db.collection("promonube_style_config").doc(storeId).set({
+      enhancedSearch: { ...config, updatedAt: FieldValue.serverTimestamp() }
     }, { merge: true });
 
-    console.log("âœ… Enhanced Search config guardada para store:", storeId);
+    console.log("? Enhanced Search config guardada para store:", storeId);
 
     res.json({
       success: true,
-      message: "ConfiguraciÃ³n de buscador guardada correctamente"
+      message: "Configuración de buscador guardada correctamente"
     });
   } catch (error) {
     console.error("Error guardando enhanced search config:", error);
@@ -9718,23 +10554,532 @@ app.post("/api/enhanced-search-config/:storeId", async (req, res) => {
   }
 });
 
-// GET /api/style-widget.js - Script de personalizaciÃ³n embebible
+// GET /api/enhanced-search-widget.js - Buscador mejorado con CONFIG inline (fix overflow dropdown)
+app.get("/api/enhanced-search-widget.js", async (req, res) => {
+  const { store } = req.query;
+
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+
+  if (!store) return res.send('// Error: store requerido');
+
+  try {
+    if (!(await checkStoreActive(store))) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send('// PromoNube: plan inactivo');
+    }
+
+    const styleDoc = await getCachedDoc("promonube_style_config", store);
+    if (!styleDoc.exists) return res.send('// No hay configuracion para esta tienda');
+
+    const esConfig = (styleDoc.data() || {}).enhancedSearch;
+    if (!esConfig || !esConfig.enabled) return res.send('// Buscador mejorado desactivado');
+
+    const script = `
+(function() {
+  'use strict';
+
+  if (window.__pnSearchLoaded) return;
+  window.__pnSearchLoaded = true;
+
+  var CONFIG = ${JSON.stringify(esConfig)};
+
+  // Google Fonts si se configur? una fuente custom
+  function loadFont(family) {
+    if (!family || family === 'inherit' || family === 'system-ui' || family === 'sans-serif') return;
+    var name = family.replace(/['"]/g, '');
+    if (!document.querySelector('link[href*="' + name.replace(/ /g,'+') + '"]')) {
+      var l = document.createElement('link');
+      l.rel = 'stylesheet';
+      l.href = 'https://fonts.googleapis.com/css2?family=' + name.replace(/ /g,'+') + ':wght@300;400;500;600;700;800&display=swap';
+      document.head.appendChild(l);
+    }
+  }
+
+  function getSearchInput() {
+    var sels = [
+      'input[type="search"]',
+      'input[name="q"]',
+      '.js-header-search-input',
+      'input[placeholder*="uscar"]',
+      'input[placeholder*="earch"]',
+      '.js-search-input',
+      '.search-input',
+      '#search-input',
+      'input[aria-label*="uscar"]',
+      'input[aria-label*="earch"]'
+    ];
+    for (var i = 0; i < sels.length; i++) {
+      var el = document.querySelector(sels[i]);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  // Helper: convierte color hex a rgba
+  function pRgba(hex, a) {
+    var h = (hex || '#000000').replace('#', '');
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    var r = parseInt(h.slice(0,2),16)||0, g = parseInt(h.slice(2,4),16)||0, b = parseInt(h.slice(4,6),16)||0;
+    return 'rgba('+r+','+g+','+b+','+a+')';
+  }
+
+  function fmtPrice(p) {
+    var n = parseFloat(p);
+    if (isNaN(n)) return '';
+    return '$' + n.toLocaleString('es-AR', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  }
+
+  function buildShell() {
+    var primary  = CONFIG.primaryColor    || '#6c63ff';
+    var bgCol    = CONFIG.backgroundColor || '#ffffff';
+    var fontFam  = CONFIG.fontFamily      || 'inherit';
+    var fs       = (CONFIG.fontSize       || '15') + 'px';
+    var bradius  = (CONFIG.borderRadius   || '16') + 'px';
+    var showHdr  = CONFIG.showHeader !== false;
+    var hdrText  = CONFIG.headerText      || 'Tendencias';
+
+    var d = document.createElement('div');
+    d.id = 'pn-search-dropdown';
+    d.style.cssText = [
+      'position:fixed',
+      'background:' + bgCol,
+      'border-radius:' + bradius,
+      'border:1px solid ' + pRgba(primary, 0.14),
+      'box-shadow:0 32px 72px rgba(0,0,0,0.16),0 8px 24px rgba(0,0,0,0.08),0 2px 6px rgba(0,0,0,0.04)',
+      'z-index:2147483647',
+      'display:none',
+      'overflow:hidden',
+      'font-family:' + fontFam,
+      'font-size:' + fs,
+      'min-width:280px',
+      'opacity:0',
+      'transform:translateY(-12px) scale(0.96)',
+      'transition:opacity 0.24s cubic-bezier(0.34,1.56,0.64,1),transform 0.24s cubic-bezier(0.34,1.56,0.64,1)',
+    ].join(';');
+
+    // Barra acento top
+    var bar = document.createElement('div');
+    bar.style.cssText = 'height:3px;background:linear-gradient(90deg,' + primary + ' 0%,' + pRgba(primary,0.2) + ' 100%)';
+    d.appendChild(bar);
+
+    var hdrIconEl = null, hdrLblEl = null, badgeEl = null;
+    if (showHdr) {
+      var hdrRow = document.createElement('div');
+      hdrRow.style.cssText = 'display:flex;align-items:center;gap:9px;padding:15px 20px 12px';
+
+      hdrIconEl = document.createElement('div');
+      hdrIconEl.style.cssText = 'width:26px;height:26px;border-radius:8px;background:' + pRgba(primary,0.1) + ';display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1;flex-shrink:0';
+      hdrIconEl.textContent = '\uD83D\uDD25';
+      hdrRow.appendChild(hdrIconEl);
+
+      hdrLblEl = document.createElement('span');
+      hdrLblEl.style.cssText = 'flex:1;font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:' + pRgba(primary,0.75) + ';font-family:inherit;line-height:1';
+      hdrLblEl.textContent = hdrText;
+      hdrRow.appendChild(hdrLblEl);
+
+      badgeEl = document.createElement('span');
+      badgeEl.style.cssText = 'font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:' + pRgba(primary,0.09) + ';color:' + primary + ';letter-spacing:0.04em;line-height:1.5;border:1px solid ' + pRgba(primary,0.15);
+      var popCount = (CONFIG.popularSearches || []).filter(function(s){ return s.text && s.text.trim(); }).length;
+      badgeEl.textContent = popCount + ' tops';
+      hdrRow.appendChild(badgeEl);
+      d.appendChild(hdrRow);
+
+      var sep = document.createElement('div');
+      sep.style.cssText = 'height:1px;margin:0 20px;background:' + pRgba(primary,0.08);
+      d.appendChild(sep);
+    }
+
+    var listEl = document.createElement('div');
+    listEl.style.cssText = 'padding:8px 0;max-height:360px;overflow-y:auto';
+    d.appendChild(listEl);
+
+    // Footer branding
+    var foot = document.createElement('div');
+    foot.style.cssText = 'padding:9px 20px 10px;border-top:1px solid ' + pRgba(primary,0.07) + ';display:flex;align-items:center;justify-content:center;gap:5px';
+    var footDot = document.createElement('div');
+    footDot.style.cssText = 'width:5px;height:5px;border-radius:50%;background:' + pRgba(primary,0.35);
+    foot.appendChild(footDot);
+    var footTxt = document.createElement('span');
+    footTxt.style.cssText = 'font-size:10px;color:' + pRgba(primary,0.4) + ';font-weight:600;letter-spacing:0.04em';
+    footTxt.innerHTML = 'Potenciado por <b style="color:' + pRgba(primary,0.65) + ';font-weight:800">PromoNube</b>';
+    foot.appendChild(footTxt);
+    d.appendChild(foot);
+
+    return { d: d, listEl: listEl, hdrIconEl: hdrIconEl, hdrLblEl: hdrLblEl, badgeEl: badgeEl };
+  }
+
+  // Renderiza búsquedas populares en listEl
+  function renderPopular(listEl) {
+    var primary   = CONFIG.primaryColor    || '#6c63ff';
+    var textCol   = CONFIG.textColor       || '#1a1a2e';
+    var fw        = CONFIG.fontWeight      || '500';
+    var showIcons = CONFIG.showIcons !== false;
+    var searches  = CONFIG.popularSearches || [];
+    var hoverBg   = CONFIG.hoverBgColor    || '';
+    listEl.innerHTML = '';
+
+    searches.forEach(function(s) {
+      if (!s.text || !s.text.trim()) return;
+      var a = document.createElement('a');
+      a.href = s.link || ('/search?q=' + encodeURIComponent(s.text));
+      a.style.cssText = ['display:flex','align-items:center','gap:13px',
+        'padding:11px 20px','color:' + textCol,'text-decoration:none',
+        'font-weight:' + fw,'font-size:inherit','font-family:inherit',
+        'transition:all 0.18s ease','cursor:pointer',
+        'border-left:3px solid transparent','box-sizing:border-box',
+      ].join(';');
+
+      var iconWrap = null;
+      if (showIcons) {
+        iconWrap = document.createElement('div');
+        iconWrap.style.cssText = ['width:40px','height:40px','border-radius:11px',
+          'background:' + pRgba(primary,0.07),
+          'display:flex','align-items:center','justify-content:center',
+          'flex-shrink:0','font-size:19px','line-height:1',
+          'transition:transform 0.22s cubic-bezier(0.34,1.56,0.64,1),background 0.18s',
+        ].join(';');
+        iconWrap.textContent = s.emoji || CONFIG.defaultEmoji || '\uD83D\uDD0D';
+        a.appendChild(iconWrap);
+      }
+
+      var txtWrap = document.createElement('div');
+      txtWrap.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      txtWrap.textContent = s.text;
+      a.appendChild(txtWrap);
+
+      var arr = document.createElement('div');
+      arr.style.cssText = ['width:28px','height:28px','border-radius:50%',
+        'border:1.5px solid ' + pRgba(primary,0.25),
+        'display:flex','align-items:center','justify-content:center',
+        'flex-shrink:0','color:' + primary,'font-size:14px',
+        'opacity:0','transform:translateX(-10px)','transition:all 0.18s ease',
+      ].join(';');
+      arr.innerHTML = '&#x2192;';
+      a.appendChild(arr);
+
+      a.addEventListener('mouseenter', function() {
+        a.style.background = hoverBg || pRgba(primary, 0.05);
+        a.style.borderLeftColor = primary; a.style.paddingLeft = '17px';
+        arr.style.opacity = '1'; arr.style.transform = 'translateX(0)';
+        arr.style.background = pRgba(primary, 0.08);
+        if (iconWrap) { iconWrap.style.transform = 'scale(1.12) rotate(-8deg)'; iconWrap.style.background = pRgba(primary, 0.14); }
+      });
+      a.addEventListener('mouseleave', function() {
+        a.style.background = ''; a.style.borderLeftColor = 'transparent'; a.style.paddingLeft = '20px';
+        arr.style.opacity = '0'; arr.style.transform = 'translateX(-10px)'; arr.style.background = '';
+        if (iconWrap) { iconWrap.style.transform = 'scale(1) rotate(0)'; iconWrap.style.background = pRgba(primary, 0.07); }
+      });
+      listEl.appendChild(a);
+    });
+  }
+
+  // Renderiza resultados de productos en listEl
+  function renderResults(listEl, products, query) {
+    var primary = CONFIG.primaryColor    || '#6c63ff';
+    var textCol = CONFIG.textColor       || '#1a1a2e';
+    var fw      = CONFIG.fontWeight      || '500';
+    var hoverBg = CONFIG.hoverBgColor    || '';
+    listEl.innerHTML = '';
+
+    if (!products || products.length === 0) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'padding:28px 20px;text-align:center;color:' + pRgba(textCol,0.45) + ';font-size:13px';
+      empty.innerHTML = '<div style="font-size:32px;margin-bottom:10px">&#128269;</div>'
+        + '<div>Sin resultados para <b style="color:' + textCol + '">&ldquo;' + query + '&rdquo;</b></div>'
+        + '<div style="margin-top:6px;font-size:12px;opacity:0.7">Intent&aacute; con otro t&eacute;rmino</div>';
+      listEl.appendChild(empty);
+      return;
+    }
+
+    products.forEach(function(p) {
+      var name   = (p.name && typeof p.name === 'object') ? (p.name.es || p.name.pt || Object.values(p.name)[0] || '') : (p.name || '');
+      var handle = (p.handle && typeof p.handle === 'object') ? (p.handle.es || p.handle.pt || Object.values(p.handle)[0] || '') : (p.handle || '');
+      var url    = '/' + handle;
+      var img    = p.images && p.images[0] ? (p.images[0].src || p.images[0].url || '') : '';
+      var price  = (p.variants && p.variants[0]) ? fmtPrice(p.variants[0].price) : '';
+      var compAt = (p.variants && p.variants[0]) ? p.variants[0].compare_at_price : null;
+      var hasDiscount = compAt && parseFloat(compAt) > parseFloat(p.variants[0].price || 0);
+
+      var a = document.createElement('a');
+      a.href = url;
+      a.style.cssText = ['display:flex','align-items:center','gap:14px',
+        'padding:10px 20px','color:' + textCol,'text-decoration:none',
+        'transition:all 0.18s ease','cursor:pointer',
+        'border-left:3px solid transparent','box-sizing:border-box',
+      ].join(';');
+
+      // Thumbnail
+      var thumb = document.createElement('div');
+      thumb.style.cssText = 'width:52px;height:52px;border-radius:10px;overflow:hidden;flex-shrink:0;'
+        + 'background:' + pRgba(primary,0.06) + ';border:1px solid ' + pRgba(primary,0.1);
+      if (img) {
+        var imgEl = document.createElement('img');
+        imgEl.src = img;
+        imgEl.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+        imgEl.onerror = function() { thumb.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px">&#128230;</div>'; };
+        thumb.appendChild(imgEl);
+      } else {
+        thumb.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px">&#128230;</div>';
+      }
+      a.appendChild(thumb);
+
+      // Info
+      var info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0';
+
+      var nameEl = document.createElement('div');
+      nameEl.style.cssText = 'font-weight:' + fw + ';font-size:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + textCol;
+      nameEl.textContent = name;
+      info.appendChild(nameEl);
+
+      if (price) {
+        var priceRow = document.createElement('div');
+        priceRow.style.cssText = 'margin-top:4px;display:flex;align-items:center;gap:7px';
+        var priceEl = document.createElement('span');
+        priceEl.style.cssText = 'font-size:13px;font-weight:800;color:' + primary;
+        priceEl.textContent = price;
+        priceRow.appendChild(priceEl);
+        if (hasDiscount) {
+          var oldPriceEl = document.createElement('span');
+          oldPriceEl.style.cssText = 'font-size:11px;color:' + pRgba(textCol,0.4) + ';text-decoration:line-through';
+          oldPriceEl.textContent = fmtPrice(compAt);
+          priceRow.appendChild(oldPriceEl);
+          var discBadge = document.createElement('span');
+          var pct = Math.round((1 - parseFloat(p.variants[0].price)/parseFloat(compAt))*100);
+          discBadge.style.cssText = 'font-size:10px;font-weight:700;padding:2px 5px;border-radius:4px;background:#ff4d4d;color:#fff';
+          discBadge.textContent = '-' + pct + '%';
+          priceRow.appendChild(discBadge);
+        }
+        info.appendChild(priceRow);
+      }
+      a.appendChild(info);
+
+      var arr = document.createElement('div');
+      arr.style.cssText = ['width:28px','height:28px','border-radius:50%',
+        'border:1.5px solid ' + pRgba(primary,0.2),
+        'display:flex','align-items:center','justify-content:center',
+        'flex-shrink:0','color:' + primary,'font-size:14px',
+        'opacity:0','transform:translateX(-10px)','transition:all 0.18s ease',
+      ].join(';');
+      arr.innerHTML = '&#x2192;';
+      a.appendChild(arr);
+
+      a.addEventListener('mouseenter', function() {
+        a.style.background = hoverBg || pRgba(primary, 0.05);
+        a.style.borderLeftColor = primary; a.style.paddingLeft = '17px';
+        arr.style.opacity = '1'; arr.style.transform = 'translateX(0)';
+      });
+      a.addEventListener('mouseleave', function() {
+        a.style.background = ''; a.style.borderLeftColor = 'transparent'; a.style.paddingLeft = '20px';
+        arr.style.opacity = '0'; arr.style.transform = 'translateX(-10px)';
+      });
+      listEl.appendChild(a);
+    });
+
+    // "Ver todos los resultados"
+    var viewAll = document.createElement('a');
+    viewAll.href = '/search?q=' + encodeURIComponent(query);
+    viewAll.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:8px;'
+      + 'padding:13px 20px;border-top:1px solid ' + pRgba(primary,0.08) + ';'
+      + 'color:' + primary + ';text-decoration:none;font-weight:700;font-size:13px;'
+      + 'transition:background 0.18s;letter-spacing:0.02em';
+    viewAll.innerHTML = 'Ver todos los resultados <span style="font-size:16px">&#x2192;</span>';
+    viewAll.addEventListener('mouseenter', function() { viewAll.style.background = pRgba(primary, 0.05); });
+    viewAll.addEventListener('mouseleave', function() { viewAll.style.background = ''; });
+    listEl.appendChild(viewAll);
+  }
+
+  // Fetch productos reales de la tienda
+  function fetchProducts(q, cb) {
+    fetch('/api/catalog/search?q=' + encodeURIComponent(q) + '&per_page=6')
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function(data) { cb(null, data.products || []); })
+      .catch(function() { cb(new Error('fetch'), []); });
+  }
+
+  function positionDropdown(input, dd) {
+    var r   = input.getBoundingClientRect();
+    var vpW = window.innerWidth;
+    var w   = Math.max(r.width, 300);
+    var lft = r.left;
+    if (lft + w > vpW - 12) lft = vpW - w - 12;
+    if (lft < 12) lft = 12;
+    dd.style.top   = (r.bottom + 6) + 'px';
+    dd.style.left  = lft + 'px';
+    dd.style.width = w + 'px';
+  }
+
+  function showDD(d) {
+    d.style.display = 'block';
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        d.style.opacity   = '1';
+        d.style.transform = 'translateY(0) scale(1)';
+      });
+    });
+  }
+
+  function hideDD(d) {
+    d.style.opacity   = '0';
+    d.style.transform = 'translateY(-12px) scale(0.96)';
+    setTimeout(function() { d.style.display = 'none'; }, 240);
+  }
+
+  function init() {
+    var input = getSearchInput();
+    if (!input) { setTimeout(init, 800); return; }
+
+    loadFont(CONFIG.fontFamily);
+
+    var shell     = buildShell();
+    var dd        = shell.d;
+    var listEl    = shell.listEl;
+    var hdrIconEl = shell.hdrIconEl;
+    var hdrLblEl  = shell.hdrLblEl;
+    var badgeEl   = shell.badgeEl;
+    document.body.appendChild(dd);
+
+    var primary     = CONFIG.primaryColor || '#6c63ff';
+    var origBC      = input.style.borderColor;
+    var origBS      = input.style.boxShadow;
+    var isOpen      = false;
+    var searchTimer = null;
+
+    renderPopular(listEl);
+
+    function setMode(mode, query, count) {
+      if (!hdrIconEl) return;
+      if (mode === 'popular') {
+        hdrIconEl.textContent = '\uD83D\uDD25';
+        hdrLblEl.textContent = CONFIG.headerText || 'Tendencias';
+        var cnt = (CONFIG.popularSearches || []).filter(function(s){ return s.text && s.text.trim(); }).length;
+        badgeEl.textContent = cnt + ' tops'; badgeEl.style.display = '';
+      } else if (mode === 'loading') {
+        hdrIconEl.textContent = '\u23F3';
+        hdrLblEl.textContent = 'Buscando...';
+        badgeEl.style.display = 'none';
+      } else if (mode === 'results') {
+        hdrIconEl.textContent = '\uD83D\uDD0D';
+        hdrLblEl.textContent = 'Resultados para "' + query + '"';
+        badgeEl.textContent = (count || 0) + ' producto' + (count !== 1 ? 's' : '');
+        badgeEl.style.display = '';
+      }
+    }
+
+    input.addEventListener('focus', function() {
+      positionDropdown(input, dd);
+      if (!input.value.trim()) { renderPopular(listEl); setMode('popular'); }
+      showDD(dd);
+      isOpen = true;
+      input.style.borderColor = primary;
+      input.style.outline     = 'none';
+      input.style.boxShadow   = '0 0 0 3px ' + pRgba(primary, 0.18);
+      input.style.transition  = 'box-shadow 0.2s ease,border-color 0.2s ease';
+    });
+
+    input.addEventListener('blur', function() {
+      input.style.borderColor = origBC;
+      input.style.boxShadow   = origBS;
+    });
+
+    input.addEventListener('input', function() {
+      var q = input.value.trim();
+      clearTimeout(searchTimer);
+      if (!q) {
+        renderPopular(listEl);
+        setMode('popular');
+        positionDropdown(input, dd);
+        if (!isOpen) { showDD(dd); isOpen = true; }
+        return;
+      }
+      setMode('loading');
+      if (!isOpen) { showDD(dd); isOpen = true; }
+      searchTimer = setTimeout(function() {
+        fetchProducts(q, function(err, products) {
+          renderResults(listEl, products, q);
+          setMode('results', q, products.length);
+          positionDropdown(input, dd);
+        });
+      }, 320);
+    });
+
+    window.addEventListener('resize', function() { if (isOpen) positionDropdown(input, dd); });
+    window.addEventListener('scroll', function() { if (isOpen) positionDropdown(input, dd); }, true);
+
+    document.addEventListener('mousedown', function(e) {
+      if (!dd.contains(e.target) && e.target !== input) { hideDD(dd); isOpen = false; }
+    });
+
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { hideDD(dd); isOpen = false; input.blur(); }
+    });
+
+    dd.addEventListener('mousedown', function(e) { e.preventDefault(); });
+
+    console.log('[PromoNube] Enhanced Search PRO \u2705');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();`;
+
+    res.send(script);
+  } catch (error) {
+    console.error("Error en enhanced-search-widget:", error);
+    res.send('// Error interno');
+  }
+});
+
+// GET /style-widget.js - Alias sin /api/ (usado por App Embeds de TiendaNube CDN)
+// Devuelve un bootstrap que detecta el storeId real en el browser (evita hardcoded storeId)
+app.get("/style-widget.js", (req, res) => {
+  const fallbackStore = req.query.store || '';
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(`(function() {
+  'use strict';
+  function getStoreId() {
+    if (window.LS && window.LS.store && window.LS.store.id) return String(window.LS.store.id);
+    var m = document.querySelector('meta[name="store-id"],meta[property="store:id"]');
+    if (m && m.content) return m.content;
+    return '${fallbackStore}';
+  }
+  var storeId = getStoreId();
+  if (!storeId) { console.warn('PromoNube: no se pudo detectar storeId'); return; }
+  var s = document.createElement('script');
+  s.src = 'https://apipromonube-jlfopowzaq-uc.a.run.app/api/style-widget.js?store=' + storeId;
+  s.async = true;
+  document.head.appendChild(s);
+  console.log('PromoNube Style Widget: cargando para store', storeId);
+})();`);
+});
+
+// GET /api/style-widget.js - Script de personalización embebible
 app.get("/api/style-widget.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=1800');
+  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
 
   try {
     if (!store) {
       return res.send("// Error: storeId requerido");
     }
 
-    // Cargar configuraciÃ³n desde Firestore
-    const styleDoc = await db.collection("promonube_style_config").doc(store).get();
+    if (!(await checkStoreActive(store))) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send('// PromoNube: plan inactivo');
+    }
+
+    // Cargar configuración desde cach? en memoria (reduce lecturas Firestore)
+    const styleDoc = await getCachedDoc("promonube_style_config", store);
     
     if (!styleDoc.exists) {
-      return res.send("// No hay configuraciÃ³n de Style");
+      return res.send("// No hay configuración de Style");
     }
 
     const config = styleDoc.data();
@@ -9760,17 +11105,17 @@ app.get("/api/style-widget.js", async (req, res) => {
       'a[href*="api.whatsapp.com"]'
     ];
     
-    // Buscar SOLO el botÃ³n flotante de WhatsApp (no links en footer u otras secciones)
+    // Buscar SOLO el botón flotante de WhatsApp (no links en footer u otras secciones)
     let btn = null;
     for (const sel of selectors) {
       const candidates = document.querySelectorAll(sel);
       for (let i = 0; i < candidates.length; i++) {
         const el = candidates[i];
         const style = window.getComputedStyle(el);
-        // El botÃ³n flotante de WPP tÃ­picamente es fixed/absolute y tiene aspecto de botÃ³n circular
+        // El botón flotante de WPP típicamente es fixed/absolute y tiene aspecto de botón circular
         if (style.position === 'fixed' || style.position === 'absolute' || 
             el.classList.contains('whatsapp-button') || el.classList.contains('js-btn-fixed-bottom')) {
-          // Verificar que NO estÃ¡ dentro del footer
+          // Verificar que NO est? dentro del footer
           if (!el.closest('footer') && !el.closest('.footer') && !el.closest('#footer')) {
             btn = el;
             break;
@@ -9782,7 +11127,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     if (!btn) return;
 
-    // Marcar el botÃ³n encontrado con una clase Ãºnica para aplicar estilos solo a Ã©l
+    // Marcar el botón encontrado con una clase única para aplicar estilos solo a ?l
     btn.classList.add('pn-wa-customized');
 
     const styleEl = document.createElement('style');
@@ -9803,7 +11148,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     
     styleEl.textContent = css;
     document.head.appendChild(styleEl);
-    console.log('PromoNube Style: WhatsApp customizado (solo botÃ³n flotante)');
+    console.log('PromoNube Style: WhatsApp customizado (solo botón flotante)');
   }
 
   function customizeBanners() {
@@ -9819,10 +11164,10 @@ app.get("/api/style-widget.js", async (req, res) => {
     console.log('PromoNube Banners: Iniciando...', CONFIG.banners);
 
     // Buscar SOLO los slides del carrusel principal del home (NO productos)
-    // IMPORTANTE: Excluir explÃ­citamente los slides de productos
+    // IMPORTANTE: Excluir explícitamente los slides de productos
     let slides = null;
     
-    // Intentar selector mÃ¡s especÃ­fico para el home banner principal
+    // Intentar selector más específico para el home banner principal
     const homeSlider = document.querySelector('.js-home-main-slider-container:not(.js-product-slider)');
     
     if (homeSlider) {
@@ -9835,7 +11180,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       }
     }
     
-    // Filtrar SOLO slides que NO estÃ©n dentro de .js-product-slider o product-detail
+    // Filtrar SOLO slides que NO están dentro de .js-product-slider o product-detail
     if (slides && slides.length > 0) {
       slides = Array.from(slides).filter(function(slide) {
         const isProductSlide = slide.closest('.js-product-slider') || 
@@ -9847,7 +11192,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                             (containerSlide && containerSlide.classList.contains('swiper-slide-duplicate'));
         return !isProductSlide && !isDuplicate;
       });
-      console.log('PromoNube: Slides despuÃ©s de filtrar productos/duplicados:', slides.length);
+      console.log('PromoNube: Slides después de filtrar productos/duplicados:', slides.length);
     } else {
       slides = [];
     }
@@ -9867,7 +11212,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       console.log('PromoNube: Procesando slide', slideIndex);
       
       if (!slideElement) {
-        console.warn('PromoNube: No existe slide en Ã­ndice', slideIndex, '(solo hay', slides.length, 'slides)');
+        console.warn('PromoNube: No existe slide en índice', slideIndex, '(solo hay', slides.length, 'slides)');
         return;
       }
 
@@ -9951,7 +11296,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
         const btn = document.createElement('a');
         btn.href = btnConfig.url || '#';
-        btn.textContent = btnConfig.text || 'Ver mÃ¡s';
+        btn.textContent = btnConfig.text || 'Ver más';
         btn.target = '_blank';
         
         // Manejar borde (retrocompatibilidad con campo 'border' antiguo)
@@ -9982,7 +11327,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         };
 
         container.appendChild(btn);
-        console.log('PromoNube: BotÃ³n agregado:', btnConfig.text);
+        console.log('PromoNube: Botón agregado:', btnConfig.text);
       });
 
       if (getComputedStyle(slideElement).position === 'static') {
@@ -9993,7 +11338,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       slideElement.style.overflow = 'visible';
 
       slideElement.appendChild(container);
-      console.log('PromoNube: âœ… Container de botones agregado al slide', slideIndex);
+      console.log('PromoNube: ? Container de botones agregado al slide', slideIndex);
     });
     
     // Agregar estilos CSS responsivos para botones en mobile
@@ -10036,7 +11381,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         '    visibility: visible !important;' +
         '  }' +
         '}' +
-        '/* Mobile pequeÃ±o */' +
+        '/* Mobile pequeño */' +
         '@media (max-width: 480px) {' +
         '  .pn-banner-buttons { ' +
         '    gap: 8px !important; ' +
@@ -10058,7 +11403,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         '    width: auto !important;' +
         '  }' +
         '}' +
-        '/* Mobile muy pequeÃ±o */' +
+        '/* Mobile muy pequeño */' +
         '@media (max-width: 360px) {' +
         '  .pn-banner-buttons a { ' +
         '    font-size: 11px !important; ' +
@@ -10067,23 +11412,23 @@ app.get("/api/style-widget.js", async (req, res) => {
         '  }' +
         '}';
       document.head.appendChild(responsiveStyles);
-      console.log('PromoNube: âœ… Estilos responsivos agregados para botones de banner');
+      console.log('PromoNube: ? Estilos responsivos agregados para botones de banner');
     }
   }
 
   function customizeMenu() {
     if (!CONFIG.menu || !CONFIG.menu.enabled) {
-      console.log('PromoNube: MenÃº deshabilitado o no configurado');
+      console.log('PromoNube: Men? deshabilitado o no configurado');
       return;
     }
     if (!CONFIG.menu.items || CONFIG.menu.items.length === 0) {
-      console.log('PromoNube: No hay items de menÃº configurados');
+      console.log('PromoNube: No hay items de men? configurados');
       return;
     }
 
     console.log('PromoNube Menu: Iniciando...', CONFIG.menu);
 
-    // Selector especÃ­fico para MOBILE
+    // Selector específico para MOBILE
     var mobileSelector = '#nav-hamburger > div > div.modal-scrollable-area > div.modal-body.nav-body > div > ul > li > a';
     var mobileLinks = document.querySelectorAll(mobileSelector);
 
@@ -10100,7 +11445,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       
       console.log('PromoNube: UL #' + h, '- Parent:', ulParentTag, '- Classes:', ul.className);
       
-      // Solo procesar UL que NO estÃ©n dentro de un LI (no son submenÃºs)
+      // Solo procesar UL que NO están dentro de un LI (no son submenús)
       if (ulParentTag !== 'li') {
         var directChildren = ul.querySelectorAll(':scope > li');
         console.log('PromoNube: Este UL tiene', directChildren.length, 'LI hijos directos');
@@ -10120,7 +11465,7 @@ app.get("/api/style-widget.js", async (req, res) => {
           }
         }
         
-        // PRIMERO: Intentar encontrar categorÃ­as con submenÃº
+        // PRIMERO: Intentar encontrar categorías con submen?
         var categoriesWithSubmenu = [];
         for (var li = 0; li < directChildren.length; li++) {
           var liElement = directChildren[li];
@@ -10130,7 +11475,7 @@ app.get("/api/style-widget.js", async (req, res) => {
             var linkText = link.textContent.trim();
             var hasSubmenu = liElement.querySelector('ul') !== null;
             
-            console.log('PromoNube: LI #' + li, '- Link:', linkText, '- Tiene submenÃº:', hasSubmenu);
+            console.log('PromoNube: LI #' + li, '- Link:', linkText, '- Tiene submen?:', hasSubmenu);
             
             if (hasSubmenu) {
               categoriesWithSubmenu.push(link);
@@ -10138,14 +11483,14 @@ app.get("/api/style-widget.js", async (req, res) => {
           }
         }
         
-        // Si encontrÃ³ categorÃ­as con submenÃº, usar esas
+        // Si encontró categorías con submen?, usar esas
         if (categoriesWithSubmenu.length > 0) {
           desktopLinks = categoriesWithSubmenu;
-          console.log('PromoNube: âœ… Encontradas', desktopLinks.length, 'categorÃ­as con submenÃº');
+          console.log('PromoNube: ? Encontradas', desktopLinks.length, 'categorías con submen?');
           break;
         }
         
-        // Si NO encontrÃ³ categorÃ­as con submenÃº pero es el PRIMER UL, usar todos sus links
+        // Si NO encontró categorías con submen? pero es el PRIMER UL, usar todos sus links
         if (h === 0 && directChildren.length > 0) {
           for (var li2 = 0; li2 < directChildren.length; li2++) {
             // Primero intentar :scope > a (link directo)
@@ -10165,10 +11510,10 @@ app.get("/api/style-widget.js", async (req, res) => {
               desktopLinks.push(link2);
               console.log('PromoNube: Link agregado desde LI #' + li2 + ':', link2.textContent.trim());
             } else {
-              console.log('PromoNube: LI #' + li2 + ' NO tiene ningÃºn link');
+              console.log('PromoNube: LI #' + li2 + ' NO tiene ningún link');
             }
           }
-          console.log('PromoNube: âœ… Usando primer UL con', desktopLinks.length, 'items');
+          console.log('PromoNube: ? Usando primer UL con', desktopLinks.length, 'items');
           break;
         }
       }
@@ -10185,13 +11530,13 @@ app.get("/api/style-widget.js", async (req, res) => {
     }
 
     if (desktopLinks.length === 0 && mobileLinks.length === 0) {
-      console.warn('PromoNube: NO SE ENCONTRÃ“ NINGÃšN MENÃš');
+      console.warn('PromoNube: NO SE ENCONTRÓ NINGÚN MENÚ');
       return;
     }
 
     console.log('PromoNube: Aplicando estilos a DESKTOP:', desktopLinks.length, 'items y MOBILE:', mobileLinks.length, 'items');
     
-    // Combinar ambos menÃºs para aplicar estilos a todos
+    // Combinar ambos menús para aplicar estilos a todos
     var allMenus = [];
     if (desktopLinks.length > 0) {
       allMenus.push({ name: 'DESKTOP', links: desktopLinks });
@@ -10200,12 +11545,12 @@ app.get("/api/style-widget.js", async (req, res) => {
       allMenus.push({ name: 'MOBILE', links: Array.prototype.slice.call(mobileLinks) });
     }
     
-    // Aplicar estilos a CADA menÃº encontrado
+    // Aplicar estilos a CADA men? encontrado
     for (var m = 0; m < allMenus.length; m++) {
       var currentMenu = allMenus[m];
       console.log('PromoNube: Aplicando a', currentMenu.name, 'con', currentMenu.links.length, 'items');
       
-      // Construir mapa de subcategorÃ­as (para posiciones como 1.1, 2.3, etc.)
+      // Construir mapa de subcategorías (para posiciones como 1.1, 2.3, etc.)
       var subcategoryMap = {};
       for (var mainIdx = 0; mainIdx < currentMenu.links.length; mainIdx++) {
         var mainLink = currentMenu.links[mainIdx];
@@ -10215,7 +11560,7 @@ app.get("/api/style-widget.js", async (req, res) => {
           if (submenuUl) {
             var subLinks = submenuUl.querySelectorAll(':scope > li > a');
             subcategoryMap[mainIdx + 1] = Array.prototype.slice.call(subLinks);
-            console.log('PromoNube: CategorÃ­a', (mainIdx + 1), 'tiene', subLinks.length, 'subcategorÃ­as');
+            console.log('PromoNube: Categoría', (mainIdx + 1), 'tiene', subLinks.length, 'subcategorías');
           }
         }
       }
@@ -10225,9 +11570,9 @@ app.get("/api/style-widget.js", async (req, res) => {
         var pos = item.position.toString();
         var targetLink = null;
         
-        console.log('PromoNube: Procesando item configurado - PosiciÃ³n:', pos, 'Color:', item.color, 'Emoji:', item.emoji);
+        console.log('PromoNube: Procesando item configurado - Posición:', pos, 'Color:', item.color, 'Emoji:', item.emoji);
         
-        // Detectar si es subcategorÃ­a (formato "1.2", "2.3")
+        // Detectar si es subcategoría (formato "1.2", "2.3")
         if (pos.indexOf('.') !== -1) {
           var parts = pos.split('.');
           var mainPos = parseInt(parts[0]);
@@ -10235,30 +11580,30 @@ app.get("/api/style-widget.js", async (req, res) => {
           
           if (subcategoryMap[mainPos] && subcategoryMap[mainPos][subPos - 1]) {
             targetLink = subcategoryMap[mainPos][subPos - 1];
-            console.log('PromoNube: âœ… SubcategorÃ­a encontrada:', mainPos + '.' + subPos, '- Texto:', targetLink.textContent.trim());
+            console.log('PromoNube: ? Subcategoría encontrada:', mainPos + '.' + subPos, '- Texto:', targetLink.textContent.trim());
           } else {
-            console.warn('PromoNube: SubcategorÃ­a', pos, 'no encontrada');
+            console.warn('PromoNube: Subcategoría', pos, 'no encontrada');
             continue;
           }
         } else {
-          // CategorÃ­a principal
+          // Categoría principal
           var mainPosition = parseInt(pos);
           if (mainPosition < 1 || mainPosition > currentMenu.links.length) {
-            console.warn('PromoNube: PosiciÃ³n', pos, 'fuera de rango (1-' + currentMenu.links.length + ')');
+            console.warn('PromoNube: Posición', pos, 'fuera de rango (1-' + currentMenu.links.length + ')');
             continue;
           }
           targetLink = currentMenu.links[mainPosition - 1];
-          console.log('PromoNube: âœ… CategorÃ­a principal encontrada:', pos, '- Texto:', targetLink.textContent.trim());
+          console.log('PromoNube: ? Categoría principal encontrada:', pos, '- Texto:', targetLink.textContent.trim());
         }
         
         if (!targetLink) {
-          console.warn('PromoNube: No se encontrÃ³ link en posiciÃ³n', pos);
+          console.warn('PromoNube: No se encontró link en posición', pos);
           continue;
         }
 
-        console.log('PromoNube: Aplicando estilos a posiciÃ³n', pos);
+        console.log('PromoNube: Aplicando estilos a posición', pos);
 
-        // Aplicar estilos directamente al elemento con mÃ¡xima prioridad
+        // Aplicar estilos directamente al elemento con máxima prioridad
         var currentStyle = targetLink.getAttribute('style') || '';
         
         if (item.color) {
@@ -10269,7 +11614,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         }
         if (item.fontSize) {
           var fontSize = item.fontSize.toString().trim();
-          // Si es solo un nÃºmero (con o sin decimales), agregar 'px' automÃ¡ticamente
+          // Si es solo un número (con o sin decimales), agregar 'px' automáticamente
           if (!isNaN(parseFloat(fontSize)) && isFinite(fontSize) && !fontSize.match(/px|rem|em|%|pt|pc|vh|vw/i)) {
             fontSize = fontSize + 'px';
           }
@@ -10319,15 +11664,15 @@ app.get("/api/style-widget.js", async (req, res) => {
             } else if (item.emojiPosition === 'after') {
               targetLink.innerHTML = targetLink.innerHTML + '<span> ' + item.emoji + '</span>';
             }
-            console.log('PromoNube: Emoji agregado a posiciÃ³n', pos);
+            console.log('PromoNube: Emoji agregado a posición', pos);
           }
         }
 
-        // Agregar imagen en dropdown si estÃ¡ configurada
+        // Agregar imagen en dropdown si est? configurada
         if (item.imageUrl && item.imageUrl.trim() !== '') {
-          console.log('PromoNube: Procesando imagen para posiciÃ³n', pos);
+          console.log('PromoNube: Procesando imagen para posición', pos);
           
-          // Solo para categorÃ­as principales (no subcategorÃ­as)
+          // Solo para categorías principales (no subcategorías)
           if (pos.indexOf('.') === -1) {
             var mainPosition = parseInt(pos);
             if (mainPosition >= 1 && mainPosition <= currentMenu.links.length) {
@@ -10335,22 +11680,112 @@ app.get("/api/style-widget.js", async (req, res) => {
               var mainLi = mainLink.closest('li');
               
               if (mainLi) {
-                // DIAGNÃ“STICO: Mostrar estructura del LI para debugging
-                console.log('PromoNube DEBUG: Estructura del LI para posiciÃ³n', pos);
+                // ====== MODO MEGA-MENÚ FLOTANTE (opt-in via item.megaMenu) ======
+                if (item.megaMenu === true) {
+                  (function(li, config) {
+                    var panelId = 'pn-mega-menu-pos' + config.pos;
+                    if (document.getElementById(panelId)) return;
+
+                    // Copiar los sub-links del dropdown nativo (si existen) para usarlos dentro del mega-menú
+                    var subLinks = [];
+                    // Buscar TODOS los dropdowns candidatos (puede haber varios niveles) y ocultarlos
+                    var nativeDropdowns = li.querySelectorAll('ul, [class*="dropdown"], [class*="submenu"], [class*="sub-menu"], [class*="Submenu"]');
+                    var mainHref = mainLink.getAttribute('href') || '';
+                    for (var nd = 0; nd < nativeDropdowns.length; nd++) {
+                      var ndEl = nativeDropdowns[nd];
+                      // Extraer links solo del primer dropdown válido con links
+                      if (subLinks.length === 0) {
+                        var links = ndEl.querySelectorAll('a');
+                        for (var sl = 0; sl < links.length && sl < 30; sl++) {
+                          var ltxt = (links[sl].textContent || '').trim();
+                          var lhref = links[sl].getAttribute('href') || '#';
+                          if (ltxt && lhref !== mainHref) subLinks.push({ text: ltxt, href: lhref });
+                        }
+                      }
+                      // Marcar para que el CSS lo fuerce a display:none (con !important, sobrevive al hover del theme)
+                      ndEl.classList.add('pn-native-dropdown-hidden');
+                      ndEl.setAttribute('data-pn-mega-hidden', '1');
+                    }
+                    // Además, marcar el LI para ocultar cualquier sibling sospechoso del theme
+                    li.classList.add('pn-has-mega-menu');
+
+                    // Crear el panel flotante
+                    var panel = document.createElement('div');
+                    panel.id = panelId;
+                    panel.className = 'pn-mega-menu-panel';
+                    panel.setAttribute('role', 'menu');
+
+                    var hasSubs = subLinks.length > 0;
+                    var linksHtml = hasSubs ? '<ul class="pn-mm-links">' + subLinks.map(function(s){
+                      return '<li><a href="' + s.href + '">' + s.text.replace(/</g,'&lt;') + '</a></li>';
+                    }).join('') + '</ul>' : '';
+
+                    var captionHtml = config.caption ? '<div class="pn-mm-caption">' + String(config.caption).replace(/</g,'&lt;') + '</div>' : '';
+                    var imgHref = config.imageLink && config.imageLink.trim() !== '' ? config.imageLink : (mainLink.getAttribute('href') || '#');
+
+                    panel.innerHTML = '<div class="pn-mm-inner">'
+                      + (hasSubs ? '<div class="pn-mm-left">' + linksHtml + '</div>' : '')
+                      + '<a class="pn-mm-right" href="' + imgHref + '">'
+                      + '<img src="' + config.imageUrl + '" alt="" loading="lazy" />'
+                      + captionHtml
+                      + '</a>'
+                      + '</div>';
+
+                    document.body.appendChild(panel);
+
+                    // Posicionamiento: debajo del LI, ancho máximo del viewport
+                    var showTimer = null, hideTimer = null;
+                    function positionPanel() {
+                      var r = li.getBoundingClientRect();
+                      var panelWidth = Math.min(720, window.innerWidth - 32);
+                      // Alinear al borde izquierdo del LI (no centrado), salvo que se salga del viewport
+                      var left = r.left;
+                      if (left + panelWidth > window.innerWidth - 16) {
+                        left = window.innerWidth - panelWidth - 16;
+                      }
+                      left = Math.max(16, left);
+                      panel.style.top = (r.bottom + window.scrollY + 2) + 'px';
+                      panel.style.left = left + 'px';
+                      panel.style.width = panelWidth + 'px';
+                    }
+                    function showPanel() {
+                      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+                      positionPanel();
+                      panel.classList.add('pn-mm-visible');
+                    }
+                    function scheduleHide() {
+                      if (hideTimer) clearTimeout(hideTimer);
+                      hideTimer = setTimeout(function(){ panel.classList.remove('pn-mm-visible'); }, 180);
+                    }
+                    li.addEventListener('mouseenter', showPanel);
+                    li.addEventListener('mouseleave', scheduleHide);
+                    panel.addEventListener('mouseenter', function(){ if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } });
+                    panel.addEventListener('mouseleave', scheduleHide);
+                    window.addEventListener('resize', function(){ if (panel.classList.contains('pn-mm-visible')) positionPanel(); });
+                    window.addEventListener('scroll', function(){ if (panel.classList.contains('pn-mm-visible')) positionPanel(); }, { passive: true });
+
+                    console.log('PromoNube: ? Mega-menú flotante creado para posición', config.pos);
+                  })(mainLi, { pos: pos, imageUrl: item.imageUrl, imageLink: item.imageLink, caption: item.imageCaption });
+                  continue; // saltear la lógica vieja de inyección en dropdown
+                }
+                // ====== FIN MODO MEGA-MENÚ ======
+
+                // DIAGNÓSTICO: Mostrar estructura del LI para debugging
+                console.log('PromoNube DEBUG: Estructura del LI para posición', pos);
                 console.log('  - LI classes:', mainLi.className);
                 console.log('  - LI HTML (primeros 300 chars):', mainLi.innerHTML.substring(0, 300));
                 
-                // Buscar el dropdown/submenu con mÃºltiples estrategias
+                // Buscar el dropdown/submenu con múltiples estrategias
                 var dropdown = null;
                 
                 // Estrategia 1: Buscar ul directamente
                 dropdown = mainLi.querySelector('ul');
-                if (dropdown) console.log('  - âœ… Dropdown encontrado: UL directo');
+                if (dropdown) console.log('  - ? Dropdown encontrado: UL directo');
                 
                 // Estrategia 2: Buscar por clases comunes de dropdown
                 if (!dropdown) {
                   dropdown = mainLi.querySelector('.dropdown-menu, .submenu, .nav-dropdown, .js-desktop-dropdown, .menu-dropdown');
-                  if (dropdown) console.log('  - âœ… Dropdown encontrado: Por clase comÃºn');
+                  if (dropdown) console.log('  - ? Dropdown encontrado: Por clase común');
                 }
                 
                 // Estrategia 3: Buscar cualquier contenedor con links dentro
@@ -10361,7 +11796,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                     console.log('    - Candidato', d, ':', possibleDropdowns[d].className, '- Links:', possibleDropdowns[d].querySelectorAll('a').length);
                     if (possibleDropdowns[d].querySelectorAll('a').length > 0) {
                       dropdown = possibleDropdowns[d];
-                      console.log('  - âœ… Dropdown encontrado: Contenedor con links');
+                      console.log('  - ? Dropdown encontrado: Contenedor con links');
                       break;
                     }
                   }
@@ -10372,7 +11807,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                   var nextSibling = mainLi.querySelector('a').nextElementSibling;
                   if (nextSibling && (nextSibling.tagName === 'UL' || nextSibling.tagName === 'DIV')) {
                     dropdown = nextSibling;
-                    console.log('  - âœ… Dropdown encontrado: Next sibling');
+                    console.log('  - ? Dropdown encontrado: Next sibling');
                   }
                 }
                 
@@ -10383,7 +11818,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                     var divCandidate = divsWithLinks[divIdx];
                     if (divCandidate.querySelectorAll('a').length > 0 && divCandidate !== mainLi) {
                       dropdown = divCandidate;
-                      console.log('  - âœ… Dropdown encontrado: DIV con links');
+                      console.log('  - ? Dropdown encontrado: DIV con links');
                       break;
                     }
                   }
@@ -10391,7 +11826,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                 
                 if (dropdown) {
                   dropdown.classList.add('pn-menu-dropdown-has-image');
-                  // ID Ãºnico para esta imagen
+                  // ID único para esta imagen
                   var imageId = 'pn-menu-img-' + currentMenu.name + '-pos' + pos;
                   
                   // Verificar si ya existe
@@ -10433,10 +11868,10 @@ app.get("/api/style-widget.js", async (req, res) => {
                       dropdown.appendChild(imageContainer);
                     }
                     
-                    console.log('PromoNube: âœ… Imagen insertada en dropdown de posiciÃ³n', pos, '(tipo:', dropdown.tagName, ')');
+                    console.log('PromoNube: ? Imagen insertada en dropdown de posición', pos, '(tipo:', dropdown.tagName, ')');
                   }
                 } else {
-                  console.log('PromoNube: âš ï¸ No se encontrÃ³ dropdown para posiciÃ³n', pos, '- Li:', mainLi);
+                  console.log('PromoNube: ?? No se encontró dropdown para posición', pos, '- Li:', mainLi);
                   
                   // Fallback: crear dropdown si no existe
                   var fallbackDropdown = document.createElement('div');
@@ -10466,7 +11901,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                     fallbackDropdown.style.display = 'none';
                   });
                   
-                  console.log('PromoNube: âœ… Dropdown fallback creado con imagen');
+                  console.log('PromoNube: ? Dropdown fallback creado con imagen');
                 }
               }
             }
@@ -10475,7 +11910,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       }
     }
 
-    // Agregar estilos CSS para las imÃ¡genes en mobile y desktop
+    // Agregar estilos CSS para las imágenes en mobile y desktop
     var imageStyles = document.createElement('style');
     imageStyles.id = 'pn-menu-image-styles';
     imageStyles.textContent = \`
@@ -10485,100 +11920,60 @@ app.get("/api/style-widget.js", async (req, res) => {
         padding: 0 !important;
         margin: 0 !important;
         display: block !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
       }
 
-      /* Layout con imagen a la derecha */
+      /* El dropdown simplemente permite overflow para que la imagen se vea */
       .pn-menu-dropdown-has-image {
+        overflow: visible !important;
+      }
+
+      /* La imagen va en flujo normal, al final de los items del dropdown */
+      .pn-menu-dropdown-has-image .pn-menu-dropdown-image-wrapper {
         position: relative !important;
-        padding-right: 420px !important;
+        width: 100% !important;
+        left: auto !important;
+        top: auto !important;
+        min-height: auto !important;
       }
 
-      .pn-menu-dropdown-has-image > li {
-        max-width: calc(100% - 420px) !important;
-      }
-
-      .pn-menu-dropdown-has-image .pn-menu-dropdown-image-wrapper,
       .pn-menu-dropdown-has-image .pn-menu-dropdown-image {
-        position: absolute !important;
-        top: 0 !important;
-        right: 0 !important;
-        width: 380px !important;
-        max-width: 380px !important;
+        padding: 10px 12px !important;
+        margin: 4px 0 0 0 !important;
+        border-top: 1px solid rgba(0,0,0,0.08) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
       }
       
       .pn-menu-dropdown-image {
-        display: block !important;
-        padding: 15px !important;
-        margin: 10px auto !important;
-        text-align: center !important;
-        max-width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 100% !important;
         box-sizing: border-box !important;
       }
-      
+
       .pn-menu-dropdown-img {
         width: 100% !important;
-        max-width: 400px !important;
         height: auto !important;
-        border-radius: 8px !important;
+        max-height: 220px !important;
+        border-radius: 6px !important;
         display: block !important;
-        margin: 0 auto !important;
         object-fit: cover !important;
       }
       
-      /* Desktop: imagen dentro del dropdown */
-      @media (min-width: 769px) {
-        .pn-menu-dropdown-image {
-          display: block !important;
-          padding: 20px 15px !important;
-          text-align: center !important;
-        }
-        
-        .pn-menu-dropdown-img {
-          max-width: 450px !important;
-          margin: 0 auto !important;
-        }
-        
-        /* Para dropdowns con flexbox */
-        ul.pn-menu-dropdown-image-wrapper,
-        li.pn-menu-dropdown-image-wrapper {
-          order: 999 !important;
-          flex: 1 1 100% !important;
-        }
-        
-        /* Asegurar visibilidad en diferentes tipos de menÃº */
-        .dropdown-menu .pn-menu-dropdown-image,
-        .submenu .pn-menu-dropdown-image,
-        .nav-dropdown .pn-menu-dropdown-image,
-        .js-desktop-dropdown .pn-menu-dropdown-image,
-        ul .pn-menu-dropdown-image {
-          display: block !important;
-        }
-      }
-      
-      /* Mobile: imagen visible y adaptada */
+      /* Mobile */
       @media (max-width: 768px) {
-        .pn-menu-dropdown-has-image {
-          padding-right: 0 !important;
-        }
-
-        .pn-menu-dropdown-has-image .pn-menu-dropdown-image-wrapper,
         .pn-menu-dropdown-has-image .pn-menu-dropdown-image {
-          position: relative !important;
-          width: 100% !important;
-          max-width: 100% !important;
+          padding: 8px !important;
         }
 
-        .pn-menu-dropdown-image {
-          display: block !important;
-          width: 100% !important;
-          padding: 15px 10px !important;
-          margin: 15px auto !important;
-        }
-        
         .pn-menu-dropdown-img {
-          max-width: 100% !important;
-          width: 100% !important;
-          height: auto !important;
+          max-height: 160px !important;
         }
       }
       
@@ -10604,13 +11999,139 @@ app.get("/api/style-widget.js", async (req, res) => {
           padding: 10px !important;
         }
       }
+
+      /* ===== MEGA-MENÚ FLOTANTE (opt-in) ===== */
+      /* Ocultar el dropdown nativo del theme cuando hay mega-menú (gana al :hover del theme) */
+      .pn-native-dropdown-hidden,
+      .pn-has-mega-menu:hover .pn-native-dropdown-hidden,
+      .pn-has-mega-menu:focus-within .pn-native-dropdown-hidden,
+      .pn-has-mega-menu.is-active .pn-native-dropdown-hidden,
+      .pn-has-mega-menu.is-open .pn-native-dropdown-hidden,
+      .pn-has-mega-menu.open .pn-native-dropdown-hidden,
+      .pn-has-mega-menu.hover .pn-native-dropdown-hidden {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+
+      .pn-mega-menu-panel {
+        position: absolute;
+        z-index: 99998;
+        background: #ffffff;
+        color: #111;
+        border-radius: 14px;
+        box-shadow: 0 24px 70px -10px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.1);
+        padding: 22px;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-8px);
+        transition: opacity 0.22s ease, transform 0.22s ease, visibility 0.22s;
+        font-family: inherit;
+      }
+      .pn-mega-menu-panel.pn-mm-visible {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+      }
+      .pn-mm-inner {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 28px;
+        align-items: stretch;
+      }
+      .pn-mm-inner:not(:has(.pn-mm-left)) {
+        grid-template-columns: 1fr;
+      }
+      .pn-mm-left {
+        min-width: 0;
+      }
+      .pn-mm-left .pn-mm-links {
+        list-style: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .pn-mm-left .pn-mm-links li {
+        list-style: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+      }
+      .pn-mm-left .pn-mm-links li::before,
+      .pn-mm-left .pn-mm-links li::marker {
+        display: none !important;
+        content: '' !important;
+      }
+      .pn-mm-left .pn-mm-links a {
+        display: block;
+        padding: 9px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #1f2937;
+        text-decoration: none !important;
+        transition: background-color 0.15s, color 0.15s, padding-left 0.15s;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .pn-mm-left .pn-mm-links a:hover {
+        background: rgba(0,0,0,0.05);
+        padding-left: 16px;
+        color: #000;
+        text-decoration: none !important;
+      }
+      .pn-mm-right {
+        position: relative;
+        display: block;
+        border-radius: 12px;
+        overflow: hidden;
+        text-decoration: none !important;
+        color: #fff;
+        background: #f0f0f0;
+        min-height: 260px;
+        height: 100%;
+      }
+      .pn-mm-right img {
+        position: absolute;
+        inset: 0;
+        width: 100% !important;
+        height: 100% !important;
+        max-width: none !important;
+        object-fit: cover;
+        display: block;
+        transition: transform 0.45s ease;
+      }
+      .pn-mm-right:hover img { transform: scale(1.05); }
+      .pn-mm-caption {
+        position: absolute;
+        left: 18px;
+        bottom: 16px;
+        padding: 10px 18px;
+        background: rgba(0,0,0,0.78);
+        color: #fff;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 15px;
+        letter-spacing: 0.01em;
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+      }
+      @media (max-width: 900px) {
+        .pn-mega-menu-panel { padding: 16px; }
+        .pn-mm-inner { grid-template-columns: 1fr; gap: 14px; }
+        .pn-mm-right { min-height: 160px; }
+      }
     \`;
     
     if (!document.getElementById('pn-menu-image-styles')) {
       document.head.appendChild(imageStyles);
     }
 
-    console.log('PromoNube Style: MenÃº customizado âœ…');
+    console.log('PromoNube Style: Men? customizado ?');
   }
 
   function customizeSearchBar() {
@@ -10621,10 +12142,10 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     console.log('PromoNube SearchBar: Iniciando mejora del buscador...');
 
-    // Buscar el icono/botÃ³n de bÃºsqueda Y el input en el header (excluyendo logos)
+    // Buscar el icono/botón de búsqueda Y el input en el header (excluyendo logos)
     var searchTriggers = document.querySelectorAll('header .js-search-btn, header button[class*="search"], header a.js-search-btn, .utilities-item a[href*="search"], .js-utilities a[href*="search"], header input[type="search"], header input[name="q"], header .search-input, header .js-search-input');
     
-    // Filtrar para excluir elementos con "logo" en su clase o que sean imÃ¡genes
+    // Filtrar para excluir elementos con "logo" en su clase o que sean imágenes
     searchTriggers = Array.from(searchTriggers).filter(function(el) {
       var className = el.className.toLowerCase();
       var isLogo = className.includes('logo') || el.querySelector('img[alt*="logo"]') || el.closest('.logo');
@@ -10632,16 +12153,16 @@ app.get("/api/style-widget.js", async (req, res) => {
     });
     
     if (searchTriggers.length === 0) {
-      console.warn('PromoNube: No se encontrÃ³ botÃ³n de bÃºsqueda');
+      console.warn('PromoNube: No se encontró botón de búsqueda');
       return;
     }
 
-    console.log('PromoNube: Encontrados', searchTriggers.length, 'triggers de bÃºsqueda (botones e inputs)');
+    console.log('PromoNube: Encontrados', searchTriggers.length, 'triggers de búsqueda (botones e inputs)');
 
     // Crear el modal overlay
     var modalId = 'pn-search-modal';
     if (document.getElementById(modalId)) {
-      console.log('PromoNube: Modal de bÃºsqueda ya existe');
+      console.log('PromoNube: Modal de búsqueda ya existe');
       return;
     }
 
@@ -10650,7 +12171,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     searchModal.className = 'pn-search-modal';
     searchModal.style.zIndex = '999999';
     
-    // Variables de configuraciÃ³n
+    // Variables de configuración
     var showLogo = CONFIG.searchBar.showLogo || false;
     var logoUrl = CONFIG.searchBar.logoUrl || '';
     var logoSize = CONFIG.searchBar.logoSize || 100;
@@ -10658,18 +12179,18 @@ app.get("/api/style-widget.js", async (req, res) => {
     var suggestions = CONFIG.searchBar.suggestions || [];
     var closeButtonColor = CONFIG.searchBar.closeButtonColor || '#000000';
     
-    console.log('PromoNube: ConfiguraciÃ³n del logo:', {
+    console.log('PromoNube: Configuración del logo:', {
       showLogo: showLogo,
       logoUrl: logoUrl,
       logoSize: logoSize
     });
-    console.log('PromoNube: Color botÃ³n cerrar:', closeButtonColor);
+    console.log('PromoNube: Color botón cerrar:', closeButtonColor);
     console.log('PromoNube: Sugerencias:', suggestions);
     
     searchModal.innerHTML = \`
       <div class="pn-search-overlay"></div>
       <div class="pn-search-container \${titlePosition === 'top' ? 'pn-search-top-layout' : ''}">
-        <button class="pn-search-close" aria-label="Cerrar bÃºsqueda">
+        <button class="pn-search-close" aria-label="Cerrar búsqueda">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="\${closeButtonColor}" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -10677,7 +12198,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         </button>
         <div class="pn-search-content">
           \${showLogo && logoUrl ? '<img src="' + logoUrl + '" alt="Logo" class="pn-search-logo" style="max-width: ' + logoSize + 'px; height: auto; margin: 0 auto 12px; display: block;" />' : ''}
-          <h2 class="pn-search-title">\${CONFIG.searchBar.placeholder || 'Â¿QuÃ© estÃ¡s buscando?'}</h2>
+          <h2 class="pn-search-title">\${CONFIG.searchBar.placeholder || '¿Qué estás buscando?'}</h2>
           <form class="pn-search-form" action="/search" method="get">
             <input 
               type="text" 
@@ -10702,7 +12223,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     document.body.appendChild(searchModal);
 
-    // FunciÃ³n para abrir el modal
+    // Función para abrir el modal
     function openSearchModal(e) {
       e.preventDefault();
       searchModal.classList.add('active');
@@ -10714,21 +12235,21 @@ app.get("/api/style-widget.js", async (req, res) => {
         if (input) input.focus();
       }, 100);
       
-      console.log('PromoNube: Modal de bÃºsqueda abierto');
+      console.log('PromoNube: Modal de búsqueda abierto');
     }
 
-    // FunciÃ³n para cerrar el modal
+    // Función para cerrar el modal
     function closeSearchModal() {
       searchModal.classList.remove('active');
       document.body.style.overflow = '';
-      console.log('PromoNube: Modal de bÃºsqueda cerrado');
+      console.log('PromoNube: Modal de búsqueda cerrado');
     }
 
     // Agregar event listeners a todos los triggers
     for (var i = 0; i < searchTriggers.length; i++) {
       var trigger = searchTriggers[i];
       
-      // Si es un input, tambiÃ©n prevenir el comportamiento por defecto al hacer focus
+      // Si es un input, también prevenir el comportamiento por defecto al hacer focus
       if (trigger.tagName === 'INPUT') {
         trigger.addEventListener('focus', openSearchModal);
         trigger.addEventListener('click', function(e) {
@@ -10743,7 +12264,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       }
     }
 
-    // Cerrar con botÃ³n X
+    // Cerrar con botón X
     var closeBtn = searchModal.querySelector('.pn-search-close');
     if (closeBtn) {
       closeBtn.addEventListener('click', closeSearchModal);
@@ -10775,7 +12296,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     var titlePosition = CONFIG.searchBar.titlePosition || 'center';
     
     searchStyles.textContent = \`
-      /* Modal de bÃºsqueda - Base */
+      /* Modal de búsqueda - Base */
       .pn-search-modal {
         position: fixed;
         top: 0;
@@ -10826,7 +12347,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         padding-top: 80px;
       }
 
-      /* BotÃ³n cerrar */
+      /* Botón cerrar */
       .pn-search-close {
         position: absolute;
         top: 30px;
@@ -10875,7 +12396,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         display: block;
       }
 
-      /* TÃ­tulo */
+      /* Título */
       .pn-search-title {
         color: \${titleColor} !important;
         font-size: \${titleSize}px !important;
@@ -10912,7 +12433,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         color: #999;
       }
 
-      /* BotÃ³n submit */
+      /* Botón submit */
       .pn-search-submit {
         background: \${buttonColor} !important;
         color: white !important;
@@ -10984,7 +12505,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         transform: translateY(0);
       }
 
-      /* TÃ­tulo */
+      /* Título */
       .pn-search-title {
         color: white;
         font-size: 42px;
@@ -11020,7 +12541,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         color: #999;
       }
 
-      /* BotÃ³n submit */
+      /* Botón submit */
       .pn-search-submit {
         background: #000;
         color: white;
@@ -11188,7 +12709,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       document.head.appendChild(searchStyles);
     }
 
-    console.log('PromoNube SearchBar: âœ… Buscador mejorado activado');
+    console.log('PromoNube SearchBar: ? Buscador mejorado activado');
   }
 
   function customizeLightToggle() {
@@ -11202,17 +12723,17 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     console.log('PromoNube Light Toggle: Checking URL...', currentUrl);
     
-    // Si categoryUrls estÃ¡ vacÃ­o, aplicar a TODOS los productos (pÃ¡ginas de producto)
+    // Si categoryUrls est? vacío, aplicar a TODOS los productos (páginas de producto)
     // Si tiene URLs, solo aplicar si la URL actual coincide con alguna de ellas
     if (categoryUrls.length > 0) {
       const matchesAnyUrl = categoryUrls.some(url => url && currentUrl.includes(url));
       if (!matchesAnyUrl) {
-        console.log('PromoNube: No estamos en ninguna de las categorÃ­as configuradas:', categoryUrls);
+        console.log('PromoNube: No estamos en ninguna de las categorías configuradas:', categoryUrls);
         return;
       }
     }
 
-    console.log('PromoNube: âœ… Activando Cambio de Vista...');
+    console.log('PromoNube: ? Activando Cambio de Vista...');
 
     // Aplicar hover para mostrar la segunda imagen en TODOS los productos
     function applySecondViewHover() {
@@ -11296,7 +12817,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     applySecondViewHover();
 
-    // Reaplicar si hay carga dinÃ¡mica de productos
+    // Reaplicar si hay carga dinámica de productos
     const observer = new MutationObserver(() => applySecondViewHover());
     observer.observe(document.body, { childList: true, subtree: true });
 
@@ -11315,7 +12836,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         productsContainer.insertBefore(fallbackWrapper, productsContainer.firstChild);
         filterContainer = fallbackWrapper;
       } else {
-        console.warn('PromoNube: No se encontrÃ³ contenedor de filtros ni fallback');
+        console.warn('PromoNube: No se encontró contenedor de filtros ni fallback');
         return;
       }
     }
@@ -11381,9 +12902,9 @@ app.get("/api/style-widget.js", async (req, res) => {
     // Insertar al lado de DESTACADO
     filterContainer.appendChild(toggleContainer);
 
-    console.log('PromoNube: Toggle creado âœ…');
+    console.log('PromoNube: Toggle creado ?');
 
-    // FunciÃ³n para actualizar apariencia de las etiquetas
+    // Función para actualizar apariencia de las etiquetas
     function updateLabels(isOn) {
       if (isOn) {
         view1Label.style.fontWeight = '400';
@@ -11405,7 +12926,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     // Estado inicial
     updateLabels(checkbox.checked);
 
-    // FunciÃ³n para activar/desactivar las luces
+    // Función para activar/desactivar las luces
     function toggleLights(isOn) {
       console.log('PromoNube: Cambiando luces a:', isOn ? 'ON' : 'OFF');
 
@@ -11415,24 +12936,24 @@ app.get("/api/style-widget.js", async (req, res) => {
       console.log('PromoNube: Productos encontrados:', productItems.length);
 
       productItems.forEach(function(item) {
-        // Buscar el contenedor de imÃ¡genes (puede ser un slide o link)
+        // Buscar el contenedor de imágenes (puede ser un slide o link)
         const imageContainer = item.querySelector('a[href*="/productos/"], .item-link, .product-image');
         if (!imageContainer) return;
         
-        // Configurar contenedor con grid para superponer imÃ¡genes
+        // Configurar contenedor con grid para superponer imágenes
         imageContainer.style.display = 'grid';
         imageContainer.style.position = 'relative';
         
-        // Buscar todas las imÃ¡genes dentro del contenedor
+        // Buscar todas las imágenes dentro del contenedor
         const images = imageContainer.querySelectorAll('img');
-        console.log('PromoNube: ImÃ¡genes en producto:', images.length);
+        console.log('PromoNube: Imágenes en producto:', images.length);
         
         if (images.length >= 2) {
           // Alternar entre la primera (vista 1) y segunda imagen (vista 2)
           const imgVista1 = images[0];
           const imgVista2 = images[1];
           
-          // Forzar carga de imÃ¡genes lazy loading
+          // Forzar carga de imágenes lazy loading
           if (imgVista1.dataset.src && !imgVista1.src) {
             imgVista1.src = imgVista1.dataset.src;
           }
@@ -11440,7 +12961,7 @@ app.get("/api/style-widget.js", async (req, res) => {
             imgVista2.src = imgVista2.dataset.src;
           }
           
-          // Ambas imÃ¡genes en la misma celda del grid
+          // Ambas imágenes en la misma celda del grid
           imgVista1.style.gridArea = '1 / 1';
           imgVista1.style.width = '100%';
           imgVista1.style.height = 'auto';
@@ -11510,7 +13031,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     style.textContent = '.pn-force-hover img { opacity: 0 !important; } .pn-force-hover img:nth-child(2) { opacity: 1 !important; }';
     document.head.appendChild(style);
 
-    console.log('PromoNube Light Toggle: âœ… Completado');
+    console.log('PromoNube Light Toggle: ? Completado');
   }
 
   function customizeTheme() {
@@ -11533,9 +13054,9 @@ app.get("/api/style-widget.js", async (req, res) => {
       return;
     }
 
-    console.log('PromoNube: âœ… URL coincide! Aplicando tema personalizado...');
+    console.log('PromoNube: ? URL coincide! Aplicando tema personalizado...');
 
-    // Obtener configuraciÃ³n de colores
+    // Obtener configuración de colores
     const bgColor = CONFIG.themeSwitch.backgroundColor || '#000000';
     const textColor = CONFIG.themeSwitch.textColor || '#ffffff';
     const accentColor = CONFIG.themeSwitch.accentColor || '#f59e0b';
@@ -11560,7 +13081,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         color: \${textColor} !important;
       }
       
-      /* Headers y tÃ­tulos */
+      /* Headers y títulos */
       h1, h2, h3, h4, h5, h6,
       .page-title,
       .product-name,
@@ -11611,7 +13132,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         color: #000 !important;
       }
       
-      /* NavegaciÃ³n */
+      /* Navegación */
       nav,
       .nav,
       .navbar,
@@ -11631,7 +13152,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         color: \${accentColor} !important;
       }
       
-      /* MenÃºs desplegables y submenÃºs */
+      /* Menús desplegables y submenús */
       .dropdown-menu,
       .submenu,
       .nav-dropdown,
@@ -11664,7 +13185,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         border: 1px solid \${accentColor}40 !important;
       }
       
-      /* Contenedor de filtros y categorÃ­a */
+      /* Contenedor de filtros y categoría */
       .category-controls,
       .filters-container,
       .js-controls-footer,
@@ -11776,10 +13297,10 @@ app.get("/api/style-widget.js", async (req, res) => {
       }
     \`;
 
-    // Si invertColors estÃ¡ activado, agregar filtro de inversiÃ³n
+    // Si invertColors est? activado, agregar filtro de inversión
     if (invertColors) {
       cssRules += \`
-        /* Invertir imÃ¡genes para que se vean bien en fondo oscuro */
+        /* Invertir imágenes para que se vean bien en fondo oscuro */
         img:not(.no-invert) {
           filter: brightness(0.9) contrast(1.1);
         }
@@ -11808,7 +13329,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       opacity: 0.9;
       transition: opacity 0.3s ease;
     \`;
-    badge.textContent = 'ðŸ”¥ BLACK FRIDAY';
+    badge.textContent = '?? BLACK FRIDAY';
     
     // Hover para mostrar/ocultar
     badge.addEventListener('mouseenter', function() {
@@ -11826,7 +13347,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     
     document.body.appendChild(badge);
 
-    console.log('PromoNube Theme Switcher: âœ… Tema aplicado correctamente');
+    console.log('PromoNube Theme Switcher: ? Tema aplicado correctamente');
     console.log('PromoNube Theme Switcher: Background:', bgColor);
     console.log('PromoNube Theme Switcher: Text:', textColor);
     console.log('PromoNube Theme Switcher: Accent:', accentColor);
@@ -11842,24 +13363,525 @@ app.get("/api/style-widget.js", async (req, res) => {
     document.head.appendChild(badgesScript);
   }
 
+  // ==================== SCROLL REVEAL ====================
+  function initScrollReveal() {
+    if (!CONFIG.scrollReveal || !CONFIG.scrollReveal.enabled) return;
+    if (window.promonubeScrollRevealLoaded) return;
+    window.promonubeScrollRevealLoaded = true;
+
+    var sr = CONFIG.scrollReveal;
+    var anim = sr.animation || 'fade-up';
+    var duration = parseInt(sr.duration) || 700;
+    var distance = parseInt(sr.distance) || 40;
+    var stagger = parseInt(sr.stagger) || 80;
+    var once = sr.once !== false;
+    var threshold = parseFloat(sr.threshold) || 0.12;
+    var selectors = (sr.selectors || '').trim() || '.product-item, .js-item-product';
+
+    var transforms = {
+      'fade': 'none',
+      'fade-up': 'translateY(' + distance + 'px)',
+      'fade-down': 'translateY(-' + distance + 'px)',
+      'fade-left': 'translateX(' + distance + 'px)',
+      'fade-right': 'translateX(-' + distance + 'px)',
+      'zoom-in': 'scale(0.92)',
+      'zoom-out': 'scale(1.08)'
+    };
+
+    var initialTransform = transforms[anim] || transforms['fade-up'];
+
+    var style = document.createElement('style');
+    style.id = 'pn-sr-styles';
+    style.textContent = '.pn-sr-hidden{opacity:0;transform:' + initialTransform + ';transition:opacity ' + duration + 'ms cubic-bezier(0.22,1,0.36,1),transform ' + duration + 'ms cubic-bezier(0.22,1,0.36,1);will-change:opacity,transform}' +
+      '.pn-sr-visible{opacity:1!important;transform:none!important}' +
+      '@media (prefers-reduced-motion: reduce){.pn-sr-hidden,.pn-sr-visible{opacity:1!important;transform:none!important;transition:none!important}}';
+    document.head.appendChild(style);
+
+    function apply() {
+      var els;
+      try { els = document.querySelectorAll(selectors); } catch (e) { console.warn('ScrollReveal: selector inv\\u00e1lido', e); return; }
+      var added = 0;
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (el.classList.contains('pn-sr-hidden') || el.classList.contains('pn-sr-visible')) continue;
+        el.classList.add('pn-sr-hidden');
+        el.setAttribute('data-pn-sr-idx', String(added % 10));
+        added++;
+      }
+      return els;
+    }
+
+    var observer;
+    if ('IntersectionObserver' in window) {
+      observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            var idx = parseInt(entry.target.getAttribute('data-pn-sr-idx') || '0') || 0;
+            setTimeout(function() {
+              entry.target.classList.remove('pn-sr-hidden');
+              entry.target.classList.add('pn-sr-visible');
+            }, idx * stagger);
+            if (once) observer.unobserve(entry.target);
+          } else if (!once) {
+            entry.target.classList.remove('pn-sr-visible');
+            entry.target.classList.add('pn-sr-hidden');
+          }
+        });
+      }, { threshold: threshold, rootMargin: '0px 0px -60px 0px' });
+
+      function observeAll() {
+        apply();
+        var els = document.querySelectorAll(selectors + ', .pn-sr-hidden');
+        for (var i = 0; i < els.length; i++) {
+          if (els[i].classList.contains('pn-sr-hidden')) observer.observe(els[i]);
+        }
+      }
+      observeAll();
+
+      // Re-observar si aparecen elementos nuevos
+      var mo = new MutationObserver(function() {
+        clearTimeout(window._pnSrTimer);
+        window._pnSrTimer = setTimeout(observeAll, 300);
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+    } else {
+      // Fallback: mostrar todos
+      apply();
+      document.querySelectorAll('.pn-sr-hidden').forEach(function(el){
+        el.classList.remove('pn-sr-hidden');
+        el.classList.add('pn-sr-visible');
+      });
+    }
+
+    console.log('PromoNube ScrollReveal: ? activado con anim=' + anim);
+  }
+
+  // ==================== CUSTOM CURSOR ====================
+  function initCustomCursor() {
+    if (!CONFIG.customCursor || !CONFIG.customCursor.enabled) return;
+    if (window.promonubeCursorLoaded) return;
+    var cc = CONFIG.customCursor;
+
+    // Detectar mobile / touch
+    var isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (cc.hideOnMobile && (isTouch || window.innerWidth <= 768)) return;
+
+    window.promonubeCursorLoaded = true;
+    var dotSize = parseInt(cc.dotSize) || 8;
+    var ringSize = parseInt(cc.ringSize) || 36;
+    var mix = cc.mixBlendMode || 'difference';
+
+    var css = 'html,body{cursor:none!important}' +
+      'a,button,input,select,textarea,[role="button"],.btn,label{cursor:none!important}' +
+      '#pn-cursor-dot,#pn-cursor-ring{position:fixed;top:0;left:0;pointer-events:none;z-index:999999;border-radius:50%;transform:translate(-50%,-50%);mix-blend-mode:' + mix + ';transition:width .22s,height .22s,background-color .22s,border-color .22s,opacity .22s}' +
+      '#pn-cursor-dot{width:' + dotSize + 'px;height:' + dotSize + 'px;background:' + cc.dotColor + ';transition:transform .04s linear,width .22s,height .22s,background-color .22s}' +
+      '#pn-cursor-ring{width:' + ringSize + 'px;height:' + ringSize + 'px;border:1.5px solid ' + cc.ringColor + ';transition:transform .15s cubic-bezier(0.22,1,0.36,1),width .22s,height .22s,border-color .22s}' +
+      '#pn-cursor-dot.pn-cursor-hover{width:' + (dotSize * 2) + 'px;height:' + (dotSize * 2) + 'px}' +
+      '#pn-cursor-ring.pn-cursor-hover{width:' + (ringSize * 1.6) + 'px;height:' + (ringSize * 1.6) + 'px}' +
+      '@media (prefers-reduced-motion: reduce){#pn-cursor-dot,#pn-cursor-ring{transition:none}}';
+
+    var s = document.createElement('style'); s.id = 'pn-cursor-styles'; s.textContent = css; document.head.appendChild(s);
+
+    var dot = document.createElement('div'); dot.id = 'pn-cursor-dot';
+    var ring = document.createElement('div'); ring.id = 'pn-cursor-ring';
+    document.body.appendChild(dot); document.body.appendChild(ring);
+
+    var mx = 0, my = 0, rx = 0, ry = 0;
+    document.addEventListener('mousemove', function(e) {
+      mx = e.clientX; my = e.clientY;
+      dot.style.transform = 'translate(' + mx + 'px,' + my + 'px) translate(-50%,-50%)';
+    });
+
+    function loop() {
+      rx += (mx - rx) * 0.18;
+      ry += (my - ry) * 0.18;
+      ring.style.transform = 'translate(' + rx + 'px,' + ry + 'px) translate(-50%,-50%)';
+      requestAnimationFrame(loop);
+    }
+    loop();
+
+    // Hover grow on interactive elements
+    var hoverSel = 'a, button, input[type=submit], input[type=button], [role="button"], .btn, label, select, .js-item-product';
+    document.addEventListener('mouseover', function(e) {
+      if (e.target.closest && e.target.closest(hoverSel)) {
+        dot.classList.add('pn-cursor-hover');
+        ring.classList.add('pn-cursor-hover');
+      }
+    });
+    document.addEventListener('mouseout', function(e) {
+      if (e.target.closest && e.target.closest(hoverSel)) {
+        dot.classList.remove('pn-cursor-hover');
+        ring.classList.remove('pn-cursor-hover');
+      }
+    });
+
+    // Ocultar cuando el mouse sale del viewport
+    document.addEventListener('mouseleave', function(){ dot.style.opacity = '0'; ring.style.opacity = '0'; });
+    document.addEventListener('mouseenter', function(){ dot.style.opacity = '1'; ring.style.opacity = '1'; });
+
+    console.log('PromoNube CustomCursor: ? activado');
+  }
+
+  // ==================== TAB TITLE ====================
+  function initTabTitle() {
+    if (!CONFIG.tabTitle || !CONFIG.tabTitle.enabled) return;
+    if (window.promonubeTabTitleLoaded) return;
+    window.promonubeTabTitleLoaded = true;
+
+    var tt = CONFIG.tabTitle;
+    var messages = Array.isArray(tt.messages) ? tt.messages.filter(Boolean) : [];
+    if (!messages.length) return;
+    var interval = parseInt(tt.interval) || 2500;
+    var restore = tt.restoreOnFocus !== false;
+    var originalTitle = document.title;
+    var timer = null;
+    var idx = 0;
+
+    function start() {
+      if (timer) return;
+      timer = setInterval(function() {
+        document.title = messages[idx % messages.length];
+        idx++;
+      }, interval);
+    }
+    function stop() {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (restore) document.title = originalTitle;
+      idx = 0;
+    }
+
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) start(); else stop();
+    });
+    window.addEventListener('blur', start);
+    window.addEventListener('focus', stop);
+
+    console.log('PromoNube TabTitle: ? activo con', messages.length, 'mensajes');
+  }
+
+  // ==================== BACK TO TOP ====================
+  function initBackToTop() {
+    if (!CONFIG.backToTop || !CONFIG.backToTop.enabled) return;
+    if (document.getElementById('pn-btt-btn')) return;
+
+    var btt = CONFIG.backToTop;
+    var size = parseInt(btt.size) || 48;
+    var pos = btt.position || 'bottom-right';
+    var offset = parseInt(btt.offset) || 30;
+    var radius = parseInt(btt.borderRadius) || 50;
+    var showAfter = parseInt(btt.showAfter) || 400;
+
+    var positionCss = '';
+    if (pos === 'bottom-right') positionCss = 'bottom:' + offset + 'px;right:' + offset + 'px';
+    else if (pos === 'bottom-left') positionCss = 'bottom:' + offset + 'px;left:' + offset + 'px';
+    else if (pos === 'bottom-center') positionCss = 'bottom:' + offset + 'px;left:50%;transform:translateX(-50%)';
+    else positionCss = 'bottom:' + offset + 'px;right:' + offset + 'px';
+
+    var css = '#pn-btt-btn{position:fixed;' + positionCss + ';z-index:99980;width:' + size + 'px;height:' + size + 'px;border-radius:' + radius + '%;background:' + btt.backgroundColor + ';color:' + btt.textColor + ';border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:' + Math.round(size * 0.45) + 'px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,0.2);opacity:0;visibility:hidden;transition:opacity .3s ease,transform .3s ease,visibility .3s;font-family:inherit;padding:0;line-height:1}' +
+      '#pn-btt-btn.pn-btt-visible{opacity:1;visibility:visible}' +
+      '#pn-btt-btn:hover{transform:' + (pos === 'bottom-center' ? 'translateX(-50%) translateY(-3px)' : 'translateY(-3px)') + ';box-shadow:0 10px 28px rgba(0,0,0,0.28)}' +
+      (btt.pulse ? '#pn-btt-btn.pn-btt-visible{animation:pnBttPulse 2.2s ease-in-out infinite}@keyframes pnBttPulse{0%,100%{box-shadow:0 6px 20px rgba(0,0,0,0.2),0 0 0 0 ' + btt.backgroundColor + '66}50%{box-shadow:0 6px 20px rgba(0,0,0,0.2),0 0 0 14px ' + btt.backgroundColor + '00}}' : '');
+
+    var style = document.createElement('style'); style.id = 'pn-btt-styles'; style.textContent = css; document.head.appendChild(style);
+
+    var btn = document.createElement('button');
+    btn.id = 'pn-btt-btn';
+    btn.setAttribute('aria-label', 'Volver arriba');
+    btn.type = 'button';
+    btn.textContent = btt.icon || '↑';
+    btn.addEventListener('click', function() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    document.body.appendChild(btn);
+
+    function onScroll() {
+      if (window.scrollY > showAfter) btn.classList.add('pn-btt-visible');
+      else btn.classList.remove('pn-btt-visible');
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    console.log('PromoNube BackToTop: ? activado');
+  }
+
+  function customizeShopTheLook() {
+    if (!CONFIG.shopTheLook || !CONFIG.shopTheLook.enabled) return;
+    const stl = CONFIG.shopTheLook;
+    const looks = Array.isArray(stl.looks) ? stl.looks.filter(function(l){ return l && l.imageUrl; }) : [];
+    if (!looks.length) return;
+    if (document.querySelector('.pn-stl-section')) return;
+
+    var hotspotColor = stl.hotspotColor || '#ffffff';
+    var hotspotTextColor = stl.hotspotTextColor || '#111111';
+    var hotspotBorderColor = stl.hotspotBorderColor || 'rgba(255,255,255,0.35)';
+    var hotspotSize = parseInt(stl.hotspotSize, 10) || 32;
+    var hotspotShape = stl.hotspotShape || 'circle'; // circle | square | rounded | tag
+    var hotspotAnimation = stl.hotspotAnimation || 'pulse'; // none | pulse | bounce | glow
+    var hotspotLabelMode = stl.hotspotLabelMode || 'auto'; // auto | number | plus | custom | none
+    var hotspotFontSize = parseInt(stl.hotspotFontSize, 10) || Math.round(hotspotSize * 0.55);
+    var hotspotFontWeight = stl.hotspotFontWeight || '700';
+    var hoverCardEnabled = stl.hoverCardEnabled !== false; // default true
+    var hoverCardBg = stl.hoverCardBg || '#ffffff';
+    var hoverCardText = stl.hoverCardText || '#111111';
+    var hoverCardButtonBg = stl.hoverCardButtonBg || '#111111';
+    var hoverCardButtonText = stl.hoverCardButtonText || '#ffffff';
+    var hoverCardButtonLabel = stl.hoverCardButtonLabel || 'Ver producto';
+    var title = stl.title || '';
+    var subtitle = stl.subtitle || '';
+
+    var borderRadiusMap = { circle: '50%', square: '4px', rounded: '10px', tag: '999px' };
+    var shapeRadius = borderRadiusMap[hotspotShape] || '50%';
+    var dotMinWidth = hotspotShape === 'tag' ? 'auto' : hotspotSize + 'px';
+    var dotWidth = hotspotShape === 'tag' ? 'auto' : hotspotSize + 'px';
+    var dotPadding = hotspotShape === 'tag' ? '0 ' + Math.max(10, Math.round(hotspotSize * 0.45)) + 'px' : '0';
+
+    var animationCss = '';
+    if (hotspotAnimation === 'pulse') {
+      animationCss = '.pn-stl-dot.pn-stl-anim::before { content: ""; position: absolute; inset: -4px; border-radius: inherit; background: ' + hotspotColor + '; opacity: 0.5; animation: pnStlPulse 1.8s ease-out infinite; z-index: -1; }'
+        + '@keyframes pnStlPulse { 0% { transform: scale(0.9); opacity: 0.55; } 100% { transform: scale(2.2); opacity: 0; } }';
+    } else if (hotspotAnimation === 'bounce') {
+      animationCss = '.pn-stl-dot.pn-stl-anim { animation: pnStlBounce 1.6s ease-in-out infinite; }'
+        + '@keyframes pnStlBounce { 0%, 100% { transform: translate(-50%, -50%); } 50% { transform: translate(-50%, -58%); } }';
+    } else if (hotspotAnimation === 'glow') {
+      animationCss = '.pn-stl-dot.pn-stl-anim { animation: pnStlGlow 2s ease-in-out infinite; }'
+        + '@keyframes pnStlGlow { 0%, 100% { box-shadow: 0 2px 10px rgba(0,0,0,0.35), 0 0 0 3px ' + hotspotBorderColor + ', 0 0 0 0 ' + hotspotColor + '88; } 50% { box-shadow: 0 2px 10px rgba(0,0,0,0.35), 0 0 0 3px ' + hotspotBorderColor + ', 0 0 0 12px ' + hotspotColor + '00; } }';
+    }
+
+    var css = ''
+      + '.pn-stl-section { max-width: 1200px; margin: 40px auto; padding: 0 16px; font-family: inherit; box-sizing: border-box; }'
+      + '.pn-stl-header { text-align: center; margin-bottom: 24px; }'
+      + '.pn-stl-title { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.015em; }'
+      + '.pn-stl-subtitle { font-size: 15px; opacity: 0.72; margin: 0; line-height: 1.5; }'
+      + '.pn-stl-look { position: relative; width: 100%; border-radius: 16px; overflow: visible; background: transparent; }'
+      + '.pn-stl-look-inner { position: relative; width: 100%; border-radius: 16px; overflow: hidden; background: #f5f5f5; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.25); }'
+      + '.pn-stl-look + .pn-stl-look { margin-top: 24px; }'
+      + '.pn-stl-look img.pn-stl-image { display: block; width: 100%; height: auto; }'
+      + '.pn-stl-dot { position: absolute; width: ' + dotWidth + '; min-width: ' + dotMinWidth + '; height: ' + hotspotSize + 'px; padding: ' + dotPadding + '; transform: translate(-50%, -50%); border-radius: ' + shapeRadius + '; background: ' + hotspotColor + '; color: ' + hotspotTextColor + '; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-weight: ' + hotspotFontWeight + '; font-size: ' + hotspotFontSize + 'px; line-height: 1; letter-spacing: 0.01em; white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,0.35), 0 0 0 3px ' + hotspotBorderColor + '; z-index: 3; border: none; transition: transform 0.2s ease, box-shadow 0.2s ease; font-family: inherit; }'
+      + '.pn-stl-dot:hover { transform: translate(-50%, -50%) scale(1.12); z-index: 5; }'
+      + animationCss
+      + '.pn-stl-card { position: absolute; z-index: 20; background: ' + hoverCardBg + '; color: ' + hoverCardText + '; width: 240px; border-radius: 14px; box-shadow: 0 18px 50px -8px rgba(0,0,0,0.45), 0 4px 14px rgba(0,0,0,0.18); overflow: hidden; opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, calc(-100% - ' + (Math.round(hotspotSize / 2) + 12) + 'px)) translateY(4px); transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s; font-family: inherit; }'
+      + '.pn-stl-card.pn-stl-card-visible { opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, calc(-100% - ' + (Math.round(hotspotSize / 2) + 12) + 'px)) translateY(0); }'
+      + '.pn-stl-card.pn-stl-card-below { transform: translate(-50%, ' + (Math.round(hotspotSize / 2) + 12) + 'px) translateY(-4px); }'
+      + '.pn-stl-card.pn-stl-card-below.pn-stl-card-visible { transform: translate(-50%, ' + (Math.round(hotspotSize / 2) + 12) + 'px) translateY(0); }'
+      + '.pn-stl-card::after { content: ""; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%) rotate(45deg); width: 14px; height: 14px; background: ' + hoverCardBg + '; box-shadow: 3px 3px 8px -2px rgba(0,0,0,0.12); }'
+      + '.pn-stl-card.pn-stl-card-below::after { bottom: auto; top: -7px; box-shadow: -3px -3px 8px -2px rgba(0,0,0,0.12); }'
+      + '.pn-stl-card-img { width: 100%; height: 150px; object-fit: cover; display: block; background: #f5f5f5; }'
+      + '.pn-stl-card-body { padding: 12px 14px 14px; }'
+      + '.pn-stl-card-name { font-size: 13.5px; font-weight: 600; margin: 0 0 4px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }'
+      + '.pn-stl-card-price { font-size: 15px; font-weight: 700; margin: 0 0 10px; }'
+      + '.pn-stl-card-btn { display: block; width: 100%; padding: 9px 12px; background: ' + hoverCardButtonBg + '; color: ' + hoverCardButtonText + '; text-align: center; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px; box-sizing: border-box; transition: opacity 0.2s; }'
+      + '.pn-stl-card-btn:hover { opacity: 0.85; color: ' + hoverCardButtonText + '; }'
+      + '.pn-stl-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 16px; animation: pnStlFade 0.25s ease; }'
+      + '@keyframes pnStlFade { from { opacity: 0; } to { opacity: 1; } }'
+      + '.pn-stl-modal { background: #fff; border-radius: 18px; max-width: 420px; width: 100%; overflow: hidden; position: relative; box-shadow: 0 30px 80px rgba(0,0,0,0.4); }'
+      + '.pn-stl-modal img { width: 100%; height: 280px; object-fit: cover; display: block; background: #f5f5f5; }'
+      + '.pn-stl-modal-body { padding: 20px 22px 22px; font-family: inherit; color: #111; }'
+      + '.pn-stl-modal-name { font-size: 17px; font-weight: 600; margin: 0 0 8px; line-height: 1.3; }'
+      + '.pn-stl-modal-price { font-size: 22px; font-weight: 700; margin: 0 0 16px; }'
+      + '.pn-stl-modal-btn { display: block; width: 100%; padding: 14px 20px; background: #111; color: #fff; text-align: center; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 15px; letter-spacing: 0.01em; transition: opacity 0.2s; box-sizing: border-box; }'
+      + '.pn-stl-modal-btn:hover { opacity: 0.85; color: #fff; }'
+      + '.pn-stl-modal-close { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.95); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #111; z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }'
+      + '@media (max-width: 640px) { .pn-stl-title { font-size: 22px; } .pn-stl-card { width: 180px; } .pn-stl-card-img { height: 110px; } .pn-stl-modal img { height: 220px; } }';
+
+    var styleEl = document.createElement('style');
+    styleEl.id = 'pn-stl-styles';
+    styleEl.textContent = css;
+    document.head.appendChild(styleEl);
+
+    var section = document.createElement('section');
+    section.className = 'pn-stl-section';
+
+    function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+
+    function getLabel(h, hi) {
+      var mode = hotspotLabelMode;
+      if (mode === 'custom') return h.label || '';
+      if (mode === 'number') return String(hi + 1);
+      if (mode === 'plus') return '+';
+      if (mode === 'none') return '';
+      // auto: usa label custom si existe; sino seg�n shape
+      if (h.label) return h.label;
+      if (hotspotShape === 'tag') return 'Ver';
+      return hotspotAnimation === 'pulse' ? '' : '+';
+    }
+
+    var headerHtml = '';
+    if (title || subtitle) {
+      headerHtml = '<div class="pn-stl-header">'
+        + (title ? '<h2 class="pn-stl-title">' + escapeHtml(title) + '</h2>' : '')
+        + (subtitle ? '<p class="pn-stl-subtitle">' + escapeHtml(subtitle) + '</p>' : '')
+        + '</div>';
+    }
+
+    var looksHtml = looks.map(function(look, li) {
+      var hotspots = Array.isArray(look.hotspots) ? look.hotspots : [];
+      var dotsHtml = hotspots.map(function(h, hi) {
+        if (!h || typeof h.x !== 'number' || typeof h.y !== 'number') return '';
+        var label = escapeHtml(getLabel(h, hi));
+        var animClass = hotspotAnimation !== 'none' ? ' pn-stl-anim' : '';
+        return '<button type="button" class="pn-stl-dot' + animClass + '" data-look="' + li + '" data-hotspot="' + hi + '" style="left:' + h.x + '%;top:' + h.y + '%;" aria-label="' + escapeHtml(h.productName || 'Ver producto') + '">' + label + '</button>';
+      }).join('');
+      return '<div class="pn-stl-look"><div class="pn-stl-look-inner">'
+        + '<img class="pn-stl-image" src="' + look.imageUrl + '" alt="Shop the Look" loading="lazy" />'
+        + dotsHtml
+        + '</div></div>';
+    }).join('');
+
+    section.innerHTML = headerHtml + looksHtml;
+
+    // Inyectar en la posición configurada
+    var injected = false;
+    if (stl.injectSelector) {
+      try {
+        var target = document.querySelector(stl.injectSelector);
+        if (target) {
+          var pos = stl.injectPosition || 'after';
+          if (pos === 'before') target.parentNode.insertBefore(section, target);
+          else if (pos === 'prepend') target.insertBefore(section, target.firstChild);
+          else if (pos === 'append') target.appendChild(section);
+          else target.parentNode.insertBefore(section, target.nextSibling);
+          injected = true;
+        }
+      } catch (e) { console.warn('PromoNube ShopTheLook: selector inválido', e); }
+    }
+    if (!injected) {
+      var defaultTarget = document.querySelector('.banner, .slider, .js-swiper-main, .main-slider, .hero, header + section') || document.querySelector('main') || document.body;
+      if (defaultTarget === document.body) document.body.appendChild(section);
+      else if (defaultTarget.tagName === 'MAIN') defaultTarget.insertBefore(section, defaultTarget.firstChild);
+      else defaultTarget.parentNode.insertBefore(section, defaultTarget.nextSibling);
+    }
+
+    // Hover card (tarjeta flotante con preview del producto)
+    function buildHoverCard(h) {
+      var card = document.createElement('div');
+      card.className = 'pn-stl-card';
+      card.innerHTML = ''
+        + (h.productImage ? '<img class="pn-stl-card-img" src="' + h.productImage + '" alt="" />' : '')
+        + '<div class="pn-stl-card-body">'
+        + '<div class="pn-stl-card-name">' + escapeHtml(h.productName || 'Producto') + '</div>'
+        + (h.productPrice ? '<div class="pn-stl-card-price">' + escapeHtml(h.productPrice) + '</div>' : '')
+        + '<a class="pn-stl-card-btn" href="' + (h.productUrl || '#') + '">' + escapeHtml(hoverCardButtonLabel) + '</a>'
+        + '</div>';
+      return card;
+    }
+
+    var activeCard = null, hideTimer = null;
+    function showCard(dot) {
+      if (!hoverCardEnabled) return;
+      var li = parseInt(dot.getAttribute('data-look'), 10);
+      var hi = parseInt(dot.getAttribute('data-hotspot'), 10);
+      var look = looks[li];
+      if (!look || !look.hotspots || !look.hotspots[hi]) return;
+      var h = look.hotspots[hi];
+      if (!h.productId && !h.productUrl) return;
+      hideCard(true);
+      var card = buildHoverCard(h);
+      card.style.left = dot.style.left;
+      card.style.top = dot.style.top;
+      var lookEl = dot.closest('.pn-stl-look-inner');
+      if (!lookEl) return;
+      lookEl.appendChild(card);
+      // Detectar si necesita mostrarse debajo (si el punto est? muy arriba)
+      var yPct = parseFloat(dot.style.top);
+      if (yPct < 30) card.classList.add('pn-stl-card-below');
+      requestAnimationFrame(function() { card.classList.add('pn-stl-card-visible'); });
+      activeCard = card;
+      card.addEventListener('mouseenter', function() { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } });
+      card.addEventListener('mouseleave', function() { scheduleHide(); });
+    }
+    function hideCard(immediate) {
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      if (activeCard) {
+        var c = activeCard; activeCard = null;
+        c.classList.remove('pn-stl-card-visible');
+        setTimeout(function() { if (c && c.parentNode) c.parentNode.removeChild(c); }, immediate ? 0 : 180);
+      }
+    }
+    function scheduleHide() {
+      if (hideTimer) clearTimeout(hideTimer);
+      hideTimer = setTimeout(function() { hideCard(false); }, 180);
+    }
+
+    if (hoverCardEnabled && window.matchMedia && !window.matchMedia('(hover: none)').matches) {
+      section.addEventListener('mouseover', function(e) {
+        var dot = e.target.closest('.pn-stl-dot');
+        if (dot) { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } showCard(dot); }
+      });
+      section.addEventListener('mouseout', function(e) {
+        var dot = e.target.closest('.pn-stl-dot');
+        if (!dot) return;
+        var related = e.relatedTarget;
+        if (related && (related.closest && (related.closest('.pn-stl-card') || related.closest('.pn-stl-dot') === dot))) return;
+        scheduleHide();
+      });
+    }
+
+    // En mobile (o si hover card desactivado) => click abre modal
+    section.addEventListener('click', function(ev) {
+      var btn = ev.target.closest('.pn-stl-dot');
+      if (!btn) return;
+      ev.preventDefault();
+      var li = parseInt(btn.getAttribute('data-look'), 10);
+      var hi = parseInt(btn.getAttribute('data-hotspot'), 10);
+      var look = looks[li];
+      if (!look || !look.hotspots || !look.hotspots[hi]) return;
+      var h = look.hotspots[hi];
+      if (!h.productId && !h.productUrl) return;
+
+      // Si hover card est? activo y es desktop con hover disponible, no abrir modal (ya se ve la tarjeta)
+      var isTouchOrNoHover = window.matchMedia && window.matchMedia('(hover: none)').matches;
+      if (hoverCardEnabled && !isTouchOrNoHover) return;
+
+      var overlay = document.createElement('div');
+      overlay.className = 'pn-stl-overlay';
+      overlay.innerHTML = '<div class="pn-stl-modal">'
+        + '<button class="pn-stl-modal-close" aria-label="Cerrar">\u00d7</button>'
+        + (h.productImage ? '<img src="' + h.productImage + '" alt="" />' : '')
+        + '<div class="pn-stl-modal-body">'
+        + '<h3 class="pn-stl-modal-name">' + escapeHtml(h.productName || 'Producto') + '</h3>'
+        + (h.productPrice ? '<p class="pn-stl-modal-price">' + escapeHtml(h.productPrice) + '</p>' : '')
+        + '<a class="pn-stl-modal-btn" href="' + (h.productUrl || '#') + '">' + escapeHtml(hoverCardButtonLabel) + '</a>'
+        + '</div></div>';
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', function(e) {
+        if (e.target === overlay || e.target.closest('.pn-stl-modal-close')) overlay.remove();
+      });
+      document.addEventListener('keydown', function onEsc(e) {
+        if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onEsc); }
+      });
+    });
+
+    console.log('PromoNube Shop the Look: secci?n inyectada con', looks.length, 'look(s)');
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
       customizeWhatsApp();
       customizeBanners();
-      setTimeout(customizeMenu, 500); // Dar tiempo al menÃº para renderizar
+      setTimeout(customizeMenu, 500); // Dar tiempo al men? para renderizar
       setTimeout(customizeSearchBar, 600); // Buscador mejorado
-      setTimeout(customizeLightToggle, 1000); // Dar tiempo a la pÃ¡gina para cargar
+      setTimeout(customizeLightToggle, 1000); // Dar tiempo a la página para cargar
       setTimeout(customizeTheme, 500); // Aplicar tema lo antes posible
+      setTimeout(customizeShopTheLook, 700);
       setTimeout(injectBadgesScript, 800);
+      setTimeout(initScrollReveal, 300);
+      setTimeout(initCustomCursor, 200);
+      setTimeout(initTabTitle, 100);
+      setTimeout(initBackToTop, 300);
     });
   } else {
     customizeWhatsApp();
     customizeBanners();
-    setTimeout(customizeMenu, 500); // Dar tiempo al menÃº para renderizar
+    setTimeout(customizeMenu, 500); // Dar tiempo al men? para renderizar
     setTimeout(customizeSearchBar, 600); // Buscador mejorado
-    setTimeout(customizeLightToggle, 1000); // Dar tiempo a la pÃ¡gina para cargar
+    setTimeout(customizeLightToggle, 1000); // Dar tiempo a la página para cargar
     setTimeout(customizeTheme, 500); // Aplicar tema lo antes posible
+    setTimeout(customizeShopTheLook, 700);
     setTimeout(injectBadgesScript, 800);
+    setTimeout(initScrollReveal, 300);
+    setTimeout(initCustomCursor, 200);
+    setTimeout(initTabTitle, 100);
+    setTimeout(initBackToTop, 300);
   }
 
 })();
@@ -11884,10 +13906,15 @@ app.get("/api/top-header-widget.js", async (req, res) => {
       return res.send("// Error: storeId requerido");
     }
 
-    const styleDoc = await db.collection("promonube_style_config").doc(store).get();
+    if (!(await checkStoreActive(store))) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send('// PromoNube: plan inactivo');
+    }
+
+    const styleDoc = await getCachedDoc("promonube_style_config", store);
     
     if (!styleDoc.exists) {
-      return res.send("// No hay configuraciÃ³n");
+      return res.send("// No hay configuración");
     }
 
     const config = styleDoc.data();
@@ -11920,7 +13947,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
     const tiendanubeHeader = document.querySelector('header');
     
     if (!tiendanubeHeader) {
-      console.warn('[PromoNube] No se encontrÃ³ header de TiendaNube');
+      console.warn('[PromoNube] No se encontró header de TiendaNube');
       return;
     }
 
@@ -11956,11 +13983,11 @@ app.get("/api/top-header-widget.js", async (req, res) => {
       box-sizing: border-box;
     \`;
 
-    // Separar items por posiciÃ³n
+    // Separar items por posición
     const leftItems = CONFIG.items.filter(item => (!item.position || item.position === 'left'));
     const rightItems = CONFIG.items.filter(item => item.position === 'right');
 
-    // Crear contenedor principal con alineaciÃ³n configurada
+    // Crear contenedor principal con alineaci?n configurada
     const mainContainer = document.createElement('div');
     const alignment = CONFIG.alignment || 'center';
     mainContainer.style.cssText = \`
@@ -11971,7 +13998,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
       gap: \${alignment === 'space-between' ? '0' : '20px'};
     \`;
 
-    // FunciÃ³n para crear grupo de items con separadores
+    // Función para crear grupo de items con separadores
     function createItemGroup(items) {
       const container = document.createElement('div');
       container.style.cssText = 'display: flex; align-items: center; gap: 0;';
@@ -12033,7 +14060,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
           \`;
         }
 
-        // Ãcono
+        // ??cono
         if (item.icon) {
           const icon = document.createElement('span');
           icon.textContent = item.icon;
@@ -12054,7 +14081,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
       return container;
     }
 
-    // Agregar items segÃºn alineaciÃ³n
+    // Agregar items según alineaci?n
     if (alignment === 'space-between' && rightItems.length > 0) {
       // Modo distribuido: izquierda y derecha
       if (leftItems.length > 0) {
@@ -12076,13 +14103,13 @@ app.get("/api/top-header-widget.js", async (req, res) => {
     // Agregar estilos responsive para mobile
     const responsiveStyles = document.createElement('style');
     responsiveStyles.textContent = \`
-      /* Asegurar que el header de TiendaNube estÃ© por encima */
+      /* Asegurar que el header de TiendaNube est? por encima */
       header, .site-header, .header {
         position: relative !important;
         z-index: 1000 !important;
       }
       
-      /* Asegurar que el menÃº de navegaciÃ³n estÃ© por encima */
+      /* Asegurar que el men? de navegación est? por encima */
       nav, .navigation, .main-nav, .navbar, .menu {
         position: relative !important;
         z-index: 1001 !important;
@@ -12129,7 +14156,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
     // Insertar ANTES del header de TiendaNube (arriba de todo)
     tiendanubeHeader.parentNode.insertBefore(header, tiendanubeHeader);
 
-    console.log('[PromoNube] Top Header creado âœ…');
+    console.log('[PromoNube] Top Header creado ?');
   }
 
   if (document.readyState === 'loading') {
@@ -12160,10 +14187,15 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
       return res.send("// Error: storeId requerido");
     }
 
-    const styleDoc = await db.collection("promonube_style_config").doc(store).get();
+    if (!(await checkStoreActive(store))) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send('// PromoNube: plan inactivo');
+    }
+
+    const styleDoc = await getCachedDoc("promonube_style_config", store);
     
     if (!styleDoc.exists) {
-      return res.send("// No hay configuraciÃ³n");
+      return res.send("// No hay configuración");
     }
 
     const config = styleDoc.data();
@@ -12277,7 +14309,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
     \`;
 
     if (isMobile && CONFIG.messages.length > 1) {
-      // MOBILE: Modo carrusel - mostrar 1 mensaje a la vez con rotaciÃ³n
+      // MOBILE: Modo carrusel - mostrar 1 mensaje a la vez con rotación
       let currentIndex = 0;
       const messageEl = document.createElement('div');
       messageEl.style.cssText = \`
@@ -12385,16 +14417,16 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
 
     bar.appendChild(messageContainer);
 
-    // Agregar estilos para asegurar jerarquÃ­a de z-index
+    // Agregar estilos para asegurar jerarqu?a de z-index
     const styleElement = document.createElement('style');
     styleElement.textContent = \`
-      /* Asegurar que el header de TiendaNube estÃ© por encima */
+      /* Asegurar que el header de TiendaNube est? por encima */
       header, .site-header, .header {
         position: relative !important;
         z-index: 1000 !important;
       }
       
-      /* Asegurar que el menÃº de navegaciÃ³n estÃ© por encima */
+      /* Asegurar que el men? de navegación est? por encima */
       nav, .navigation, .main-nav, .navbar, .menu {
         position: relative !important;
         z-index: 1001 !important;
@@ -12408,10 +14440,24 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
         right: auto !important;
         transform: none !important;
       }
+
+      /* Responsive: asegurar legibilidad en mobile */
+      @media (max-width: 768px) {
+        #pn-top-announcement-bar {
+          padding-left: 12px !important;
+          padding-right: 12px !important;
+          font-size: 12px !important;
+          word-break: break-word;
+        }
+        #pn-top-announcement-bar a { word-break: break-word; }
+      }
+      @media (max-width: 480px) {
+        #pn-top-announcement-bar { font-size: 11.5px !important; padding: 8px 10px !important; }
+      }
     \`;
     document.head.appendChild(styleElement);
 
-    // Esperar a que el DOM estÃ© completamente listo
+    // Esperar a que el DOM est? completamente listo
     setTimeout(function() {
       // Verificar si ya existe para no duplicar
       if (document.getElementById('pn-top-announcement-bar')) {
@@ -12423,10 +14469,32 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
       const header = document.querySelector('header');
       
       if (!header) {
-        console.warn('[PromoNube] âš ï¸ No se encontrÃ³ el header');
+        console.warn('[PromoNube] ?? No se encontró el header');
         return;
       }
-      
+
+      // Estrategia configurable. Default: 'auto' (comportamiento histórico entre logo y nav)
+      const insertMode = CONFIG.insertMode || 'auto';
+
+      if (insertMode === 'before-header') {
+        header.parentNode.insertBefore(bar, header);
+        console.log('[PromoNube] ? Top Announcement Bar insertada ANTES del <header> (modo before-header)');
+        return;
+      }
+      if (insertMode === 'after-header') {
+        if (header.nextSibling) header.parentNode.insertBefore(bar, header.nextSibling);
+        else header.parentNode.appendChild(bar);
+        console.log('[PromoNube] ? Top Announcement Bar insertada DESPU?S del <header> (modo after-header)');
+        return;
+      }
+      if (insertMode === 'inside-header-top') {
+        if (header.firstChild) header.insertBefore(bar, header.firstChild);
+        else header.appendChild(bar);
+        console.log('[PromoNube] ? Top Announcement Bar insertada al inicio del <header> (modo inside-header-top)');
+        return;
+      }
+
+      // insertMode === 'auto' -> comportamiento original (no tocar)
       // Buscar logo y nav dentro del header
       let logo = header.querySelector('.logo, [class*="logo" i], a[href="/"], img[alt*="logo" i], .site-brand, .brand');
       let nav = header.querySelector('nav, [role="navigation"], .navigation, .main-nav');
@@ -12436,30 +14504,30 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
         logo = logo.parentElement;
       }
       
-      // Estrategia: Insertar DESPUÃ‰S del logo pero ANTES del nav
+      // Estrategia: Insertar DESPU?S del logo pero ANTES del nav
       if (logo && nav) {
-        // Verificar que estÃ©n en el mismo contenedor
+        // Verificar que están en el mismo contenedor
         if (logo.parentNode === nav.parentNode) {
           // Insertar entre logo y nav
           logo.parentNode.insertBefore(bar, nav);
-          console.log('[PromoNube] âœ… Top Announcement Bar insertada entre logo y nav');
+          console.log('[PromoNube] ? Top Announcement Bar insertada entre logo y nav');
         } else {
-          // Si estÃ¡n en diferentes contenedores, insertar antes del nav
+          // Si están en diferentes contenedores, insertar antes del nav
           nav.parentNode.insertBefore(bar, nav);
-          console.log('[PromoNube] âœ… Top Announcement Bar insertada antes del nav (diferentes contenedores)');
+          console.log('[PromoNube] ? Top Announcement Bar insertada antes del nav (diferentes contenedores)');
         }
       } else if (logo) {
-        // Solo tenemos logo, insertar despuÃ©s
+        // Solo tenemos logo, insertar después
         if (logo.nextSibling) {
           logo.parentNode.insertBefore(bar, logo.nextSibling);
         } else {
           logo.parentNode.appendChild(bar);
         }
-        console.log('[PromoNube] âœ… Top Announcement Bar insertada DESPUÃ‰S del logo');
+        console.log('[PromoNube] ? Top Announcement Bar insertada DESPU?S del logo');
       } else if (nav) {
         // Solo tenemos nav, insertar antes
         nav.parentNode.insertBefore(bar, nav);
-        console.log('[PromoNube] âœ… Top Announcement Bar insertada ANTES del nav');
+        console.log('[PromoNube] ? Top Announcement Bar insertada ANTES del nav');
       } else {
         // No encontramos ni logo ni nav, insertar al principio del header
         if (header.firstChild) {
@@ -12467,12 +14535,12 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
         } else {
           header.appendChild(bar);
         }
-        console.log('[PromoNube] âš ï¸ Top Announcement Bar insertada al inicio del header');
+        console.log('[PromoNube] ?? Top Announcement Bar insertada al inicio del header');
       }
       
     }, 250);
 
-    console.log('[PromoNube] Top Announcement Bar creada âœ…');
+    console.log('[PromoNube] Top Announcement Bar creada ?');
   }
 
   if (document.readyState === 'loading') {
@@ -12491,7 +14559,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
   }
 });
 
-// GET /api/announcement-bar-widget.js - Barra de ofertas con rotaciÃ³n
+// GET /api/announcement-bar-widget.js - Barra de ofertas con rotación
 app.get("/api/announcement-bar-widget.js", async (req, res) => {
   const { store } = req.query;
   
@@ -12503,10 +14571,15 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
       return res.send("// Error: storeId requerido");
     }
 
-    const styleDoc = await db.collection("promonube_style_config").doc(store).get();
+    if (!(await checkStoreActive(store))) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send('// PromoNube: plan inactivo');
+    }
+
+    const styleDoc = await getCachedDoc("promonube_style_config", store);
     
     if (!styleDoc.exists) {
-      return res.send("// No hay configuraciÃ³n");
+      return res.send("// No hay configuración");
     }
 
     const config = styleDoc.data();
@@ -12550,7 +14623,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
     const insertPoint = document.querySelector('header, .header, #header, body');
     
     if (!insertPoint) {
-      console.warn('[PromoNube] No se encontrÃ³ punto de inserciÃ³n');
+      console.warn('[PromoNube] No se encontró punto de inserci?n');
       return;
     }
 
@@ -12622,7 +14695,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
     \`;
 
     if (isMobile && CONFIG.messages.length > 1) {
-      // MOBILE: Modo carrusel - mostrar 1 mensaje a la vez con rotaciÃ³n suave
+      // MOBILE: Modo carrusel - mostrar 1 mensaje a la vez con rotación suave
       let currentIndex = 0;
       const messageEl = document.createElement('div');
       messageEl.style.cssText = \`
@@ -12663,7 +14736,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
       updateMessage();
       messageContainer.appendChild(messageEl);
 
-      // Rotar cada 5 segundos con transiciÃ³n suave
+      // Rotar cada 5 segundos con transici?n suave
       setInterval(function() {
         messageEl.style.opacity = '0';
         setTimeout(function() {
@@ -12731,7 +14804,25 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
 
     bar.appendChild(messageContainer);
 
-    // Insertar SIEMPRE despuÃ©s del header principal de TiendaNube (no despuÃ©s del Top Header)
+    // CSS responsive para la announcement bar inferior
+    const abStyle = document.createElement('style');
+    abStyle.textContent = \`
+      @media (max-width: 768px) {
+        #pn-announcement-bar {
+          padding-left: 12px !important;
+          padding-right: 12px !important;
+          font-size: 12px !important;
+          word-break: break-word;
+        }
+        #pn-announcement-bar a { word-break: break-word; }
+      }
+      @media (max-width: 480px) {
+        #pn-announcement-bar { font-size: 11.5px !important; padding: 8px 10px !important; }
+      }
+    \`;
+    document.head.appendChild(abStyle);
+
+    // Insertar SIEMPRE después del header principal de TiendaNube (no después del Top Header)
     const mainHeader = document.querySelector('header, .header, #header, .site-header');
     if (mainHeader) {
       if (mainHeader.nextSibling) {
@@ -12740,11 +14831,11 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
         mainHeader.parentNode.appendChild(bar);
       }
     } else {
-      // Ãšltima opciÃ³n: al principio del body
+      // ?última opción: al principio del body
       document.body.insertBefore(bar, document.body.firstChild);
     }
 
-    console.log('[PromoNube] Announcement Bar creada âœ…');
+    console.log('[PromoNube] Announcement Bar creada ?');
   }
 
   if (document.readyState === 'loading') {
@@ -12767,7 +14858,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
 // ENDPOINTS DE INTEGRACIONES
 // ============================================
 
-// GET /api/integrations - Obtener configuraciÃ³n de integraciones
+// GET /api/integrations - Obtener configuración de integraciones
 app.get("/api/integrations", async (req, res) => {
   const storeId = req.query.storeId;
 
@@ -12784,7 +14875,7 @@ app.get("/api/integrations", async (req, res) => {
 
     const store = storeDoc.data();
 
-    // Devolver solo los flags de configuraciÃ³n (no las API keys por seguridad)
+    // Devolver solo los flags de configuración (no las API keys por seguridad)
     res.json({
       success: true,
       integrations: {
@@ -12838,7 +14929,7 @@ app.post("/api/integrations/perfit", async (req, res) => {
 
     await db.collection("promonube_stores").doc(storeId).update(updateData);
 
-    console.log("âœ… Perfit configurado para store:", storeId);
+    console.log("? Perfit configurado para store:", storeId);
     
     res.json({
       success: true,
@@ -12850,7 +14941,7 @@ app.post("/api/integrations/perfit", async (req, res) => {
   }
 });
 
-// POST /api/integrations/perfit/test - Probar conexión con Perfit
+// POST /api/integrations/perfit/test - Probar conexi?n con Perfit
 app.post("/api/integrations/perfit/test", async (req, res) => {
   const { storeId } = req.body;
   if (!storeId) {
@@ -12865,14 +14956,14 @@ app.post("/api/integrations/perfit/test", async (req, res) => {
     if (!store.perfitApiKey || !store.perfitAccountId) {
       return res.json({
         success: false,
-        message: "Perfit no está configurado. Ingresá tu API Key y Account ID.",
+        message: "Perfit no est? configurado. Ingres? tu API Key y Account ID.",
         details: {
           hasApiKey: !!store.perfitApiKey,
           hasAccountId: !!store.perfitAccountId
         }
       });
     }
-    // Probar la conexión haciendo GET de los contacts (para validar credenciales)
+    // Probar la conexi?n haciendo GET de los contacts (para validar credenciales)
     const testResponse = await fetch(
       `https://api.perfit.io/v1/accounts/${store.perfitAccountId}/contacts?limit=1`,
       {
@@ -12884,7 +14975,7 @@ app.post("/api/integrations/perfit/test", async (req, res) => {
       }
     );
     if (testResponse.ok) {
-      return res.json({ success: true, message: "Conexión con Perfit exitosa! Las credenciales son correctas." });
+      return res.json({ success: true, message: "Conexi?n con Perfit exitosa! Las credenciales son correctas." });
     } else {
       const errorBody = await testResponse.text();
       return res.json({
@@ -12929,7 +15020,7 @@ app.post("/api/integrations/mailchimp", async (req, res) => {
 
     await db.collection("promonube_stores").doc(storeId).update(updateData);
 
-    console.log("âœ… Mailchimp configurado para store:", storeId);
+    console.log("? Mailchimp configurado para store:", storeId);
     
     res.json({ 
       success: true, 
@@ -12941,7 +15032,7 @@ app.post("/api/integrations/mailchimp", async (req, res) => {
   }
 });
 
-// POST /api/integrations/test - Probar integraciÃ³n
+// POST /api/integrations/test - Probar integraci?n
 app.post("/api/integrations/test", async (req, res) => {
   const { storeId, integration, email } = req.body;
 
@@ -12979,30 +15070,30 @@ app.post("/api/integrations/test", async (req, res) => {
       default:
         return res.status(400).json({ 
           success: false, 
-          message: "IntegraciÃ³n no vÃ¡lida" 
+          message: "Integraci?n no válida" 
         });
     }
 
     res.json(result);
   } catch (error) {
-    console.error("Error probando integraciÃ³n:", error);
+    console.error("Error probando integraci?n:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // ============================================
-// ENDPOINT PARA SUBIR IMÃGENES EN BASE64 (mÃ¡s simple)
+// ENDPOINT PARA SUBIR IM??GENES EN BASE64 (más simple)
 // ============================================
 app.post("/api/upload-image-base64", async (req, res) => {
   try {
-    console.log('ðŸ“¤ Upload image base64 request');
+    console.log('?? Upload image base64 request');
     
     const { storeId, fileName, fileData, folder } = req.body;
     
     if (!storeId || !fileName || !fileData) {
       return res.json({ 
         success: false, 
-        message: 'Faltan parÃ¡metros requeridos' 
+        message: 'Faltan parámetros requeridos' 
       });
     }
     
@@ -13012,7 +15103,7 @@ app.post("/api/upload-image-base64", async (req, res) => {
     if (!matches || matches.length !== 3) {
       return res.json({ 
         success: false, 
-        message: 'Formato de imagen invÃ¡lido' 
+        message: 'Formato de imagen inválido' 
       });
     }
     
@@ -13020,14 +15111,14 @@ app.post("/api/upload-image-base64", async (req, res) => {
     const base64Data = matches[2];
     const buffer = Buffer.from(base64Data, 'base64');
     
-    console.log(`ðŸ“¦ File: ${fileName}, Size: ${buffer.length} bytes, Type: ${mimeType}`);
+    console.log(`?? File: ${fileName}, Size: ${buffer.length} bytes, Type: ${mimeType}`);
     
-    // Crear path Ãºnico
+    // Crear path único
     const timestamp = Date.now();
     const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filePath = `${folder || 'images'}/${storeId}/${timestamp}-${sanitizedName}`;
     
-    console.log(`ðŸ“ Uploading to: ${filePath}`);
+    console.log(`?? Uploading to: ${filePath}`);
     
     // Subir a Storage
     const fileUpload = bucket.file(filePath);
@@ -13038,15 +15129,15 @@ app.post("/api/upload-image-base64", async (req, res) => {
       }
     });
     
-    console.log('âœ… File saved');
+    console.log('? File saved');
     
-    // Hacer pÃºblico
+    // Hacer público
     await fileUpload.makePublic();
     
-    // URL pÃºblica
+    // URL pública
     const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
     
-    console.log(`âœ… Public URL: ${publicUrl}`);
+    console.log(`? Public URL: ${publicUrl}`);
     
     res.json({ 
       success: true, 
@@ -13054,7 +15145,7 @@ app.post("/api/upload-image-base64", async (req, res) => {
     });
     
   } catch (error) {
-    console.error('âŒ Upload error:', error);
+    console.error('? Upload error:', error);
     res.json({ 
       success: false, 
       message: error.message 
@@ -13062,26 +15153,26 @@ app.post("/api/upload-image-base64", async (req, res) => {
   }
 });
 
-// ENDPOINT PARA SUBIR IMÃGENES (Multer)
+// ENDPOINT PARA SUBIR IM??GENES (Multer)
 // ============================================
 app.post("/api/upload-image", (req, res, next) => {
-  console.log('ðŸ“¤ Upload request iniciado');
+  console.log('?? Upload request iniciado');
   console.log('Headers:', JSON.stringify(req.headers));
   console.log('Content-Type:', req.get('content-type'));
   next();
 }, upload.single('image'), async (req, res) => {
   try {
-    console.log('ðŸ“¤ Upload image - dentro del handler');
+    console.log('?? Upload image - dentro del handler');
     console.log('req.file:', req.file ? 'SI' : 'NO');
     console.log('req.body:', JSON.stringify(req.body));
     
-    // Validar que se subiÃ³ un archivo
+    // Validar que se subi? un archivo
     if (!req.file) {
-      console.error('âŒ No file uploaded');
+      console.error('? No file uploaded');
       console.error('Body recibido:', JSON.stringify(req.body));
       return res.status(400).json({ 
         success: false, 
-        message: 'No se recibiÃ³ ninguna imagen. Verifica que el campo se llama "image"' 
+        message: 'No se recibi? ninguna imagen. Verifica que el campo se llama "image"' 
       });
     }
     
@@ -13090,22 +15181,22 @@ app.post("/api/upload-image", (req, res, next) => {
     const folder = req.body.folder || 'images';
     
     if (!storeId) {
-      console.error('âŒ No storeId provided');
+      console.error('? No storeId provided');
       return res.status(400).json({ 
         success: false, 
         message: 'storeId es requerido' 
       });
     }
     
-    console.log(`ðŸ“ StoreId: ${storeId}, Folder: ${folder}`);
-    console.log(`ðŸ“¦ File: ${req.file.originalname}, Size: ${req.file.size} bytes`);
+    console.log(`?? StoreId: ${storeId}, Folder: ${folder}`);
+    console.log(`?? File: ${req.file.originalname}, Size: ${req.file.size} bytes`);
     
-    // Crear nombre Ãºnico para el archivo
+    // Crear nombre único para el archivo
     const timestamp = Date.now();
     const sanitizedName = req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filePath = `${folder}/${storeId}/${timestamp}-${sanitizedName}`;
     
-    console.log(`ðŸ“ Uploading to: ${filePath}`);
+    console.log(`?? Uploading to: ${filePath}`);
     
     // Subir a Firebase Storage
     const fileUpload = bucket.file(filePath);
@@ -13116,17 +15207,17 @@ app.post("/api/upload-image", (req, res, next) => {
       }
     });
     
-    console.log('âœ… File saved to bucket');
+    console.log('? File saved to bucket');
     
-    // Hacer el archivo pÃºblico
+    // Hacer el archivo público
     await fileUpload.makePublic();
     
-    console.log('âœ… File made public');
+    console.log('? File made public');
     
-    // Obtener URL pÃºblica
+    // Obtener URL pública
     const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
     
-    console.log(`âœ… Public URL: ${publicUrl}`);
+    console.log(`? Public URL: ${publicUrl}`);
     
     res.json({ 
       success: true, 
@@ -13135,7 +15226,7 @@ app.post("/api/upload-image", (req, res, next) => {
     });
     
   } catch (error) {
-    console.error('âŒ Upload error:', error);
+    console.error('? Upload error:', error);
     console.error('Error stack:', error.stack);
     res.status(500).json({ 
       success: false, 
@@ -13145,10 +15236,10 @@ app.post("/api/upload-image", (req, res, next) => {
 });
 
 // ============================================
-// ENDPOINTS: GESTIÃ“N DE SUSCRIPCIONES
+// ENDPOINTS: GESTI??N DE SUSCRIPCIONES
 // ============================================
 
-// GET /api/subscription/:storeId - Obtener suscripciÃ³n actual
+// GET /api/subscription/:storeId - Obtener suscripción actual
 app.get('/api/subscription/:storeId', async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -13157,7 +15248,7 @@ app.get('/api/subscription/:storeId', async (req, res) => {
     const subscriptionDoc = await subscriptionRef.get();
 
     if (!subscriptionDoc.exists) {
-      // Inicializar suscripciÃ³n FREE si no existe
+      // Inicializar suscripción FREE si no existe
       await initializeStoreSubscription(storeId);
       const newDoc = await subscriptionRef.get();
       return res.json({
@@ -13175,19 +15266,19 @@ app.get('/api/subscription/:storeId', async (req, res) => {
       availablePlans: PLANS
     });
   } catch (error) {
-    console.error('Error obteniendo suscripciÃ³n:', error);
+    console.error('Error obteniendo suscripción:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/subscription/:storeId/activate - Activar mÃ³dulo individual
+// POST /api/subscription/:storeId/activate - Activar módulo individual
 app.post('/api/subscription/:storeId/activate', async (req, res) => {
   try {
     const { storeId } = req.params;
     const { moduleName } = req.body;
 
     if (!MODULES[moduleName]) {
-      return res.status(400).json({ success: false, error: 'MÃ³dulo no vÃ¡lido' });
+      return res.status(400).json({ success: false, error: 'Módulo no válido' });
     }
 
     const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
@@ -13199,23 +15290,23 @@ app.post('/api/subscription/:storeId/activate', async (req, res) => {
 
     res.json({
       success: true,
-      message: `MÃ³dulo ${MODULES[moduleName].name} activado`,
+      message: `Módulo ${MODULES[moduleName].name} activado`,
       module: moduleName
     });
   } catch (error) {
-    console.error('Error activando mÃ³dulo:', error);
+    console.error('Error activando módulo:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/subscription/:storeId/deactivate - Desactivar mÃ³dulo
+// POST /api/subscription/:storeId/deactivate - Desactivar módulo
 app.post('/api/subscription/:storeId/deactivate', async (req, res) => {
   try {
     const { storeId } = req.params;
     const { moduleName } = req.body;
 
     if (moduleName === 'coupons') {
-      return res.status(400).json({ success: false, error: 'No se puede desactivar Cupones (mÃ³dulo gratuito)' });
+      return res.status(400).json({ success: false, error: 'No se puede desactivar Cupones (módulo gratuito)' });
     }
 
     const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
@@ -13227,11 +15318,11 @@ app.post('/api/subscription/:storeId/deactivate', async (req, res) => {
 
     res.json({
       success: true,
-      message: `MÃ³dulo ${MODULES[moduleName]?.name || moduleName} desactivado`,
+      message: `Módulo ${MODULES[moduleName]?.name || moduleName} desactivado`,
       module: moduleName
     });
   } catch (error) {
-    console.error('Error desactivando mÃ³dulo:', error);
+    console.error('Error desactivando módulo:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -13243,13 +15334,13 @@ app.post('/api/subscription/:storeId/change-plan', async (req, res) => {
     const { planId } = req.body;
 
     if (!PLANS[planId]) {
-      return res.status(400).json({ success: false, error: 'Plan no vÃ¡lido' });
+      return res.status(400).json({ success: false, error: 'Plan no válido' });
     }
 
     const plan = PLANS[planId];
     const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
     
-    // Crear objeto de mÃ³dulos basado en el plan
+    // Crear objeto de módulos basado en el plan
     const modules = {
       coupons: true, // Siempre activo
       giftcards: plan.modules.includes('giftcards'),
@@ -13277,7 +15368,7 @@ app.post('/api/subscription/:storeId/change-plan', async (req, res) => {
   }
 });
 
-// GET /api/subscription/:storeId/check/:module - Verificar acceso a mÃ³dulo
+// GET /api/subscription/:storeId/check/:module - Verificar acceso a módulo
 app.get('/api/subscription/:storeId/check/:module', async (req, res) => {
   try {
     const { storeId, module } = req.params;
@@ -13305,25 +15396,25 @@ app.post('/api/mp/create-preference', async (req, res) => {
   try {
     const { storeId, planId, storeEmail, storeName } = req.body;
 
-    console.log('ðŸ“¥ Request crear preferencia:', { storeId, planId, storeEmail, storeName });
-    console.log('ðŸ”‘ MP_ACCESS_TOKEN existe:', !!MP_ACCESS_TOKEN);
-    console.log('ðŸ”§ mpClient existe:', !!mpClient);
+    console.log('?? Request crear preferencia:', { storeId, planId, storeEmail, storeName });
+    console.log('?? MP_ACCESS_TOKEN existe:', !!MP_ACCESS_TOKEN);
+    console.log('?? mpClient existe:', !!mpClient);
 
-    // Verificar que MP estÃ© configurado
+    // Verificar que MP est? configurado
     if (!MP_ACCESS_TOKEN || !mpClient) {
-      console.error('âŒ Mercado Pago no estÃ¡ configurado');
+      console.error('? Mercado Pago no est? configurado');
       console.error('MP_ACCESS_TOKEN:', MP_ACCESS_TOKEN ? 'Existe' : 'No existe');
       console.error('mpClient:', mpClient ? 'Existe' : 'No existe');
       return res.status(500).json({ 
         success: false, 
-        error: 'Mercado Pago no estÃ¡ configurado. Contacta al administrador.',
-        details: 'El servicio de pagos no estÃ¡ disponible temporalmente' 
+        error: 'Mercado Pago no est? configurado. Contacta al administrador.',
+        details: 'El servicio de pagos no est? disponible temporalmente' 
       });
     }
 
     if (!PLANS[planId]) {
-      console.error('âŒ Plan invÃ¡lido:', planId);
-      return res.status(400).json({ success: false, error: 'Plan invÃ¡lido' });
+      console.error('? Plan inválido:', planId);
+      return res.status(400).json({ success: false, error: 'Plan inválido' });
     }
 
     const plan = PLANS[planId];
@@ -13332,7 +15423,7 @@ app.post('/api/mp/create-preference', async (req, res) => {
       return res.status(400).json({ success: false, error: 'El plan Free no requiere pago' });
     }
 
-    console.log('ðŸ’³ Creando preferencia de pago:', { storeId, planId, amount: plan.price });
+    console.log('?? Creando preferencia de pago:', { storeId, planId, amount: plan.price });
 
     // Crear preferencia de pago
     const preference = new Preference(mpClient);
@@ -13341,7 +15432,7 @@ app.post('/api/mp/create-preference', async (req, res) => {
       items: [
         {
           title: `PromoNube - ${plan.name}`,
-          description: `SuscripciÃ³n mensual a ${plan.name}`,
+          description: `Suscripción mensual a ${plan.name}`,
           quantity: 1,
           unit_price: plan.price,
           currency_id: 'ARS'
@@ -13369,11 +15460,11 @@ app.post('/api/mp/create-preference', async (req, res) => {
       }
     };
 
-    console.log('ðŸ“¦ Enviando a MP:', JSON.stringify(preferenceData, null, 2));
+    console.log('?? Enviando a MP:', JSON.stringify(preferenceData, null, 2));
 
     const result = await preference.create({ body: preferenceData });
 
-    console.log('âœ… Preferencia creada:', result.id);
+    console.log('? Preferencia creada:', result.id);
 
     // Guardar referencia en Firestore
     await db.collection('promonube_payments').doc(result.id).set({
@@ -13393,7 +15484,7 @@ app.post('/api/mp/create-preference', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('âŒ Error creando preferencia MP:', error);
+    console.error('? Error creando preferencia MP:', error);
     console.error('Error message:', error.message);
     console.error('Error name:', error.name);
     console.error('Stack:', error.stack);
@@ -13404,7 +15495,7 @@ app.post('/api/mp/create-preference', async (req, res) => {
       success: false, 
       error: 'Error al procesar el pago',
       details: error.message || 'Error desconocido',
-      technical: error.cause?.message || error.response?.data?.message || 'Sin detalles tÃ©cnicos'
+      technical: error.cause?.message || error.response?.data?.message || 'Sin detalles t?cnicos'
     });
   }
 });
@@ -13412,48 +15503,48 @@ app.post('/api/mp/create-preference', async (req, res) => {
 // POST /api/mp/webhook - Webhook para notificaciones de MP
 app.post('/api/mp/webhook', async (req, res) => {
   try {
-    console.log('ðŸ“© Webhook MP recibido:', req.body);
-    console.log('ðŸ“‹ Headers:', req.headers);
+    console.log('?? Webhook MP recibido:', req.body);
+    console.log('?? Headers:', req.headers);
 
     const { type, data } = req.body;
 
-    // ValidaciÃ³n opcional de firma (si quieres mayor seguridad)
+    // Validación opcional de firma (si quieres mayor seguridad)
     const xSignature = req.headers['x-signature'];
     const xRequestId = req.headers['x-request-id'];
     
     if (xSignature) {
-      console.log('ðŸ” Signature recibida:', xSignature);
-      // La validaciÃ³n de firma es opcional pero recomendada para producciÃ³n
+      console.log('?? Signature recibida:', xSignature);
+      // La validación de firma es opcional pero recomendada para producción
       // Por ahora logueamos para debugging
     }
 
-    // Responder rÃ¡pido a MP (200 dentro de 10 segundos)
+    // Responder rápido a MP (200 dentro de 10 segundos)
     res.status(200).send('OK');
 
     // Procesar en background
     if (type === 'payment') {
       const paymentId = data.id;
       
-      console.log('ðŸ’³ Procesando pago:', paymentId);
+      console.log('?? Procesando pago:', paymentId);
 
-      // Obtener informaciÃ³n del pago desde MP
+      // Obtener información del pago desde MP
       const payment = new Payment(mpClient);
       const paymentData = await payment.get({ id: paymentId });
 
-      console.log('ðŸ’° Estado del pago:', paymentData.status);
-      console.log('ðŸ“¦ Metadata:', paymentData.metadata);
+      console.log('?? Estado del pago:', paymentData.status);
+      console.log('?? Metadata:', paymentData.metadata);
 
-      // Si el pago estÃ¡ aprobado, activar el plan
+      // Si el pago est? aprobado, activar el plan
       if (paymentData.status === 'approved') {
         const storeId = paymentData.metadata?.store_id;
         const planId = paymentData.metadata?.plan_id;
 
         if (!storeId || !planId) {
-          console.error('âŒ Faltan datos en metadata:', paymentData.metadata);
+          console.error('? Faltan datos en metadata:', paymentData.metadata);
           return;
         }
 
-        console.log(`âœ… Pago aprobado - Activando plan ${planId} para store ${storeId}`);
+        console.log(`? Pago aprobado - Activando plan ${planId} para store ${storeId}`);
 
         // Actualizar documento de pago
         const paymentRef = db.collection('promonube_payments').doc(paymentData.id.toString());
@@ -13471,22 +15562,22 @@ app.post('/api/mp/webhook', async (req, res) => {
           approvedAt: FieldValue.serverTimestamp()
         });
 
-        // Activar plan en la suscripciÃ³n
+        // Activar plan en la suscripción
         const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
         const subscriptionDoc = await subscriptionRef.get();
 
         const plan = PLANS[planId];
         if (!plan) {
-          console.error('âŒ Plan no encontrado:', planId);
+          console.error('? Plan no encontrado:', planId);
           return;
         }
 
-        // Calcular fecha de expiraciÃ³n (30 dÃ­as)
+        // Calcular fecha de expiración (30 días)
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 30);
 
         if (subscriptionDoc.exists) {
-          // Actualizar suscripciÃ³n existente
+          // Actualizar suscripción existente
           await subscriptionRef.update({
             plan: planId,
             modules: modulesArrayToObject(plan.modules),
@@ -13497,7 +15588,7 @@ app.post('/api/mp/webhook', async (req, res) => {
             lastPaymentAmount: paymentData.transaction_amount
           });
         } else {
-          // Crear nueva suscripciÃ³n
+          // Crear nueva suscripción
           await subscriptionRef.set({
             storeId: storeId,
             plan: planId,
@@ -13511,11 +15602,11 @@ app.post('/api/mp/webhook', async (req, res) => {
           });
         }
 
-        console.log(`ðŸŽ‰ Plan ${planId} activado exitosamente para store ${storeId}`);
-        console.log(`ðŸ“… Expira el: ${expiresAt.toISOString()}`);
+        console.log(`?? Plan ${planId} activado exitosamente para store ${storeId}`);
+        console.log(`?? Expira el: ${expiresAt.toISOString()}`);
 
       } else if (payment.status === 'rejected') {
-        console.log('âŒ Pago rechazado:', payment.status_detail);
+        console.log('? Pago rechazado:', payment.status_detail);
         
         // Actualizar estado del pago
         const paymentRef = db.collection('promonube_payments').doc(payment.id.toString());
@@ -13526,7 +15617,7 @@ app.post('/api/mp/webhook', async (req, res) => {
         });
 
       } else if (payment.status === 'pending' || payment.status === 'in_process') {
-        console.log('â³ Pago pendiente:', payment.status_detail);
+        console.log('? Pago pendiente:', payment.status_detail);
         
         // Actualizar estado del pago
         const paymentRef = db.collection('promonube_payments').doc(payment.id.toString());
@@ -13539,7 +15630,7 @@ app.post('/api/mp/webhook', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('âŒ Error en webhook MP:', error);
+    console.error('? Error en webhook MP:', error);
   }
 });
 
@@ -13548,19 +15639,29 @@ app.post('/api/mp/webhook', async (req, res) => {
 // ============================================
 
 // GET /api/admin/stores - Obtener todas las tiendas con suscripciones
-app.get('/api/admin/stores', async (req, res) => {
+// Middleware de autenticación admin
+function requireAdminKey(req, res, next) {
+  const adminKey = req.headers['x-admin-key'] || req.body?.adminKey || req.query?.adminKey;
+  const ADMIN_KEY = process.env.ADMIN_KEY || 'demo-secret-2026';
+  if (adminKey !== ADMIN_KEY) {
+    return res.status(401).json({ success: false, error: 'No autorizado' });
+  }
+  next();
+}
+
+app.get('/api/admin/stores', requireAdminKey, async (req, res) => {
   try {
     // Obtener todas las tiendas desde promonube_stores
     const storesSnapshot = await db.collection('promonube_stores').get();
     
     const stores = [];
     
-    // Procesar cada tienda y obtener su suscripciÃ³n
+    // Procesar cada tienda y obtener su suscripción
     for (const storeDoc of storesSnapshot.docs) {
       const storeId = storeDoc.id;
       const storeData = storeDoc.data();
       
-      // Obtener suscripciÃ³n actual desde stores/{storeId}/subscription/current
+      // Obtener suscripción actual desde stores/{storeId}/subscription/current
       let subscription = null;
       try {
         const subDoc = await db.collection('stores').doc(storeId).collection('subscription').doc('current').get();
@@ -13602,10 +15703,10 @@ app.get('/api/admin/stores', async (req, res) => {
           };
         }
       } catch (err) {
-        console.log(`No se pudo obtener suscripciÃ³n para store ${storeId}:`, err.message);
+        console.log(`No se pudo obtener suscripción para store ${storeId}:`, err.message);
       }
       
-      // Si no hay suscripciÃ³n, usar datos de instalaciÃ³n de promonube_stores
+      // Si no hay suscripción, usar datos de instalación de promonube_stores
       if (!subscription && storeData.installedAt) {
         const installedDate = typeof storeData.installedAt === 'string' ? storeData.installedAt : storeData.installedAt.toDate?.().toISOString();
         subscription = {
@@ -13637,7 +15738,7 @@ app.get('/api/admin/stores', async (req, res) => {
 });
 
 // GET /api/admin/payments - Obtener todos los pagos
-app.get('/api/admin/payments', async (req, res) => {
+app.get('/api/admin/payments', requireAdminKey, async (req, res) => {
   try {
     const paymentsSnapshot = await db.collection('promonube_payments')
       .orderBy('createdAt', 'desc')
@@ -13663,7 +15764,7 @@ app.get('/api/admin/payments', async (req, res) => {
 });
 
 // GET /api/admin/uninstalls - Obtener todas las desinstalaciones
-app.get('/api/admin/uninstalls', async (req, res) => {
+app.get('/api/admin/uninstalls', requireAdminKey, async (req, res) => {
   try {
     const uninstallsSnapshot = await db.collection('promonube_uninstalls')
       .orderBy('uninstalledAt', 'desc')
@@ -13699,20 +15800,20 @@ app.get('/api/admin/uninstalls', async (req, res) => {
 });
 
 // POST /api/admin/activate-plan - Activar plan manualmente
-app.post('/api/admin/activate-plan', async (req, res) => {
+app.post('/api/admin/activate-plan', requireAdminKey, async (req, res) => {
   try {
     const { storeId, planId } = req.body;
 
     if (!storeId || !planId) {
-      return res.status(400).json({ success: false, error: 'Faltan parÃ¡metros' });
+      return res.status(400).json({ success: false, error: 'Faltan parámetros' });
     }
 
     const plan = PLANS[planId];
     if (!plan) {
-      return res.status(400).json({ success: false, error: 'Plan invÃ¡lido' });
+      return res.status(400).json({ success: false, error: 'Plan inválido' });
     }
 
-    // Calcular fecha de expiraciÃ³n (30 dÃ­as)
+    // Calcular fecha de expiración (30 días)
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
@@ -13728,7 +15829,7 @@ app.post('/api/admin/activate-plan', async (req, res) => {
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
 
-    console.log(`ðŸ‘¨â€ðŸ’¼ Plan ${planId} activado manualmente para store ${storeId}`);
+    console.log(`????? Plan ${planId} activado manualmente para store ${storeId}`);
 
     res.json({
       success: true,
@@ -13741,7 +15842,7 @@ app.post('/api/admin/activate-plan', async (req, res) => {
 });
 
 // POST /api/admin/deactivate-plan - Desactivar plan
-app.post('/api/admin/deactivate-plan', async (req, res) => {
+app.post('/api/admin/deactivate-plan', requireAdminKey, async (req, res) => {
   try {
     const { storeId } = req.body;
 
@@ -13749,15 +15850,23 @@ app.post('/api/admin/deactivate-plan', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Falta storeId' });
     }
 
-    const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
+    const subscriptionRef = db.collection('stores').doc(storeId).collection('subscription').doc('current');
+    const subDoc = await subscriptionRef.get();
+    if (!subDoc.exists) {
+      return res.status(404).json({ success: false, error: 'No se encontro suscripcion' });
+    }
     await subscriptionRef.update({
       status: 'inactive',
       deactivatedAt: FieldValue.serverTimestamp()
     });
 
-    console.log(`ðŸ›‘ Plan desactivado para store ${storeId}`);
+    invalidateConfigCache(storeId);
 
-    res.json({ success: true, message: 'Plan desactivado exitosamente' });
+    // Eliminar todos los scripts de PromoNube de la tienda
+    const removeResult = await removeAllStoreScripts(storeId);
+
+
+    res.json({ success: true, message: 'Plan desactivado exitosamente', scriptsRemoved: removeResult.removed || 0 });
   } catch (error) {
     console.error('Error desactivando plan:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -13768,7 +15877,7 @@ app.post('/api/admin/deactivate-plan', async (req, res) => {
 // NUBECATEGORIES ENDPOINTS
 // ============================================
 
-// GET: Obtener todas las categorÃ­as de TiendaNube
+// GET: Obtener todas las categorías de TiendaNube
 app.get('/api/nubecategories/:storeId/categories', async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -13781,7 +15890,7 @@ app.get('/api/nubecategories/:storeId/categories', async (req, res) => {
     
     const { access_token } = storeDoc.data();
     
-    // Obtener categorÃ­as de TiendaNube
+    // Obtener categorías de TiendaNube
     const response = await fetch(`https://api.tiendanube.com/v1/${storeId}/categories`, {
       method: 'GET',
       headers: {
@@ -13792,7 +15901,7 @@ app.get('/api/nubecategories/:storeId/categories', async (req, res) => {
     
     const tiendanubeCategories = await response.json();
 
-    // Guardar en cachÃ© en Firestore
+    // Guardar en cach? en Firestore
     await db.collection('CategoriesNube_categories').doc(storeId).set({
       store_id: storeId,
       categories: tiendanubeCategories.results || tiendanubeCategories,
@@ -13806,12 +15915,12 @@ app.get('/api/nubecategories/:storeId/categories', async (req, res) => {
       total: tiendanubeCategories.paging?.total || tiendanubeCategories.results?.length || 0
     });
   } catch (error) {
-    console.error('âŒ Error fetching categories:', error);
+    console.error('? Error fetching categories:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST: Crear nueva categorÃ­a
+// POST: Crear nueva categoría
 app.post('/api/nubecategories/:storeId/categories', async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -13863,12 +15972,12 @@ app.post('/api/nubecategories/:storeId/categories', async (req, res) => {
       message: `Category "${name}" created successfully`
     });
   } catch (error) {
-    console.error('âŒ Error creating category:', error);
+    console.error('? Error creating category:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// PUT: Actualizar categorÃ­a
+// PUT: Actualizar categoría
 app.put('/api/nubecategories/:storeId/categories/:categoryId', async (req, res) => {
   try {
     const { storeId, categoryId } = req.params;
@@ -13918,12 +16027,12 @@ app.put('/api/nubecategories/:storeId/categories/:categoryId', async (req, res) 
       message: `Category updated successfully`
     });
   } catch (error) {
-    console.error('âŒ Error updating category:', error);
+    console.error('? Error updating category:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// DELETE: Eliminar categorÃ­a
+// DELETE: Eliminar categoría
 app.delete('/api/nubecategories/:storeId/categories/:categoryId', async (req, res) => {
   try {
     const { storeId, categoryId } = req.params;
@@ -13957,7 +16066,7 @@ app.delete('/api/nubecategories/:storeId/categories/:categoryId', async (req, re
       message: `Category deleted successfully`
     });
   } catch (error) {
-    console.error('âŒ Error deleting category:', error);
+    console.error('? Error deleting category:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -13985,7 +16094,7 @@ app.get('/api/nubecategories/:storeId/changes', async (req, res) => {
       total: changes.length
     });
   } catch (error) {
-    console.error('âŒ Error fetching changes:', error);
+    console.error('? Error fetching changes:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -13994,7 +16103,7 @@ app.get('/api/nubecategories/:storeId/changes', async (req, res) => {
 // NUBECATEGORIES AUTH ENDPOINTS
 // ============================================
 
-// POST: Intercambiar cÃ³digo OAuth por token
+// POST: Intercambiar código OAuth por token
 app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
   try {
     const { code } = req.body;
@@ -14002,15 +16111,15 @@ app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
     if (!code) {
       return res.status(400).json({ 
         success: false, 
-        message: 'CÃ³digo de autorizaciÃ³n requerido' 
+        message: 'Código de autorizaci?n requerido' 
       });
     }
 
-    console.log('ðŸ” Intercambiando cÃ³digo:', code);
+    console.log('?? Intercambiando código:', code);
 
-    // En TiendaNube, el cÃ³digo ya contiene el access_token
+    // En TiendaNube, el código ya contiene el access_token
     // Hacemos una prueba llamando a la API para obtener el user_id
-    // El cÃ³digo debe enviarse como Bearer token
+    // El código debe enviarse como Bearer token
     let storeId = null;
     
     try {
@@ -14024,16 +16133,16 @@ app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
       if (testResponse.ok) {
         const userData = await testResponse.json();
         storeId = userData.id?.toString();
-        console.log('âœ… Usuario validado, storeId:', storeId);
+        console.log('? Usuario validado, storeId:', storeId);
       } else {
-        console.log('âŒ Status testResponse:', testResponse.status);
+        console.log('? Status testResponse:', testResponse.status);
         const errorText = await testResponse.text();
         console.log('Error response:', errorText);
         throw new Error(`API error: ${testResponse.status}`);
       }
     } catch (error) {
-      console.error('Error validando cÃ³digo:', error);
-      throw new Error('CÃ³digo invÃ¡lido o expirado');
+      console.error('Error validando código:', error);
+      throw new Error('Código inválido o expirado');
     }
 
     if (!storeId) {
@@ -14047,7 +16156,7 @@ app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
     const storeRef = db.collection("CategoriesNube_stores").doc(storeId);
     const storeDoc = await storeRef.get();
 
-    // El cÃ³digo actÃºa como access_token en TiendaNube
+    // El código act?a como access_token en TiendaNube
     const access_token = code;
 
     if (!storeDoc.exists) {
@@ -14073,11 +16182,11 @@ app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
             installedAt: FieldValue.serverTimestamp()
           });
 
-          console.log('âœ… Tienda nueva creada:', storeId);
+          console.log('? Tienda nueva creada:', storeId);
         }
       } catch (error) {
         console.error('Error obtener info de tienda:', error);
-        // Guardar solo con lo bÃ¡sico
+        // Guardar solo con lo b?sico
         await storeRef.set({
           storeId,
           access_token,
@@ -14091,7 +16200,7 @@ app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
         access_token,
         updatedAt: FieldValue.serverTimestamp()
       });
-      console.log('âœ… Token actualizado para tienda:', storeId);
+      console.log('? Token actualizado para tienda:', storeId);
     }
 
     res.json({
@@ -14101,7 +16210,7 @@ app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
     });
 
   } catch (error) {
-    console.error('âŒ Error intercambiando cÃ³digo:', error.message);
+    console.error('? Error intercambiando código:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -14136,7 +16245,7 @@ app.post("/api/auth/nubecategories/register", async (req, res) => {
     if (!existingUser.empty) {
       return res.json({ 
         success: false, 
-        message: 'El email ya estÃ¡ registrado' 
+        message: 'El email ya est? registrado' 
       });
     }
 
@@ -14157,7 +16266,7 @@ app.post("/api/auth/nubecategories/register", async (req, res) => {
     // Obtener datos del store
     const store = storeDoc.data();
 
-    console.log(`âœ… Usuario NubeCategories registrado: ${email} para store ${storeId}`);
+    console.log(`? Usuario NubeCategories registrado: ${email} para store ${storeId}`);
     
     res.json({ 
       success: true,
@@ -14173,7 +16282,7 @@ app.post("/api/auth/nubecategories/register", async (req, res) => {
       message: 'Registro exitoso' 
     });
   } catch (error) {
-    console.error('âŒ NubeCategories Register error:', error);
+    console.error('? NubeCategories Register error:', error);
     res.json({ 
       success: false, 
       message: 'Error al registrar usuario' 
@@ -14189,7 +16298,7 @@ app.post("/api/auth/nubecategories/login", async (req, res) => {
     if (!email || !password) {
       return res.json({ 
         success: false, 
-        message: 'Email y contraseÃ±a son requeridos' 
+        message: 'Email y contraseña son requeridos' 
       });
     }
 
@@ -14201,18 +16310,18 @@ app.post("/api/auth/nubecategories/login", async (req, res) => {
     if (usersSnapshot.empty) {
       return res.json({ 
         success: false, 
-        message: 'Email o contraseÃ±a incorrectos' 
+        message: 'Email o contraseña incorrectos' 
       });
     }
 
     const userDoc = usersSnapshot.docs[0];
     const userData = userDoc.data();
 
-    // Verificar contraseÃ±a
+    // Verificar contraseña
     if (!verifyPassword(password, userData.passwordHash)) {
       return res.json({ 
         success: false, 
-        message: 'Email o contraseÃ±a incorrectos' 
+        message: 'Email o contraseña incorrectos' 
       });
     }
 
@@ -14235,7 +16344,7 @@ app.post("/api/auth/nubecategories/login", async (req, res) => {
       lastLogin: FieldValue.serverTimestamp()
     });
 
-    console.log(`âœ… Login NubeCategories: ${email}`);
+    console.log(`? Login NubeCategories: ${email}`);
 
     res.json({
       success: true,
@@ -14251,7 +16360,7 @@ app.post("/api/auth/nubecategories/login", async (req, res) => {
       message: 'Login exitoso'
     });
   } catch (error) {
-    console.error('âŒ NubeCategories Login error:', error);
+    console.error('? NubeCategories Login error:', error);
     res.json({ 
       success: false, 
       message: 'Error al ingresar' 
@@ -14260,7 +16369,7 @@ app.post("/api/auth/nubecategories/login", async (req, res) => {
 });
 
 // ============================================
-// MÓDULO POPUPS - CRUD
+// M?DULO POPUPS - CRUD
 // ============================================
 
 // GET /api/popups?storeId=xxx - Listar popups de una tienda
@@ -14306,7 +16415,7 @@ app.post("/api/popups", async (req, res) => {
       },
       content: content || {
         popupType: "promo",             // promo | email_capture | announcement
-        title: "¡Oferta exclusiva!",
+        title: "?Oferta exclusiva!",
         subtitle: "Solo por tiempo limitado",
         body: "",
         imageUrl: "",
@@ -14461,7 +16570,7 @@ app.post("/api/popups/:popupId/track", async (req, res) => {
       updates["analytics.closes"] = FieldValue.increment(1);
     } else if (event === "email_capture") {
       updates["analytics.emailCaptures"] = FieldValue.increment(1);
-      // Opcionalmente guardar el email en subcolección
+      // Opcionalmente guardar el email en subcolecci?n
       if (email) {
         await doc.ref.collection("captured_emails").add({
           email,
@@ -14528,6 +16637,11 @@ app.get("/api/popup-widget.js", async (req, res) => {
   try {
     if (!store) return res.send("// Error: store requerido");
 
+    if (!(await checkStoreActive(store))) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send('// PromoNube: plan inactivo');
+    }
+
     // Buscar popups activos para esta tienda
     const snapshot = await db.collection("promonube_popups")
       .where("storeId", "==", store)
@@ -14572,7 +16686,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
     if (targeting.devices === 'desktop' && isMobile) return false;
     if (targeting.devices === 'mobile' && !isMobile) return false;
 
-    // Page targeting (básico por path)
+    // Page targeting (b?sico por path)
     const path = window.location.pathname;
     if (targeting.pages === 'home' && path !== '/') return false;
     if (targeting.pages === 'product' && !path.includes('/product') && !path.includes('/produtos') && !path.includes('/productos')) return false;
@@ -14749,7 +16863,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
       body.appendChild(title);
     }
 
-    // Subtítulo
+    // Subt?tulo
     if (content.subtitle) {
       const sub = document.createElement('p');
       sub.className = 'pn-subtitle';
@@ -14769,7 +16883,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
     if (content.discountCode) {
       const codeBox = document.createElement('div');
       codeBox.className = 'pn-code-box';
-      codeBox.innerHTML = '<span class="pn-code-label">Usá el código</span><span class="pn-code-value">' + content.discountCode + '</span>';
+      codeBox.innerHTML = '<span class="pn-code-label">Us? el código</span><span class="pn-code-value">' + content.discountCode + '</span>';
       body.appendChild(codeBox);
     }
 
@@ -14798,7 +16912,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
         track(popupId, 'email_capture', emailVal);
         track(popupId, 'click');
 
-        // Mostrar mensaje de éxito
+        // Mostrar mensaje de ééxito
         form.innerHTML = '<p class="pn-success-msg">\\u2713 \\u00A1Gracias! Te enviamos tu descuento.</p>';
         markShown(popupId);
         setTimeout(function() { overlay.remove(); }, 2500);
@@ -14966,12 +17080,12 @@ app.get("/api/test/product-fields/:storeId/:productId", async (req, res) => {
   }
 });
 // =====================================================
-// ðŸ§¹ CLEANUP - Limpieza automÃ¡tica de cupones expirados
+// ?? CLEANUP - Limpieza automática de cupones expirados
 // =====================================================
 
-// FunciÃ³n programada que se ejecuta cada hora
+// Función programada que se ejecuta cada hora
 exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 24 hours', async (event) => {
-  console.log('ðŸ§¹ Iniciando limpieza de cupones EXPIRADOS DE RULETA...');
+  console.log('?? Iniciando limpieza de cupones EXPIRADOS DE RULETA...');
   
   try {
     const now = new Date();
@@ -14980,12 +17094,12 @@ exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 24 hours',
     
     // Buscar SOLO cupones de ruleta expirados no usados
     const expiredCouponsQuery = await db.collection('promonube_coupons')
-      .where('source', '==', 'spin_wheel')  // ðŸŽ¯ SOLO cupones de ruleta
+      .where('source', '==', 'spin_wheel')  // ?? SOLO cupones de ruleta
       .where('used', '==', false)
       .where('expiresAt', '<', now.toISOString())
       .get();
     
-    console.log(`ðŸ“Š Encontrados ${expiredCouponsQuery.size} cupones de RULETA expirados para eliminar`);
+    console.log(`?? Encontrados ${expiredCouponsQuery.size} cupones de RULETA expirados para eliminar`);
     
     for (const doc of expiredCouponsQuery.docs) {
       const coupon = doc.data();
@@ -15003,9 +17117,9 @@ exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 24 hours',
                   'User-Agent': 'PromoNube (tinyjoys.com.ar)'
                 }
               });
-              console.log(`âœ… CupÃ³n ruleta ${coupon.code} eliminado de TiendaNube`);
+              console.log(`? Cupón ruleta ${coupon.code} eliminado de TiendaNube`);
             } catch (tnError) {
-              console.error(`âš ï¸ Error eliminando de TiendaNube (cupÃ³n: ${coupon.code}):`, tnError.message);
+              console.error(`?? Error eliminando de TiendaNube (cupón: ${coupon.code}):`, tnError.message);
               // Continuar aunque falle en TiendaNube
             }
           }
@@ -15014,20 +17128,21 @@ exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 24 hours',
         // 2. Eliminar de Firestore
         await doc.ref.delete();
         deletedCount++;
-        console.log(`ðŸ—‘ï¸ CupÃ³n ruleta ${coupon.code} eliminado de Firestore`);
+        console.log(`??? Cupón ruleta ${coupon.code} eliminado de Firestore`);
         
       } catch (error) {
         errorCount++;
-        console.error(`âŒ Error eliminando cupÃ³n ${coupon.code}:`, error);
+        console.error(`? Error eliminando cupón ${coupon.code}:`, error);
       }
     }
     
-    console.log(`âœ… Limpieza completada: ${deletedCount} cupones de RULETA eliminados, ${errorCount} errores`);
+    console.log(`? Limpieza completada: ${deletedCount} cupones de RULETA eliminados, ${errorCount} errores`);
     
     return { success: true, deleted: deletedCount, errors: errorCount };
     
   } catch (error) {
-    console.error('âŒ Error en limpieza de cupones:', error);
+    console.error('? Error en limpieza de cupones:', error);
     return { success: false, error: error.message };
   }
 });
+

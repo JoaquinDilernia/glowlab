@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Clock, Zap, Calendar, Eye, Settings, Trash2, Copy } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './CountdownList.css';
 
 function CountdownList() {
   const navigate = useNavigate();
+  const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
   
   const [loading, setLoading] = useState(true);
@@ -41,13 +43,13 @@ function CountdownList() {
 
       if (data.success) {
         setCountdowns(prev => prev.filter(c => c.countdownId !== countdownId));
-        alert('✅ Cuenta regresiva eliminada');
+        toast.success('Cuenta regresiva eliminada');
       } else {
-        alert('❌ Error al eliminar');
+        toast.error('Error al eliminar');
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('❌ Error al eliminar');
+      toast.error('Error al eliminar');
     }
   };
 
@@ -66,13 +68,6 @@ function CountdownList() {
     } catch (error) {
       console.error('Error:', error);
     }
-  };
-
-  const copyScript = () => {
-    const scriptUrl = `https://apipromonube-jlfopowzaq-uc.a.run.app/api/countdown/script.js?storeId=${storeId}`;
-    const scriptCode = `<!-- PromoNube Countdown -->\n<script src="${scriptUrl}" async></script>`;
-    navigator.clipboard.writeText(scriptCode);
-    alert('✅ Código copiado al portapapeles!');
   };
 
   const formatDate = (dateString) => {
@@ -142,10 +137,6 @@ function CountdownList() {
       <header className="page-header-modern">
         <div className="header-content-modern">
           <div className="header-top-modern">
-            <button className="btn-back-modern" onClick={() => navigate('/dashboard')}>
-              <ArrowLeft size={20} />
-              <span>Dashboard</span>
-            </button>
             <button className="btn-primary-gradient" onClick={() => navigate('/countdown/create')}>
               <Plus size={18} />
               <span>Nueva Cuenta Regresiva</span>
@@ -162,16 +153,11 @@ function CountdownList() {
         <div className="empty-state-modern">
           <div className="empty-icon-large">⏰</div>
           <h2 className="empty-title">Crea Tu Primera Cuenta Regresiva</h2>
-          <p className="empty-description">Timers visibles que impulsan decisión de compra con urgencia real</p>
+          <p className="empty-description">Generá urgencia real y aumentá conversiones con contadores en tu tienda</p>
 
           <div className="quick-actions-modern" style={{marginTop: '40px'}}>
             {quickActions.map((action) => (
-              <div
-                key={action.title}
-                className="quick-action-card-modern"
-                onClick={action.action}
-                style={{cursor: 'pointer'}}
-              >
+              <div key={action.title} className="quick-action-card-modern" onClick={action.action} style={{cursor: 'pointer'}}>
                 <div className="action-icon-modern" style={{ color: action.color }}>
                   <action.icon size={40} strokeWidth={2.5} />
                 </div>
@@ -180,32 +166,22 @@ function CountdownList() {
               </div>
             ))}
           </div>
-          
-          <div style={{
-            marginTop: '50px',
-            padding: '24px',
-            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-            borderRadius: '16px',
-            border: '2px solid #bae6fd',
-            maxWidth: '600px',
-            margin: '50px auto 0'
-          }}>
-            <h4 style={{fontSize: '16px', fontWeight: '700', color: '#0369a1', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px'}}>
-              💡 ¿Cuándo usar cada tipo?
-            </h4>
-            <div style={{display: 'grid', gap: '12px'}}>
-              <div style={{display: 'flex', gap: '12px', alignItems: 'flex-start'}}>
-                <span style={{fontSize: '24px'}}>⚡</span>
+
+          <div className="em-usecases-box">
+            <h4 className="em-usecases-title">💡 ¿Cuándo usar cada tipo?</h4>
+            <div className="em-usecases-list">
+              <div className="em-usecase-item">
+                <span className="em-usecase-icon">⚡</span>
                 <div>
-                  <strong style={{color: '#0369a1', fontSize: '14px'}}>Finalización:</strong>
-                  <p style={{margin: '4px 0 0 0', fontSize: '13px', color: '#075985'}}>Flash sales, últimas horas de promo, stock limitado, cierre de eventos</p>
+                  <strong>Finalización</strong>
+                  <p>Flash sales, últimas horas de promo, stock limitado, cierre de eventos</p>
                 </div>
               </div>
-              <div style={{display: 'flex', gap: '12px', alignItems: 'flex-start'}}>
-                <span style={{fontSize: '24px'}}>🚀</span>
+              <div className="em-usecase-item">
+                <span className="em-usecase-icon">🚀</span>
                 <div>
-                  <strong style={{color: '#0369a1', fontSize: '14px'}}>Próximamente:</strong>
-                  <p style={{margin: '4px 0 0 0', fontSize: '13px', color: '#075985'}}>Lanzamiento de productos, Black Friday, preventa exclusiva, eventos futuros</p>
+                  <strong>Próximamente</strong>
+                  <p>Lanzamiento de productos, Black Friday, preventa exclusiva, eventos futuros</p>
                 </div>
               </div>
             </div>

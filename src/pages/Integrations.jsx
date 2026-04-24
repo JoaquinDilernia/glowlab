@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './Integrations.css';
 
 function Integrations() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(null);
@@ -56,7 +58,7 @@ function Integrations() {
       }
     } catch (error) {
       console.error('Error cargando integraciones:', error);
-      alert('Error al cargar integraciones');
+      toast.info('Error al cargar integraciones');
     } finally {
       setLoading(false);
     }
@@ -75,14 +77,14 @@ function Integrations() {
       });
 
       if (response.success) {
-        alert('✅ Perfit configurado correctamente');
+        toast.success('Perfit configurado correctamente');
         loadIntegrations();
       } else {
-        alert('❌ Error: ' + response.message);
+        toast.error('Error: ' + response.message);
       }
     } catch (error) {
       console.error('Error guardando Perfit:', error);
-      alert('Error al guardar configuración');
+      toast.info('Error al guardar configuración');
     } finally {
       setSaving(false);
     }
@@ -101,14 +103,14 @@ function Integrations() {
       });
 
       if (response.success) {
-        alert('✅ Mailchimp configurado correctamente');
+        toast.success('Mailchimp configurado correctamente');
         loadIntegrations();
       } else {
-        alert('❌ Error: ' + response.message);
+        toast.error('Error: ' + response.message);
       }
     } catch (error) {
       console.error('Error guardando Mailchimp:', error);
-      alert('Error al guardar configuración');
+      toast.info('Error al guardar configuración');
     } finally {
       setSaving(false);
     }
@@ -130,16 +132,16 @@ function Integrations() {
       });
 
       if (response.success) {
-        alert(`✅ Test exitoso!\nEl contacto "${email}" fue enviado a ${integration}`);
+        toast.success(`Test exitoso! El contacto "${email}" fue enviado a ${integration}`);
       } else {
         const detail = response.details
           ? `\nHTTP ${response.details.status || ''} ${response.details.statusText || ''}\n${response.details.body || ''}`
           : (response.error ? `\n${response.error}` : '');
-        alert(`❌ Error: ${response.error || response.message || 'No se pudo enviar'}${detail}`);
+        toast.error(`Error: ${response.error || response.message || 'No se pudo enviar'}${detail}`);
       }
     } catch (error) {
       console.error('Error probando integración:', error);
-      alert('Error al probar integración: ' + error.message);
+      toast.error('Error al probar integración: ' + error.message);
     } finally {
       setTesting(null);
     }

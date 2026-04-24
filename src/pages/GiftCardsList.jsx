@@ -144,10 +144,6 @@ function GiftCardsList() {
       <header className="giftcards-header-modern">
         <div className="header-content-wrapper">
           <div className="header-top">
-            <button className="btn-back-modern" onClick={() => navigate('/dashboard')}>
-              <ArrowLeft size={20} />
-              <span>Dashboard</span>
-            </button>
             <div className="header-actions-modern">
               <button className="btn-secondary-modern" onClick={() => navigate('/gift-card-products')}>
                 <CreditCard size={18} />

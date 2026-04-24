@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Package, Gift, Palette } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 import './GiftCardsMain.css';
 
 // PÁGINA PRINCIPAL - SUPER SIMPLE como "gifty"
@@ -8,6 +9,7 @@ import './GiftCardsMain.css';
 
 function GiftCardsMain() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [activeView, setActiveView] = useState('products'); // products, coupons, templates
 
   return (
@@ -319,10 +321,10 @@ function TemplatesView() {
         });
       }
       
-      alert('✅ 4 diseños predeterminados creados!');
+      toast.success('4 diseños predeterminados creados!');
       loadTemplates();
     } catch (error) {
-      alert('❌ Error al crear diseños predeterminados');
+      toast.error('Error al crear diseños predeterminados');
       console.error(error);
     } finally {
       setCreating(false);

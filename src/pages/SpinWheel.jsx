@@ -63,10 +63,6 @@ function SpinWheel() {
       <header className="page-header-modern">
         <div className="header-content-modern">
           <div className="header-top-modern">
-            <button className="btn-back-modern" onClick={() => navigate('/dashboard')}>
-              <ArrowLeft size={20} />
-              <span>Dashboard</span>
-            </button>
             <button className="btn-primary-gradient" onClick={() => navigate('/spin-wheel/create')}>
               <Plus size={18} />
               <span>Nueva Ruleta</span>
