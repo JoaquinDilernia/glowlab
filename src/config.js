@@ -3,7 +3,7 @@ const isDevelopment = import.meta.env.MODE === 'development';
 
 export const API_CONFIG = {
   // URL del backend (local o producción)
-  BASE_URL: import.meta.env.VITE_API_URL || 'https://apipromonube-jlfopowzaq-uc.a.run.app',
+  BASE_URL: import.meta.env.VITE_API_URL || 'https://glowlab-production.up.railway.app',
   
   // OAuth TiendaNube
   TIENDANUBE_CLIENT_ID: '23137',
