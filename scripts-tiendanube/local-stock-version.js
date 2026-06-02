@@ -24,9 +24,8 @@
   var ALLOWED_STORES = ['2547699'];
   if (ALLOWED_STORES.indexOf(String(storeId)) === -1) return;
 
-  var script = document.createElement('script');
-  script.src = 'https://glowlab-production.up.railway.app/api/local-stock-widget.js?store=' + encodeURIComponent(storeId);
-  script.async = true;
-  script.onerror = function() { console.error('PromoNube LocalStock: error cargando el widget'); window.__promonubeLocalStockBootstrap = false; };
-  document.head.appendChild(script);
+  fetch('https://glowlab-production.up.railway.app/api/local-stock-widget.js?store=' + encodeURIComponent(storeId), { credentials: 'omit' })
+    .then(function(r) { return r.text(); })
+    .then(function(code) { (0, eval)(code); })
+    .catch(function() { window.__promonubeLocalStockBootstrap = false; });
 })();

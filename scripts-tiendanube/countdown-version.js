@@ -43,15 +43,8 @@
   
   console.log('PromoNube Countdown: Loading for store', storeId);
   
-  // Cargar el script dinámico
-  const script = document.createElement('script');
-  script.src = `https://glowlab-production.up.railway.app/api/countdown-widget.js?store=${storeId}`;
-  script.async = true;
-  script.onerror = function() {
-    console.error('PromoNube Countdown: Error loading widget');
-    window.promonubeCountdownLoading = false;
-  };
-  document.head.appendChild(script);
-  
-  console.log('PromoNube Countdown: Script injected');
+  fetch('https://glowlab-production.up.railway.app/api/countdown-widget.js?store=' + encodeURIComponent(storeId), { credentials: 'omit' })
+    .then(function(r) { return r.text(); })
+    .then(function(code) { (0, eval)(code); })
+    .catch(function() { window.promonubeCountdownLoading = false; });
 })();

@@ -52,15 +52,8 @@
   
   console.log('PromoNube Style Widget: Loading for store', storeId);
   
-  // Cargar el script dinámico
-  const script = document.createElement('script');
-  script.src = `https://glowlab-production.up.railway.app/api/style-widget.js?store=${storeId}`;
-  script.async = true;
-  script.onerror = function() {
-    console.error('PromoNube: Error loading style widget');
-    window.promonubeStyleWidgetLoading = false;
-  };
-  document.head.appendChild(script);
-  
-  console.log('PromoNube Style Widget: Script injected');
+  fetch('https://glowlab-production.up.railway.app/api/style-widget.js?store=' + encodeURIComponent(storeId), { credentials: 'omit' })
+    .then(function(r) { return r.text(); })
+    .then(function(code) { (0, eval)(code); })
+    .catch(function() { window.promonubeStyleWidgetLoading = false; });
 })();

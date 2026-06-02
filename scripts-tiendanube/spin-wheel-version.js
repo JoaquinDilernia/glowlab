@@ -50,15 +50,8 @@
   
   console.log('PromoNube Spin Wheel: Loading for store', storeId);
   
-  // Cargar el script dinámico (el backend verificará si hay wheel activa)
-  const script = document.createElement('script');
-  script.src = `https://glowlab-production.up.railway.app/api/spin-wheel-widget.js?store=${storeId}`;
-  script.async = true;
-  script.onerror = function() {
-    console.error('PromoNube Spin Wheel: Error loading widget');
-    window.promonubeSpinWheelLoading = false;
-  };
-  document.head.appendChild(script);
-  
-  console.log('PromoNube Spin Wheel: Script injected');
+  fetch('https://glowlab-production.up.railway.app/api/spin-wheel-widget.js?store=' + encodeURIComponent(storeId), { credentials: 'omit' })
+    .then(function(r) { return r.text(); })
+    .then(function(code) { (0, eval)(code); })
+    .catch(function() { window.promonubeSpinWheelLoading = false; });
 })();

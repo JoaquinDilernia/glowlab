@@ -1,4 +1,4 @@
-// PromoNube Top Header Widget - Production Version
+// PromoNube Badge Widget - Production Version
 (function() {
   'use strict';
   function getStoreId() {
@@ -9,12 +9,12 @@
     if (b) return b;
     return null;
   }
-  if (window.__promonubeTopHeaderBootstrap) return;
-  window.__promonubeTopHeaderBootstrap = true;
+  if (window.__promonubeBadgeBootstrap) return;
+  window.__promonubeBadgeBootstrap = true;
   var storeId = getStoreId();
   if (!storeId) return;
-  fetch('https://glowlab-production.up.railway.app/api/top-header-widget.js?store=' + encodeURIComponent(storeId), { credentials: 'omit' })
+  fetch('https://glowlab-production.up.railway.app/api/badges-script.js?store=' + encodeURIComponent(storeId), { credentials: 'omit' })
     .then(function(r) { return r.text(); })
     .then(function(code) { (0, eval)(code); })
-    .catch(function() { window.__promonubeTopHeaderBootstrap = false; });
+    .catch(function() { window.__promonubeBadgeBootstrap = false; });
 })();

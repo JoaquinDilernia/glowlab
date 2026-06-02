@@ -10326,6 +10326,9 @@ app.get("/api/tiendanube/menus", async (req, res) => {
       { headers: tnHeaders }
     );
     if (!menusResp.ok) {
+      if (menusResp.status === 404) {
+        return res.json({ success: true, menus: [] });
+      }
       const errText = await menusResp.text();
       throw new Error(`TN menus ${menusResp.status}: ${errText}`);
     }

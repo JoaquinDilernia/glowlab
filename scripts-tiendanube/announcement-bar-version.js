@@ -13,9 +13,8 @@
   window.__promonubeAnnouncementBootstrap = true;
   var storeId = getStoreId();
   if (!storeId) return;
-  var script = document.createElement('script');
-  script.src = 'https://glowlab-production.up.railway.app/api/announcement-bar-widget.js?store=' + encodeURIComponent(storeId);
-  script.async = true;
-  script.onerror = function() { window.__promonubeAnnouncementBootstrap = false; };
-  document.head.appendChild(script);
+  fetch('https://glowlab-production.up.railway.app/api/announcement-bar-widget.js?store=' + encodeURIComponent(storeId), { credentials: 'omit' })
+    .then(function(r) { return r.text(); })
+    .then(function(code) { (0, eval)(code); })
+    .catch(function() { window.__promonubeAnnouncementBootstrap = false; });
 })();

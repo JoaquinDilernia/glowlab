@@ -21,12 +21,8 @@
   var storeId = getStoreId();
   if (!storeId) return;
 
-  var script = document.createElement('script');
-  script.src = 'https://glowlab-production.up.railway.app/api/banner-widget.js?store=' + encodeURIComponent(storeId);
-  script.async = true;
-  script.onerror = function() {
-    console.error('PromoNube Banner: error cargando el widget');
-    window.__promonubeBannerBootstrap = false;
-  };
-  document.head.appendChild(script);
+  fetch('https://glowlab-production.up.railway.app/api/banner-widget.js?store=' + encodeURIComponent(storeId), { credentials: 'omit' })
+    .then(function(r) { return r.text(); })
+    .then(function(code) { (0, eval)(code); })
+    .catch(function() { window.__promonubeBannerBootstrap = false; });
 })();
