@@ -7177,7 +7177,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
   
   // Configurar headers para JavaScript
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
 
   try {
     let wheelData;
@@ -8628,7 +8628,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
 
   try {
     if (!store) {
@@ -9121,7 +9121,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
 
   try {
     if (!store) {
@@ -9690,7 +9690,7 @@ app.get("/api/badges-script.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
 
   try {
     if (!store) {
@@ -10911,7 +10911,7 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
 })();`;
 
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
   res.send(scriptContent);
 });
 
@@ -10947,7 +10947,7 @@ app.get("/api/enhanced-search-widget.js", async (req, res) => {
   const { store } = req.query;
 
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
 
   if (!store) return res.send('// Error: store requerido');
 
@@ -11451,7 +11451,7 @@ app.get("/api/style-widget.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
 
   try {
     if (!store) {
@@ -17764,7 +17764,7 @@ app.post("/api/local-stock-config", async (req, res) => {
 app.get("/api/local-stock-widget.js", async (req, res) => {
   const { store } = req.query;
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
 
   if (!store || !isLocalStockAllowed(store)) {
     return res.send('// Local stock no disponible para esta tienda');
