@@ -1,4 +1,4 @@
-﻿const functions = require("firebase-functions/v2");
+const functions = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const express = require("express");
 const cors = require("cors");
@@ -9,26 +9,54 @@ const Busboy = require('busboy');
 const multer = require('multer');
 const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
 
+// ============================================
+// LOG GATE - reduce costos de Cloud Logging
+// Solo loguea console.log/info si LOG_LEVEL=debug.
+// console.warn y console.error siempre activos.
+// ============================================
+if ((process.env.LOG_LEVEL || 'info').toLowerCase() !== 'debug') {
+  const _noop = () => {};
+  console.log = _noop;
+  console.info = _noop;
+}
+
 // Inicializar Firebase Admin
-admin.initializeApp();
+// En Railway/standalone: proveer GOOGLE_APPLICATION_CREDENTIALS_JSON como env var con el JSON de la service account
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+  const serviceAccount = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'pedidos-lett-2.appspot.com',
+  });
+} else {
+  admin.initializeApp();
+}
 const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const bucket = admin.storage().bucket();
 
 // ============================================
-// CACH? EN MEMORIA ? optimización de costos
+// CACH? EN MEMORIA ? optimizaci�n de costos
 // Reduce lecturas Firestore ~90% en widgets
-// TTL: 10 minutos por clave
+// TTL: 10 minutos por clave. LRU cap para evitar memory pressure.
 // ============================================
 const _configCache = new Map();
 const CONFIG_CACHE_TTL_MS = 10 * 60 * 1000;
+const CONFIG_CACHE_MAX_ENTRIES = 500;
 
 async function getCachedData(key, fetchFn) {
   const cached = _configCache.get(key);
   if (cached && Date.now() - cached.ts < CONFIG_CACHE_TTL_MS) {
+    // refresh LRU order
+    _configCache.delete(key);
+    _configCache.set(key, cached);
     return cached.data;
   }
   const data = await fetchFn();
+  if (_configCache.size >= CONFIG_CACHE_MAX_ENTRIES) {
+    const oldestKey = _configCache.keys().next().value;
+    if (oldestKey !== undefined) _configCache.delete(oldestKey);
+  }
   _configCache.set(key, { data, ts: Date.now() });
   return data;
 }
@@ -42,6 +70,8 @@ async function getCachedDoc(collection, docId) {
 function invalidateConfigCache(storeId) {
   _configCache.delete(`promonube_style_config/${storeId}`);
   _configCache.delete(`sub:${storeId}`);
+  _configCache.delete(`popups:${storeId}`);
+  _configCache.delete(`promonube_checkout_notice_config/${storeId}`);
 }
 
 async function checkStoreActive(storeId) {
@@ -101,13 +131,13 @@ const upload = multer({
 // Ejecutar: firebase functions:config:set sendgrid.api_key="TU_API_KEY"
 let SENDGRID_API_KEY = '';
 
-// Función para inicializar SendGrid
+// Funci�n para inicializar SendGrid
 function initSendGrid() {
   try {
     // Intentar desde process.env primero (para desarrollo local)
     SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
     
-    // Si no est?, intentar desde functions.config() (para producción)
+    // Si no est?, intentar desde functions.config() (para producci�n)
     if (!SENDGRID_API_KEY && functions.config && functions.config().sendgrid) {
       SENDGRID_API_KEY = functions.config().sendgrid.api_key || '';
     }
@@ -126,31 +156,35 @@ function initSendGrid() {
 // Inicializar SendGrid
 initSendGrid();
 
-// Cloud Functions URL
-const CLOUD_FUNCTION_URL = 'https://us-central1-pedidos-lett-2.cloudfunctions.net/apipromonube/api';
+// URL base de widgets via Firebase Hosting CDN
+const HOSTING_URL = 'https://pedidos-lett-2.web.app';
+const CLOUD_FUNCTION_URL = 'https://us-central1-pedidos-lett-2.cloudfunctions.net/apipromonube/api'; // legacy
+
+// URL base del backend — se puede sobreescribir con API_BASE_URL en Railway
+const _SRV_BASE = process.env.API_BASE_URL || 'https://apipromonube-jlfopowzaq-uc.a.run.app';
 
 // ==========================================
 // SISTEMA DE SUSCRIPCIONES Y FEATURE FLAGS
 // ==========================================
 
 // ============================================
-// PLAN ÚNICO PRO - Todo incluido
+// PLAN �NICO PRO - Todo incluido
 // ============================================
 
-// Precios por país (mensuales) - PLAN ÚNICO
+// Precios por pa�s (mensuales) - PLAN �NICO
 const PRICES_BY_COUNTRY = {
   ARS: 30000,  // Argentina (configurado en Partner Panel)
-  MXN: 1500,   // México
+  MXN: 1500,   // M�xico
   COP: 135000, // Colombia
   CLP: 33000   // Chile
 };
 
-// Función para obtener precio según moneda de la tienda
+// Funci�n para obtener precio seg�n moneda de la tienda
 function getPlanPrice(currency = 'ARS') {
   return PRICES_BY_COUNTRY[currency] || PRICES_BY_COUNTRY.ARS;
 }
 
-// Módulos incluidos en el plan PRO (todos activos)
+// M�dulos incluidos en el plan PRO (todos activos)
 const ALL_MODULES = ['coupons', 'giftcards', 'spinWheel', 'style', 'countdown', 'popups'];
 
 const MODULES = {
@@ -162,7 +196,7 @@ const MODULES = {
   popups: { name: 'Pop-ups', included: true }
 };
 
-// Plan único PRO con todo incluido
+// Plan �nico PRO con todo incluido
 const PLANS = {
   free: { 
     name: 'Free (Trial)', 
@@ -184,7 +218,7 @@ PLANS.giftcards = PLANS.pro;
 PLANS.countdown = PLANS.pro;
 PLANS.style = PLANS.pro;
 
-// Helper: Convertir array de módulos a objeto {moduleName: true}
+// Helper: Convertir array de m�dulos a objeto {moduleName: true}
 function modulesArrayToObject(modulesArray) {
   const modulesObj = {};
   modulesArray.forEach(mod => {
@@ -193,7 +227,7 @@ function modulesArrayToObject(modulesArray) {
   return modulesObj;
 }
 
-// Verificar acceso a un módulo
+// Verificar acceso a un m�dulo
 async function checkModuleAccess(storeId, moduleName) {
   try {
     // Cupones siempre gratis
@@ -201,12 +235,12 @@ async function checkModuleAccess(storeId, moduleName) {
       return { hasAccess: true, reason: 'free_module' };
     }
 
-    // Consultar suscripción del store
+    // Consultar suscripci�n del store
     const subscriptionRef = db.collection('stores').doc(storeId.toString()).collection('subscription').doc('current');
     const subscriptionDoc = await subscriptionRef.get();
 
     if (!subscriptionDoc.exists) {
-      // Sin suscripción = solo acceso a cupones
+      // Sin suscripci�n = solo acceso a cupones
       return { hasAccess: false, reason: 'no_subscription' };
     }
 
@@ -224,7 +258,7 @@ async function checkModuleAccess(storeId, moduleName) {
           expiresAt: subscription.demoExpiresAt
         };
       } else {
-        // Demo expirado - desactivar automáticamente
+        // Demo expirado - desactivar autom�ticamente
         console.log(`?? Demo expirado para store ${storeId}, desactivando...`);
         await subscriptionRef.update({
           status: 'inactive',
@@ -238,7 +272,7 @@ async function checkModuleAccess(storeId, moduleName) {
       }
     }
 
-    // Verificar estado de la suscripción
+    // Verificar estado de la suscripci�n
     if (subscription.status === 'suspended') {
       return { hasAccess: false, reason: 'payment_suspended', message: 'Regulariza el pago en tu panel de TiendaNube' };
     }
@@ -247,7 +281,7 @@ async function checkModuleAccess(storeId, moduleName) {
       return { hasAccess: false, reason: 'inactive_subscription', status: subscription.status };
     }
 
-    // Verificar si el módulo est? activo
+    // Verificar si el m�dulo est? activo
     const hasModule = subscription.modules && subscription.modules[moduleName] === true;
     
     return { 
@@ -256,7 +290,7 @@ async function checkModuleAccess(storeId, moduleName) {
       plan: subscription.plan 
     };
   } catch (error) {
-    console.error('Error verificando acceso al módulo:', error);
+    console.error('Error verificando acceso al m�dulo:', error);
     return { hasAccess: false, reason: 'error', error: error.message };
   }
 }
@@ -274,10 +308,10 @@ function requireModule(moduleName) {
 
     if (!accessCheck.hasAccess) {
       return res.status(403).json({ 
-        error: 'Módulo no disponible',
+        error: 'M�dulo no disponible',
         module: moduleName,
         reason: accessCheck.reason,
-        message: `El módulo ${MODULES[moduleName]?.name || moduleName} no est? activo en tu plan.`,
+        message: `El m�dulo ${MODULES[moduleName]?.name || moduleName} no est? activo en tu plan.`,
         upgrade_url: `https://pedidos-lett-2.web.app/upgrade?module=${moduleName}`
       });
     }
@@ -288,7 +322,7 @@ function requireModule(moduleName) {
   };
 }
 
-// Inicializar suscripción por defecto para nuevos stores
+// Inicializar suscripci�n por defecto para nuevos stores
 async function initializeStoreSubscription(storeId) {
   try {
     const subscriptionRef = db.collection('promonube_subscription').doc(storeId.toString());
@@ -311,10 +345,10 @@ async function initializeStoreSubscription(storeId) {
         nextBillingDate: null,
         mpSubscriptionId: null
       });
-      console.log('? Suscripción FREE inicializada para store', storeId);
+      console.log('? Suscripci�n FREE inicializada para store', storeId);
     }
   } catch (error) {
-    console.error('Error inicializando suscripción:', error);
+    console.error('Error inicializando suscripci�n:', error);
   }
 }
 
@@ -426,7 +460,7 @@ async function sendToMailchimp(store, email, data = {}) {
     );
 
     if (response.ok || response.status === 400) {
-      // 400 puede significar que ya existe, lo consideramos ééxito
+      // 400 puede significar que ya existe, lo consideramos ��xito
       console.log('? Contacto enviado a Mailchimp:', email);
       return { success: true };
     } else {
@@ -458,16 +492,16 @@ async function syncEmailToIntegrations(store, email, eventData = {}) {
     results.mailchimp = await sendToMailchimp(store, email, eventData);
   }
 
-  // ActiveCampaign (próximamente)
+  // ActiveCampaign (pr�ximamente)
   // if (store.activeCampaignApiKey && store.activeCampaignEnabled !== false) {
   //   results.activecampaign = await sendToActiveCampaign(store, email, eventData);
   // }
 
-  console.log('?? Sincronización de email completada:', { email, results });
+  console.log('?? Sincronizaci�n de email completada:', { email, results });
   return results;
 }
 
-// Helper para hashear contraseñas
+// Helper para hashear contrase�as
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
 }
@@ -479,7 +513,7 @@ async function installDefaultTemplates(storeId) {
     
     const templates = [
       {
-        name: "?? Navidad Mágica",
+        name: "?? Navidad M�gica",
         category: "Festividades",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJjaHJpc3RtYXMiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiMxZTQwYWY7c3RvcC1vcGFjaXR5OjEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiMwNTc1MmQ7c3RvcC1vcGFjaXR5OjEiLz48L2xpbmVhckdyYWRpZW50Pjwvl2Vmc48cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIGZpbGw9InVybCgjY2hyaXN0bWFzKSIvPjxjaXJjbGUgY3g9IjE1MCIgY3k9IjEwMCIgcj0iNCIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC44Ii8+PGNpcmNsZSBjeD0iMzAwIiBjeT0iMjAwIiByPSIzIiBmaWxsPSIjZmZmIiBvcGFjaXR5PSIwLjYiLz48Y2lyY2xlIGN4PSI5MDAiIGN5PSIxNTAiIHI9IjUiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuOSIvPjxjaXJjbGUgY3g9IjYwMCIgY3k9IjQwMCIgcj0iNCIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC43Ii8+PGNpcmNsZSBjeD0iMTA1MCIgY3k9IjMwMCIgcj0iMyIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC44Ii8+PHBvbHlnb24gcG9pbnRzPSI2MDAsNTAgNjIwLDExMCA1ODAsODAgNjQwLDgwIDYwMCwxMTAiIGZpbGw9IiNmZmQ3MDAiIG9wYWNpdHk9IjAuOSIvPjxwb2x5Z29uIHBvaW50cz0iMjAwLDMwMCAyMTUsMzUwIDE5MCwzMjUgMjI1LDMyNSAyMDAsMzUwIiBmaWxsPSIjZmZkNzAwIiBvcGFjaXR5PSIwLjgiLz48cG9seWdvbiBwb2ludHM9IjEwMDAsNDAwIDEwMTUsNDUwIDk5MCw0MjUgMTAzMCw0MjUgMTAwMCw0NTAiIGZpbGw9IiNmZmQ3MDAiIG9wYWNpdHk9IjAuOSIvPjwvc3ZnPg==",
         textPosition: "center",
@@ -488,7 +522,7 @@ async function installDefaultTemplates(storeId) {
         isDefault: true
       },
       {
-        name: "?? Cumpleaños Festivo",
+        name: "?? Cumplea�os Festivo",
         category: "Celebraciones",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJiaXJ0aGRheSIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6I2VjNDg5OTtzdG9wLW9wYWNpdHk6MSIvPjxzdG9wIG9mZnNldD0iNTAlIiBzdHlsZT0ic3RvcC1jb2xvcjojZjU5ZTBiO3N0b3Atb3BhY2l0eToxIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojOGI1Y2Y2O3N0b3Atb3BhY2l0eToxIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjI4IiBmaWxsPSJ1cmwoI2JpcnRoZGF5KSIvPjxyZWN0IHg9IjEwMCIgeT0iNTAiIHdpZHRoPSIzMCIgaGVpZ2h0PSI4MCIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC4zIiB0cmFuc2Zvcm09InJvdGF0ZSgxNSA2MDAgMzAwKSIvPjxyZWN0IHg9IjMwMCIgeT0iNDAwIiB3aWR0aD0iNDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmZmQiIG9wYWNpdHk9IjAuNCIgdHJhbnNmb3JtPSJyb3RhdGUoLTE1IDYwMCAzMDApIi8+PHJlY3QgeD0iOTAwIiB5PSIxMDAiIHdpZHRoPSIzNSIgaGVpZ2h0PSI3MCIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC4zNSIgdHJhbnNmb3JtPSJyb3RhdGUoMjUgNjAwIDMwMCkiLz48Y2lyY2xlIGN4PSI0MDAiIGN5PSIxNTAiIHI9IjgiIGZpbGw9IiNmZmQ3MDAiIG9wYWNpdHk9IjAuNyIvPjxjaXJjbGUgY3g9IjgwMCIgY3k9IjUwMCIgcj0iMTAiIGZpbGw9IiMzYjgyZjYiIG9wYWNpdHk9IjAuNiIvPjxjaXJjbGUgY3g9IjYwMCIgY3k9IjgwIiByPSI2IiBmaWxsPSIjZWM0ODk5IiBvcGFjaXR5PSIwLjgiLz48L3N2Zz4=",
         textPosition: "center",
@@ -506,7 +540,7 @@ async function installDefaultTemplates(storeId) {
         isDefault: false
       },
       {
-        name: "?? Romántico",
+        name: "?? Rom�ntico",
         category: "Amor",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJyb21hbnRpYyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6I2ZjZTdmMztzdG9wLW9wYWNpdHk6MSIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6I2ZkYmZkMjtzdG9wLW9wYWNpdHk6MSIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjYyOCIgZmlsbD0idXJsKCNyb21hbnRpYykiLz48cGF0aCBkPSJNMzAwLDI1MCBRMzAwLDIwMCAzNTAsMjAwIFE0MDAsMjAwIDQwMCwyNTAgUTQwMCwzMDAgMzAwLDM4MCBRMjAwLDMwMCAyMDAsMjUwIFEyMDAsMjAwIDI1MCwyMDAgUTMwMCwyMDAgMzAwLDI1MCIgZmlsbD0iI2ZiN2E4NSIgb3BhY2l0eT0iMC4yIi8+PHBhdGggZD0iTTkwMCwxNTAgUTkwMCwxMDAgOTUwLDEwMCBRMTAwMCwxMDAgMTAwMCwxNTAgUTEwMDAsMjAwIDkwMCwyODAgUTgwMCwyMDAgODAwLDE1MCBRODAwLDEwMCA4NTAsMTAwIFE5MDAsMTAwIDkwMCwxNTAiIGZpbGw9IiNmYjdhODUiIG9wYWNpdHk9IjAuMTUiLz48Y2lyY2xlIGN4PSI2MDAiIGN5PSI1MDAiIHI9IjgwIiBmaWxsPSIjZmI3YTg1IiBvcGFjaXR5PSIwLjEiLz48Y2lyY2xlIGN4PSI0NTAiIGN5PSI0MDAiIHI9IjUwIiBmaWxsPSIjZjljMmNiIiBvcGFjaXR5PSIwLjIiLz48L3N2Zz4=",
         textPosition: "center",
@@ -524,7 +558,7 @@ async function installDefaultTemplates(storeId) {
         isDefault: false
       },
       {
-        name: "?? Moderno Geométrico",
+        name: "?? Moderno Geom�trico",
         category: "Moderno",
         imageUrl: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnZW9tZXRyaWMiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiM2NjdlZWE7c3RvcC1vcGFjaXR5OjEiLz48c3RvcCBvZmZzZXQ9IjUwJSIgc3R5bGU9InN0b3AtY29sb3I6IzhiNWNmNjtzdG9wLW9wYWNpdHk6MSIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6I2VjNDg5OTtzdG9wLW9wYWNpdHk6MSIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjYyOCIgZmlsbD0idXJsKCNnZW9tZXRyaWMpIi8+PHBvbHlnb24gcG9pbnRzPSIyMDAsMTAwIDMwMCw1MCAzMDAsMTUwIiBmaWxsPSIjZmZmIiBvcGFjaXR5PSIwLjEiLz48cG9seWdvbiBwb2ludHM9IjkwMCw0MDAgMTAwMCwzNTAgMTAwMCw0NTAiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuMTIiLz48cmVjdCB4PSI0MDAiIHk9IjIwMCIgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuMDgiIHRyYW5zZm9ybT0icm90YXRlKDQ1IDYwMCAzMDApIi8+PGNpcmNsZSBjeD0iNzAwIiBjeT0iNTAwIiByPSI2MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjMiIG9wYWNpdHk9IjAuMTUiLz48Y2lyY2xlIGN4PSIzMDAiIGN5PSI0MDAiIHI9IjQwIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIgb3BhY2l0eT0iMC4xIi8+PC9zdmc+",
         textPosition: "center",
@@ -580,12 +614,12 @@ async function installDefaultTemplates(storeId) {
   }
 }
 
-// Helper para registrar webhook de pedidos automáticamente
+// Helper para registrar webhook de pedidos autom�ticamente
 async function registerOrderWebhook(storeId, accessToken) {
   try {
     console.log(`?? Registrando webhooks para store ${storeId}...`);
     
-    const webhookUrl = "https://apipromonube-jlfopowzaq-uc.a.run.app/api/webhooks/order";
+    const webhookUrl = `${_SRV_BASE}/api/webhooks/order`;
     const webhooks = ['order/created', 'order/paid']; // Ambos eventos
     const results = [];
     
@@ -654,7 +688,7 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
     console.log(`?? Enviando gift card a ${recipientEmail}`);
     
     const expiryText = expiresAt ? 
-      `Válida hasta: ${new Date(expiresAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}` : 
+      `V�lida hasta: ${new Date(expiresAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}` : 
       'Sin vencimiento';
     
     const emailHTML = `
@@ -715,7 +749,7 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
               <div class="header-bg"></div>
               <div class="header-content">
                 <div class="emoji">??</div>
-                <h1>¡Felicitaciones!</h1>
+                <h1>�Felicitaciones!</h1>
                 <p>Has recibido una Gift Card</p>
               </div>
             </td>
@@ -723,7 +757,7 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
           <tr>
             <td class="content">
               <div class="gift-code">
-                <p class="code-label">Tu código único</p>
+                <p class="code-label">Tu c�digo �nico</p>
                 <div class="code-box">
                   <p class="code">${code}</p>
                 </div>
@@ -736,8 +770,8 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
               <div class="instructions">
                 <div class="instructions-bg">??</div>
                 <div class="instructions-content">
-                  <h3>? Cómo usar tu gift card</h3>
-                  <p>Ingres? el código <strong>${code}</strong> al momento de pagar en <strong>${storeName}</strong> y el descuento se aplicar? automáticamente.</p>
+                  <h3>? C�mo usar tu gift card</h3>
+                  <p>Ingres? el c�digo <strong>${code}</strong> al momento de pagar en <strong>${storeName}</strong> y el descuento se aplicar? autom�ticamente.</p>
                 </div>
               </div>
               
@@ -745,7 +779,7 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
                 <a href="https://tutienda.mitiendanube.com" class="button">Ir a la tienda ?</a>
               </div>
               
-              <p class="info">?? Este código es único y personal</p>
+              <p class="info">?? Este c�digo es �nico y personal</p>
             </td>
           </tr>
           <tr>
@@ -754,7 +788,7 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
               <p class="validity">${expiryText}</p>
               <div class="footer-divider"></div>
               <p class="credits">
-                ¿Problemas con tu gift card? Contact? a la tienda directamente.<br/>
+                �Problemas con tu gift card? Contact? a la tienda directamente.<br/>
                 <span style="color: #6b7280;">Powered by GlowLab ?</span>
               </p>
             </td>
@@ -771,7 +805,7 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
     if (!SENDGRID_API_KEY) {
       console.warn('?? SendGrid API key no configurada, solo logueando');
       console.log(`? Email preparado para ${recipientEmail}`);
-      console.log(`   Código: ${code}`);
+      console.log(`   C�digo: ${code}`);
       console.log(`   Monto: $${amount}`);
       return { success: true, note: 'Email not sent - API key missing' };
     }
@@ -785,7 +819,7 @@ async function sendGiftCardEmail(recipientEmail, code, amount, storeName, expire
         },
         subject: `?? Tu Gift Card de $${amount.toLocaleString('es-AR')} est? lista`,
         html: emailHTML,
-        text: `Tu código de Gift Card es: ${code}\n\nMonto: $${amount}\n${expiryText}\n\nUsalo en cualquier compra ingresándolo en el campo de cupón de descuento.`
+        text: `Tu c�digo de Gift Card es: ${code}\n\nMonto: $${amount}\n${expiryText}\n\nUsalo en cualquier compra ingres�ndolo en el campo de cup�n de descuento.`
       };
       
       await sgMail.send(msg);
@@ -832,7 +866,7 @@ async function generateGiftCardImage(templateImageUrl, amount, textPosition = "c
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
     
-    // Determinar posición Y según configuración
+    // Determinar posici�n Y seg�n configuraci�n
     let yPosition;
     if (textPosition === 'top') {
       yPosition = image.height * 0.25;
@@ -858,7 +892,7 @@ async function generateGiftCardImage(templateImageUrl, amount, textPosition = "c
   }
 }
 
-// Helper para subir imagen a Firebase Storage y obtener URL pública
+// Helper para subir imagen a Firebase Storage y obtener URL p�blica
 async function uploadGiftCardImage(imageBuffer, storeId, productId) {
   try {
     const filename = `giftcards/${storeId}/${productId}_${Date.now()}.png`;
@@ -875,10 +909,10 @@ async function uploadGiftCardImage(imageBuffer, storeId, productId) {
       }
     });
     
-    // Hacer el archivo público
+    // Hacer el archivo p�blico
     await file.makePublic();
     
-    // Obtener URL pública
+    // Obtener URL p�blica
     const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
     
     console.log(`? Imagen subida: ${publicUrl}`);
@@ -896,7 +930,7 @@ app.use(cors({ origin: true }));
 app.use(express.json());
 
 // ============================================
-// CONFIGURACIÓN OAUTH TIENDANUBE
+// CONFIGURACI�N OAUTH TIENDANUBE
 // ============================================
 const CLIENT_ID = "23137";
 const CLIENT_SECRET = "4aa553dd36bcad0848bfbe73f2b7894299b38226beab859d";
@@ -993,13 +1027,13 @@ app.get("/auth/callback", async (req, res) => {
 
     console.log(`? Store guardada: ${storeId}`);
 
-    // Registrar webhook automáticamente para recibir notificaciones de pedidos
+    // Registrar webhook autom�ticamente para recibir notificaciones de pedidos
     await registerOrderWebhook(storeId, access_token);
 
     // Instalar templates predeterminados para nueva tienda
     await installDefaultTemplates(storeId);
 
-    // Siempre actualizar suscripción a plan PRO ilimitado (enterprise)
+    // Siempre actualizar suscripci�n a plan PRO ilimitado (enterprise)
     const farFuture = new Date('2099-12-31T00:00:00.000Z');
     const allModules = {
       coupons: true, giftCards: true, spinWheel: true, countdown: true,
@@ -1033,7 +1067,7 @@ app.get("/auth/callback", async (req, res) => {
       updatedAt: new Date().toISOString()
     }, { merge: true });
 
-    // Intentar crear cargo con trial de 36500 días (no bloquea si falla)
+    // Intentar crear cargo con trial de 36500 d�as (no bloquea si falla)
     try {
       const chargeRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/recurring_application_charges`, {
         method: 'POST',
@@ -1066,10 +1100,10 @@ app.get("/auth/callback", async (req, res) => {
         console.log(`??  No se pudo crear cargo para ${storeId}:`, chargeRes.status, JSON.stringify(chargeData).substring(0,100));
       }
     } catch (chargeErr) {
-      console.log(`??  Error creando cargo (no crítico): ${chargeErr.message}`);
+      console.log(`??  Error creando cargo (no cr�tico): ${chargeErr.message}`);
     }
 
-    console.log(`? Suscripción PRO ilimitada activada para: ${storeId}`);
+    console.log(`? Suscripci�n PRO ilimitada activada para: ${storeId}`);
 
     // Verificar si ya existe un usuario para esta tienda
     const usersSnapshot = await db.collection("promonube_users")
@@ -1083,9 +1117,9 @@ app.get("/auth/callback", async (req, res) => {
     if (!usersSnapshot.empty) {
       // Usuario ya existe, redirigir a login
       console.log(`?? Usuario ya existe para store ${storeId}, redirigiendo a login`);
-      redirectUrl = `${frontendUrl}/#/login?message=${encodeURIComponent('Ya tenés una cuenta, inició sesión')}`;
+      redirectUrl = `${frontendUrl}/#/login?message=${encodeURIComponent('Ya ten�s una cuenta, inici� sesi�n')}`;
     } else {
-      // Nueva instalación, redirigir a registro
+      // Nueva instalaci�n, redirigir a registro
       console.log(`?? Store ${storeId} necesita registro, redirigiendo a register`);
       redirectUrl = `${frontendUrl}/#/?installed=true&store_id=${storeId}`;
     }
@@ -1104,7 +1138,7 @@ app.get("/auth/callback", async (req, res) => {
 
 // ============================================
 // ENDPOINT: GET /store-info
-// Obtiene información de la tienda
+// Obtiene informaci�n de la tienda
 // ============================================
 app.get("/store-info", async (req, res) => {
   const { storeId } = req.query;
@@ -1128,7 +1162,7 @@ app.get("/store-info", async (req, res) => {
 
     const storeData = storeDoc.data();
 
-    // Obtener suscripción
+    // Obtener suscripci�n
     const subDoc = await db.collection("subscriptions").doc(storeId).get();
     const subscription = subDoc.exists ? subDoc.data() : null;
 
@@ -1256,7 +1290,7 @@ app.post("/api/auth/login", async (req, res) => {
     if (!email || !password) {
       return res.json({ 
         success: false, 
-        message: 'Email y contraseña son requeridos' 
+        message: 'Email y contrase�a son requeridos' 
       });
     }
 
@@ -1268,7 +1302,7 @@ app.post("/api/auth/login", async (req, res) => {
     if (usersSnapshot.empty) {
       return res.json({ 
         success: false, 
-        message: 'Email o contraseña incorrectos' 
+        message: 'Email o contrase�a incorrectos' 
       });
     }
 
@@ -1278,15 +1312,15 @@ app.post("/api/auth/login", async (req, res) => {
     if (userData.passwordHash !== hashPassword(password)) {
       return res.json({ 
         success: false, 
-        message: 'Email o contraseña incorrectos' 
+        message: 'Email o contrase�a incorrectos' 
       });
     }
 
-    // Obtener información de la tienda
+    // Obtener informaci�n de la tienda
     const storeDoc = await db.collection("promonube_stores").doc(userData.storeId).get();
     const storeData = storeDoc.data();
 
-    // Actualizar último login
+    // Actualizar �ltimo login
     await userDoc.ref.update({ 
       lastLogin: FieldValue.serverTimestamp() 
     });
@@ -1310,7 +1344,7 @@ app.post("/api/auth/login", async (req, res) => {
     console.error('? Login error:', error);
     res.json({ 
       success: false, 
-      message: 'Error al iniciar sesión' 
+      message: 'Error al iniciar sesi�n' 
     });
   }
 });
@@ -1372,7 +1406,7 @@ app.post("/dev-login", async (req, res) => {
 
     console.log(`? Store guardada: ${storeId}`);
 
-    // Crear suscripción trial
+    // Crear suscripci�n trial
     const trialEndDate = new Date();
     trialEndDate.setDate(trialEndDate.getDate() + 30);
 
@@ -1394,7 +1428,7 @@ app.post("/dev-login", async (req, res) => {
       createdAt: FieldValue.serverTimestamp()
     }, { merge: true });
 
-    console.log(`? Suscripción creada: ${storeId}`);
+    console.log(`? Suscripci�n creada: ${storeId}`);
 
     res.json({
       success: true,
@@ -1525,7 +1559,7 @@ app.post("/api/install-light-toggle-script", async (req, res) => {
     }
 
     const accessToken = storeDoc.data().accessToken;
-    const scriptUrl = `${CLOUD_FUNCTION_URL}/style-widget.js?store=${storeId}`;
+    const scriptUrl = `${HOSTING_URL}/api/style-widget.js?store=${storeId}`;
 
     // Verificar si ya existe
     const scriptsResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
@@ -1555,7 +1589,7 @@ app.post("/api/install-light-toggle-script", async (req, res) => {
       });
     }
 
-    // Instalar el script usando el archivo estático
+    // Instalar el script usando el archivo est�tico
     const staticScriptUrl = 'https://pedidos-lett-2.web.app/style-widget-version.js';
     
     const installResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
@@ -1576,11 +1610,11 @@ app.post("/api/install-light-toggle-script", async (req, res) => {
       const errorText = await installResponse.text();
       console.error(`? Error instalando script: ${installResponse.status} - ${errorText}`);
       
-      // Si falla, es porque est? en modo producción
+      // Si falla, es porque est? en modo producci�n
       if (installResponse.status === 422) {
         return res.status(422).json({ 
           success: false, 
-          message: "La app est? en modo producción. Necesitas activar la versión v.3 del script desde TiendaNube Partners.",
+          message: "La app est? en modo producci�n. Necesitas activar la versi�n v.3 del script desde TiendaNube Partners.",
           instructions: "Ve a https://partners.tiendanube.com ? PromoNube ? Scripts ? Light Toggle ? Publicar v.3"
         });
       }
@@ -1609,7 +1643,7 @@ app.post("/api/install-light-toggle-script", async (req, res) => {
 
 // ============================================
 // ENDPOINT: POST /api/coupons/create
-// Crear cupón individual
+// Crear cup�n individual
 // ============================================
 app.post("/api/coupons/create", async (req, res) => {
   const { storeId, code, type, value, minAmount, maxDiscount, startDate, endDate, maxUses, description, restrictedEmail, freeProductId, freeProductName } = req.body;
@@ -1631,7 +1665,7 @@ app.post("/api/coupons/create", async (req, res) => {
     const storeData = storeDoc.data();
     const accessToken = storeData.accessToken;
 
-    // Crear cupón en TiendaNube
+    // Crear cup�n en TiendaNube
     const couponData = {
       code: code.toUpperCase(),
       type: type, // "percentage" o "absolute"
@@ -1656,15 +1690,15 @@ app.post("/api/coupons/create", async (req, res) => {
     const tiendanubeCoupon = await tiendanubeResponse.json();
 
     if (tiendanubeResponse.status !== 201) {
-      console.error("Error creando cupón en TiendaNube:", tiendanubeCoupon);
+      console.error("Error creando cup�n en TiendaNube:", tiendanubeCoupon);
       return res.json({
         success: false,
-        message: "Error al crear cupón en TiendaNube",
+        message: "Error al crear cup�n en TiendaNube",
         error: tiendanubeCoupon
       });
     }
 
-    // Guardar cupón en Firestore
+    // Guardar cup�n en Firestore
     const couponId = `coupon_${Date.now()}`;
     await db.collection("promonube_coupons").doc(couponId).set({
       couponId,
@@ -1690,7 +1724,7 @@ app.post("/api/coupons/create", async (req, res) => {
 
     res.json({
       success: true,
-      message: "Cupón creado exitosamente",
+      message: "Cup�n creado exitosamente",
       coupon: {
         couponId,
         code: code.toUpperCase(),
@@ -1699,10 +1733,10 @@ app.post("/api/coupons/create", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("? Error creando cupón:", error);
+    console.error("? Error creando cup�n:", error);
     res.status(500).json({
       success: false,
-      message: "Error al crear cupón",
+      message: "Error al crear cup�n",
       error: error.message
     });
   }
@@ -1735,7 +1769,7 @@ app.post("/api/coupons/create-bulk", async (req, res) => {
     const createdCoupons = [];
     const errors = [];
 
-    // Generar códigos únicos
+    // Generar c�digos �nicos
     for (let i = 0; i < quantity; i++) {
       const randomCode = `${prefix || 'PROMO'}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
@@ -1851,7 +1885,7 @@ app.post("/api/coupons/import", async (req, res) => {
     const imported = [];
     const errors = [];
 
-    // Procesar cada cupón
+    // Procesar cada cup�n
     for (let i = 0; i < coupons.length; i++) {
       const coupon = coupons[i];
 
@@ -1866,7 +1900,7 @@ app.post("/api/coupons/import", async (req, res) => {
           continue;
         }
 
-        // Verificar si el cupón ya existe en TiendaNube
+        // Verificar si el cup�n ya existe en TiendaNube
         const checkResponse = await fetch(
           `https://api.tiendanube.com/v1/${storeId}/coupons?code=${coupon.code}`,
           {
@@ -1884,7 +1918,7 @@ app.post("/api/coupons/import", async (req, res) => {
           errors.push({ 
             index: i + 1, 
             code: coupon.code, 
-            error: 'El cupón ya existe en TiendaNube' 
+            error: 'El cup�n ya existe en TiendaNube' 
           });
           continue;
         }
@@ -1936,7 +1970,7 @@ app.post("/api/coupons/import", async (req, res) => {
           });
 
           imported.push(coupon.code);
-          console.log(`? Cupón importado: ${coupon.code}`);
+          console.log(`? Cup�n importado: ${coupon.code}`);
         } else {
           errors.push({ 
             index: i + 1, 
@@ -1959,7 +1993,7 @@ app.post("/api/coupons/import", async (req, res) => {
       }
     }
 
-    console.log(`? Importación completada: ${imported.length} exitosos, ${errors.length} errores`);
+    console.log(`? Importaci�n completada: ${imported.length} exitosos, ${errors.length} errores`);
 
     res.json({
       success: true,
@@ -1971,7 +2005,7 @@ app.post("/api/coupons/import", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("? Error en importación:", error);
+    console.error("? Error en importaci�n:", error);
     res.status(500).json({
       success: false,
       message: "Error al importar cupones",
@@ -2084,7 +2118,7 @@ app.get("/api/coupons/with-cap", async (req, res) => {
 
 // ============================================
 // ENDPOINT: PATCH /api/coupons/:couponId/toggle
-// Activar/Desactivar cupón
+// Activar/Desactivar cup�n
 // ============================================
 app.patch("/api/coupons/:couponId/toggle", async (req, res) => {
   const { couponId } = req.params;
@@ -2098,15 +2132,15 @@ app.patch("/api/coupons/:couponId/toggle", async (req, res) => {
   }
 
   try {
-    console.log("?? Cambiando estado de cupón:", couponId);
+    console.log("?? Cambiando estado de cup�n:", couponId);
 
-    // Obtener cupón actual
+    // Obtener cup�n actual
     const couponDoc = await db.collection("promonube_coupons").doc(couponId).get();
     
     if (!couponDoc.exists) {
       return res.json({
         success: false,
-        message: "Cupón no encontrado"
+        message: "Cup�n no encontrado"
       });
     }
 
@@ -2146,7 +2180,7 @@ app.patch("/api/coupons/:couponId/toggle", async (req, res) => {
 
     res.json({
       success: true,
-      message: `Cupón ${newStatus ? 'activado' : 'desactivado'} correctamente`,
+      message: `Cup�n ${newStatus ? 'activado' : 'desactivado'} correctamente`,
       active: newStatus
     });
 
@@ -2154,7 +2188,7 @@ app.patch("/api/coupons/:couponId/toggle", async (req, res) => {
     console.error("? Error cambiando estado:", error);
     res.status(500).json({
       success: false,
-      message: "Error al cambiar estado del cupón",
+      message: "Error al cambiar estado del cup�n",
       error: error.message
     });
   }
@@ -2162,7 +2196,7 @@ app.patch("/api/coupons/:couponId/toggle", async (req, res) => {
 
 // ============================================
 // ENDPOINT: DELETE /api/coupons/:couponId
-// Eliminar cupón
+// Eliminar cup�n
 // ============================================
 app.delete("/api/coupons/:couponId", async (req, res) => {
   const { couponId } = req.params;
@@ -2176,15 +2210,15 @@ app.delete("/api/coupons/:couponId", async (req, res) => {
   }
 
   try {
-    console.log("??? Eliminando cupón:", couponId);
+    console.log("??? Eliminando cup�n:", couponId);
 
-    // Obtener cupón
+    // Obtener cup�n
     const couponDoc = await db.collection("promonube_coupons").doc(couponId).get();
     
     if (!couponDoc.exists) {
       return res.json({
         success: false,
-        message: "Cupón no encontrado"
+        message: "Cup�n no encontrado"
       });
     }
 
@@ -2212,18 +2246,18 @@ app.delete("/api/coupons/:couponId", async (req, res) => {
     // Eliminar de Firestore
     await db.collection("promonube_coupons").doc(couponId).delete();
 
-    console.log("? Cupón eliminado correctamente");
+    console.log("? Cup�n eliminado correctamente");
 
     res.json({
       success: true,
-      message: "Cupón eliminado correctamente"
+      message: "Cup�n eliminado correctamente"
     });
 
   } catch (error) {
-    console.error("? Error eliminando cupón:", error);
+    console.error("? Error eliminando cup�n:", error);
     res.status(500).json({
       success: false,
-      message: "Error al eliminar cupón",
+      message: "Error al eliminar cup�n",
       error: error.message
     });
   }
@@ -2231,16 +2265,16 @@ app.delete("/api/coupons/:couponId", async (req, res) => {
 
 // ============================================
 // ENDPOINT: GET /api/coupons/:couponId/usage
-// Obtener historial de uso de un cupón
+// Obtener historial de uso de un cup�n
 // ============================================
 app.get("/api/coupons/:couponId/usage", async (req, res) => {
   const { couponId } = req.params;
 
   try {
-    console.log("?? Obteniendo historial de uso para cupón:", couponId);
+    console.log("?? Obteniendo historial de uso para cup�n:", couponId);
 
     // Por ahora devolvemos datos simulados hasta implementar el webhook
-    // En el futuro, leeremos de la colección "coupon_usage"
+    // En el futuro, leeremos de la colecci�n "coupon_usage"
     const usageSnapshot = await db.collection("coupon_usage")
       .where("couponId", "==", couponId)
       .orderBy("usedAt", "desc")
@@ -2262,7 +2296,7 @@ app.get("/api/coupons/:couponId/usage", async (req, res) => {
   } catch (error) {
     console.error("? Error obteniendo historial de uso:", error);
     
-    // Si no existe el índice aún, devolver array vacío
+    // Si no existe el �ndice a�n, devolver array vac�o
     res.json({
       success: true,
       usage: [],
@@ -2315,12 +2349,12 @@ app.post("/webhook/order-paid", async (req, res) => {
           
           console.log(`?? Monto calculado por gift card: $${finalAmountPerCard.toFixed(2)} (base: $${baseAmount})`);
           
-          // Generar un código por cada gift card comprada
+          // Generar un c�digo por cada gift card comprada
           for (let i = 0; i < quantity; i++) {
             const newCode = generateGiftCardCode();
             const newGiftCardId = `gift_${Date.now()}_${i}`;
             
-            // Calcular fecha de expiración si existe en metadata
+            // Calcular fecha de expiraci�n si existe en metadata
             let expiresAt = null;
             if (productMetadata.exists && productMetadata.data().expiresInDays) {
               expiresAt = new Date();
@@ -2337,7 +2371,7 @@ app.post("/webhook/order-paid", async (req, res) => {
               recipientEmail: order.customer?.email || null,
               recipientName: order.customer?.name || null,
               senderName: null,
-              message: `¡Gracias por tu compra! Aquí está tu Gift Card.`,
+              message: `�Gracias por tu compra! Aqu� est� tu Gift Card.`,
               status: 'active',
               tiendanubeProductId: product.product_id,
               isProductBased: true,
@@ -2353,7 +2387,7 @@ app.post("/webhook/order-paid", async (req, res) => {
             await db.collection("promonube_giftcards").doc(newGiftCardId).set(newGiftCardData);
             console.log(`? Gift Card generada: ${newCode} para ${order.customer?.email} - Monto: $${finalAmountPerCard.toFixed(2)}`);
 
-            // Enviar email con el código
+            // Enviar email con el c�digo
             if (order.customer?.email) {
               await sendGiftCardEmail(
                 order.customer.email, 
@@ -2378,7 +2412,7 @@ app.post("/webhook/order-paid", async (req, res) => {
     // PARTE 2: TRACKING DE CUPONES (EXISTENTE)
     // ==========================================
     
-    // Verificar si el pedido tiene cupón (TN puede devolver array u objeto)
+    // Verificar si el pedido tiene cup�n (TN puede devolver array u objeto)
     let rawCouponCode = null;
     if (Array.isArray(order.coupon) && order.coupon.length > 0) {
       rawCouponCode = order.coupon[0].code || null;
@@ -2392,9 +2426,9 @@ app.post("/webhook/order-paid", async (req, res) => {
     const couponCode = rawCouponCode.toUpperCase();
     const storeId = order.store_id?.toString();
 
-    console.log("??? Pedido con cupón:", couponCode, "| Store:", storeId);
+    console.log("??? Pedido con cup�n:", couponCode, "| Store:", storeId);
 
-    // Buscar el cupón en Firestore
+    // Buscar el cup�n en Firestore
     const couponsSnapshot = await db.collection("promonube_coupons")
       .where("storeId", "==", storeId)
       .where("code", "==", couponCode)
@@ -2402,15 +2436,15 @@ app.post("/webhook/order-paid", async (req, res) => {
       .get();
 
     if (couponsSnapshot.empty) {
-      console.log("?? Cupón no encontrado en PromoNube");
-      return res.json({ success: true, message: "Cupón no gestionado por PromoNube" });
+      console.log("?? Cup�n no encontrado en PromoNube");
+      return res.json({ success: true, message: "Cup�n no gestionado por PromoNube" });
     }
 
     const couponDoc = couponsSnapshot.docs[0];
     const couponData = couponDoc.data();
     const couponId = couponData.couponId;
 
-    // ?? VALIDACIÓN: Email restringido
+    // ?? VALIDACI�N: Email restringido
     let emailAutorizado = true;
     let motivoRechazo = null;
 
@@ -2420,16 +2454,16 @@ app.post("/webhook/order-paid", async (req, res) => {
 
       if (emailCliente !== emailCupon) {
         emailAutorizado = false;
-        motivoRechazo = `Cupón exclusivo para ${couponData.restrictedEmail}. Usado por: ${emailCliente}`;
+        motivoRechazo = `Cup�n exclusivo para ${couponData.restrictedEmail}. Usado por: ${emailCliente}`;
         console.log(`?? USO NO AUTORIZADO - ${motivoRechazo}`);
       }
     }
 
-    // Normalizar acceso a value/discount del cupón (puede venir como array u objeto)
+    // Normalizar acceso a value/discount del cup�n (puede venir como array u objeto)
     const couponObj = Array.isArray(order.coupon) ? order.coupon[0] : order.coupon;
     const couponValueRaw = parseFloat(order.discount_coupon || couponObj?.discount || couponObj?.value || 0);
 
-    // ?? VALIDACIÓN: Tope de descuento excedido
+    // ?? VALIDACI�N: Tope de descuento excedido
     let topeExcedido = false;
     let descuentoEsperado = couponValueRaw;
 
@@ -2442,7 +2476,7 @@ app.post("/webhook/order-paid", async (req, res) => {
       }
     }
 
-    // Registrar el uso (con flags de validación)
+    // Registrar el uso (con flags de validaci�n)
     const usageId = `${couponId}_${order.id}`;
     await db.collection("coupon_usage").doc(usageId).set({
       couponId,
@@ -2454,7 +2488,10 @@ app.post("/webhook/order-paid", async (req, res) => {
       customerName: order.customer?.name || null,
       orderTotal: parseFloat(order.total),
       discountAmount: couponValueRaw,
-      // ?? Campos de validación
+      // ?? Campos para stats incrementales
+      source: couponData.source || null,
+      wheelId: couponData.wheelId || null,
+      // ?? Campos de validaci�n
       emailAutorizado: emailAutorizado,
       motivoRechazo: motivoRechazo,
       topeExcedido: topeExcedido,
@@ -2471,7 +2508,7 @@ app.post("/webhook/order-paid", async (req, res) => {
       ...(couponData.source === 'spin_wheel' ? { used: true, usedAt: FieldValue.serverTimestamp() } : {})
     });
 
-    // Si es cupón de ruleta, marcar spin_wheel_results como usado
+    // Si es cup�n de ruleta, marcar spin_wheel_results como usado
     if (couponData.source === 'spin_wheel' && couponCode) {
       const spinResultsQuery = await db.collection('spin_wheel_results')
         .where('couponCode', '==', couponCode)
@@ -2482,7 +2519,7 @@ app.post("/webhook/order-paid", async (req, res) => {
       }
     }
 
-    console.log("? Uso de cupón registrado:", usageId);
+    console.log("? Uso de cup�n registrado:", usageId);
 
     res.json({
       success: true,
@@ -2500,7 +2537,7 @@ app.post("/webhook/order-paid", async (req, res) => {
 
 // ============================================
 // ENDPOINT: POST /api/promotions/create
-// Crear promoción avanzada
+// Crear promoci�n avanzada
 // ============================================
 app.post("/api/promotions/create", async (req, res) => {
   const {
@@ -2535,7 +2572,7 @@ app.post("/api/promotions/create", async (req, res) => {
   }
 
   try {
-    console.log("?? Creando promoción:", type, "para tienda:", storeId);
+    console.log("?? Creando promoci�n:", type, "para tienda:", storeId);
 
     // Obtener access token
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -2549,7 +2586,7 @@ app.post("/api/promotions/create", async (req, res) => {
     const accessToken = storeDoc.data().accessToken;
     const promotionId = `promo-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
-    // Preparar datos para TiendaNube según el tipo de promoción
+    // Preparar datos para TiendaNube seg�n el tipo de promoci�n
     let tiendanubeData = {};
     let tiendanubeEndpoint = "";
     let tiendanubePromotionId = null;
@@ -2557,12 +2594,12 @@ app.post("/api/promotions/create", async (req, res) => {
     switch(type) {
       case 'buy_x_pay_y':
         // Por ahora guardamos en Firestore
-        // TiendaNube puede requerir configuración adicional
-        console.log("?? Guardando promoción Buy X Pay Y en Firestore");
+        // TiendaNube puede requerir configuraci�n adicional
+        console.log("?? Guardando promoci�n Buy X Pay Y en Firestore");
         break;
 
       case 'price_discount':
-        // Intentar crear como cupón automático con descuento
+        // Intentar crear como cup�n autom�tico con descuento
         tiendanubeEndpoint = `https://api.tiendanube.com/v1/${storeId}/coupons`;
         const autoCode = `PROMO-${Date.now().toString().slice(-6)}`;
         tiendanubeData = {
@@ -2577,12 +2614,12 @@ app.post("/api/promotions/create", async (req, res) => {
         break;
 
       case 'progressive_discount':
-        // Guardar en Firestore - requiere lógica personalizada
-        console.log("?? Guardando promoción progresiva en Firestore");
+        // Guardar en Firestore - requiere l�gica personalizada
+        console.log("?? Guardando promoci�n progresiva en Firestore");
         break;
 
       case 'cart_discount':
-        // Crear como cupón automático
+        // Crear como cup�n autom�tico
         tiendanubeEndpoint = `https://api.tiendanube.com/v1/${storeId}/coupons`;
         const cartCode = `AUTO-${Date.now().toString().slice(-6)}`;
         tiendanubeData = {
@@ -2598,13 +2635,13 @@ app.post("/api/promotions/create", async (req, res) => {
 
       case 'cross_selling':
         // Cross selling - Guardar solo en Firestore
-        console.log("?? Guardando promoción cross-selling en Firestore");
+        console.log("?? Guardando promoci�n cross-selling en Firestore");
         break;
 
       default:
         return res.json({
           success: false,
-          message: "Tipo de promoción no soportado"
+          message: "Tipo de promoci�n no soportado"
         });
     }
 
@@ -2632,7 +2669,7 @@ app.post("/api/promotions/create", async (req, res) => {
         } else {
           const tiendanubePromotion = await tiendanubeResponse.json();
           tiendanubePromotionId = tiendanubePromotion.id;
-          console.log("? Promoción creada en TiendaNube:", tiendanubePromotionId);
+          console.log("? Promoci�n creada en TiendaNube:", tiendanubePromotionId);
         }
       } catch (apiError) {
         console.error("?? Error al conectar con TiendaNube:", apiError.message);
@@ -2651,7 +2688,7 @@ app.post("/api/promotions/create", async (req, res) => {
       startDate: startDate || null,
       endDate: endDate || null,
       active: active !== false,
-      // Configuración específica
+      // Configuraci�n espec�fica
       buyQuantity: buyQuantity || null,
       payQuantity: payQuantity || null,
       discountType: discountType || null,
@@ -2666,20 +2703,20 @@ app.post("/api/promotions/create", async (req, res) => {
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    console.log("? Promoción guardada en Firestore:", promotionId);
+    console.log("? Promoci�n guardada en Firestore:", promotionId);
 
     res.json({
       success: true,
-      message: "Promoción creada exitosamente",
+      message: "Promoci�n creada exitosamente",
       promotionId,
       tiendanubeId: tiendanubePromotionId
     });
 
   } catch (error) {
-    console.error("? Error creando promoción:", error);
+    console.error("? Error creando promoci�n:", error);
     res.status(500).json({
       success: false,
-      message: "Error al crear promoción",
+      message: "Error al crear promoci�n",
       error: error.message
     });
   }
@@ -2733,7 +2770,7 @@ app.get("/api/promotions", async (req, res) => {
 // GIFT CARDS SYSTEM
 // ============================================
 
-// Helper: Generar código único de gift card
+// Helper: Generar c�digo �nico de gift card
 function generateGiftCardCode() {
   const prefix = "GIFT";
   const random = crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -2770,7 +2807,7 @@ app.post("/api/giftcards/create", async (req, res) => {
     console.log("?? Creando gift card:", { storeId, amount, publishAsProduct });
 
     // Si es producto, solo crear el producto en TiendaNube
-    // Los códigos se generan cuando alguien compra (vía webhook)
+    // Los c�digos se generan cuando alguien compra (v�a webhook)
     if (publishAsProduct) {
       try {
         const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -2780,83 +2817,83 @@ app.post("/api/giftcards/create", async (req, res) => {
 
         const accessToken = storeDoc.data().accessToken;
         
-        // Generar descripción automática con instrucciones
-        const expiryText = expiresInDays ? `Válida por ${Math.floor(expiresInDays / 30)} meses desde la compra.` : 'Sin vencimiento';
+        // Generar descripci�n autom�tica con instrucciones
+        const expiryText = expiresInDays ? `V�lida por ${Math.floor(expiresInDays / 30)} meses desde la compra.` : 'Sin vencimiento';
         const autoDescription = productDescription || `
 ?? GIFT CARD POR $${amount.toLocaleString('es-AR')}
 
-La manera perfecta de regalar! Comprá esta Gift Card y recib? un código único por email que podrás usar o regalar.
+La manera perfecta de regalar! Compr� esta Gift Card y recib? un c�digo �nico por email que podr�s usar o regalar.
 
 ??????????????????????????????
-?? CÓMO FUNCIONA - PASO A PASO
+?? C�MO FUNCIONA - PASO A PASO
 ??????????????????????????????
 
 PASO 1: COMPRAR ???
-� Agreg? esta Gift Card al carrito y complet? tu compra
-� Asegurate de ingresar un email válido en el checkout
-� Pag? con cualquier método disponible
+? Agreg? esta Gift Card al carrito y complet? tu compra
+? Asegurate de ingresar un email v�lido en el checkout
+? Pag? con cualquier m�todo disponible
 
-PASO 2: RECIBIR EL CÓDIGO ??
-� Inmediatamente después de confirmar tu compra, recibirás un email
-� El email contiene tu código único de Gift Card
-� Guard? ese código en un lugar seguro
+PASO 2: RECIBIR EL C�DIGO ??
+? Inmediatamente despu�s de confirmar tu compra, recibir�s un email
+? El email contiene tu c�digo �nico de Gift Card
+? Guard? ese c�digo en un lugar seguro
 
 PASO 3: USAR O REGALAR ??
-� Vos podés usar el código o regalárselo a quien quieras
-� El código no tiene tu nombre, es totalmente transferible
-� Ideal para compartir por WhatsApp, email o imprimirlo
+? Vos pod�s usar el c�digo o regal�rselo a quien quieras
+? El c�digo no tiene tu nombre, es totalmente transferible
+? Ideal para compartir por WhatsApp, email o imprimirlo
 
 PASO 4: CANJEAR EN CUALQUIER COMPRA ??
-� Al momento de hacer una compra, ingres? el código en el campo de "Cupón de descuento"
-� El descuento se aplicar? automáticamente
-� Si el total de tu compra es menor al valor de la Gift Card, el saldo restante queda guardado para futuras compras
+? Al momento de hacer una compra, ingres? el c�digo en el campo de "Cup�n de descuento"
+? El descuento se aplicar? autom�ticamente
+? Si el total de tu compra es menor al valor de la Gift Card, el saldo restante queda guardado para futuras compras
 
 ??????????????????????????????
 ? PREGUNTAS FRECUENTES
 ??????????????????????????????
 
-¿El código tiene el valor del precio que veo aquí??
-No necesariamente. El código tendr? el valor del monto REAL que pagaste. Si usás un descuento (ejemplo: 15% off con transferencia), tu código tendr? ese valor final.
+�El c�digo tiene el valor del precio que veo aqu�??
+No necesariamente. El c�digo tendr? el valor del monto REAL que pagaste. Si us�s un descuento (ejemplo: 15% off con transferencia), tu c�digo tendr? ese valor final.
 
 ?? Ejemplo: 
    Precio de la Gift Card: $100.000
-   Pagás con 15% descuento: $85.000
-   ? Código que recibís: $85.000 ?
+   Pag�s con 15% descuento: $85.000
+   ? C�digo que recib�s: $85.000 ?
 
-¿Puedo usar la Gift Card más de una vez?
-S?! Si tu compra es menor al valor del código, el saldo restante queda disponible para usar en futuras compras.
+�Puedo usar la Gift Card m�s de una vez?
+S?! Si tu compra es menor al valor del c�digo, el saldo restante queda disponible para usar en futuras compras.
 
-¿Cuándo vence?
-� ${expiryText}
-� La fecha de vencimiento cuenta desde el momento de la compra, no desde el primer uso
+�Cu�ndo vence?
+? ${expiryText}
+? La fecha de vencimiento cuenta desde el momento de la compra, no desde el primer uso
 
-¿A quién le llega el código?
+�A qui�n le llega el c�digo?
 Al email que ingreses en el checkout. Verific? que est? bien escrito!
 
-¿Puedo regalárselo a otra persona?
-S?, totalmente! El código no tiene restricciones. Podés compartirlo por WhatsApp, email o imprimirlo.
+�Puedo regal�rselo a otra persona?
+S?, totalmente! El c�digo no tiene restricciones. Pod�s compartirlo por WhatsApp, email o imprimirlo.
 
-¿Se puede combinar con otras promociones?
-S?, el código funciona como un cupón y se puede usar junto con otros descuentos disponibles en la tienda.
+�Se puede combinar con otras promociones?
+S?, el c�digo funciona como un cup�n y se puede usar junto con otros descuentos disponibles en la tienda.
 
 ??????????????????????????????
 ?? IDEAL PARA
 ??????????????????????????????
 
-? Cumpleaños y celebraciones
+? Cumplea�os y celebraciones
 ? Regalos corporativos
-? Cuando no sabés qué talle o modelo elegir
+? Cuando no sab�s qu� talle o modelo elegir
 ? Incentivos y premios
-? Sorpresas de último momento
+? Sorpresas de �ltimo momento
 
 ??????????????????????????????
 ?? TIPS IMPORTANTES
 ??????????????????????????????
 
 ? Verific? tu email antes de finalizar la compra
-? Revis? tu carpeta de spam si no recibís el código en 5 minutos
-? Guard? el código en un lugar seguro o compartilo inmediatamente
-? El código se puede usar desde cualquier dispositivo
+? Revis? tu carpeta de spam si no recib�s el c�digo en 5 minutos
+? Guard? el c�digo en un lugar seguro o compartilo inmediatamente
+? El c�digo se puede usar desde cualquier dispositivo
 
 ?? ?El regalo perfecto que siempre queda bien!
         `.trim();
@@ -2910,7 +2947,7 @@ S?, el código funciona como un cupón y se puede usar junto con otros descuento
             price: parseFloat(amount),
             stock_management: false,
             stock: null,
-            values: [] // TiendaNube requiere este campo aunque est? vacío
+            values: [] // TiendaNube requiere este campo aunque est? vac�o
           }],
           attributes: []
         };
@@ -2936,7 +2973,7 @@ S?, el código funciona como un cupón y se puede usar junto con otros descuento
           const tiendanubeProductId = tnProduct.id;
           console.log("? Producto TN creado:", tiendanubeProductId);
           
-          // Guardar metadata del producto (NO es un cupón todavía)
+          // Guardar metadata del producto (NO es un cup�n todav�a)
           const productMetadata = {
             productId: tiendanubeProductId,
             storeId,
@@ -2953,7 +2990,7 @@ S?, el código funciona como un cupón y se puede usar junto con otros descuento
             success: true,
             message: "Producto gift card creado exitosamente",
             productId: tiendanubeProductId,
-            note: "Los códigos se generarán automáticamente cuando alguien compre este producto"
+            note: "Los c�digos se generar�n autom�ticamente cuando alguien compre este producto"
           });
         }
       } catch (error) {
@@ -2965,7 +3002,7 @@ S?, el código funciona como un cupón y se puede usar junto con otros descuento
       }
     }
 
-    // Si NO es producto, crear gift card directa (cupón)
+    // Si NO es producto, crear gift card directa (cup�n)
     const code = generateGiftCardCode();
     const giftCardId = `gift_${Date.now()}`;
     
@@ -3049,7 +3086,7 @@ app.get("/api/giftcards", async (req, res) => {
       giftCards.push(doc.data());
     });
 
-    // Ordenar por fecha de creación (más recientes primero)
+    // Ordenar por fecha de creaci�n (m�s recientes primero)
     giftCards.sort((a, b) => {
       const dateA = a.createdAt?._seconds || 0;
       const dateB = b.createdAt?._seconds || 0;
@@ -3076,7 +3113,7 @@ app.get("/api/giftcards", async (req, res) => {
 
 // ============================================
 // ENDPOINT: GET /api/giftcard-products
-// Listar productos de gift cards (no los códigos)
+// Listar productos de gift cards (no los c�digos)
 // ============================================
 app.get("/api/giftcard-products", async (req, res) => {
   const { storeId } = req.query;
@@ -3100,7 +3137,7 @@ app.get("/api/giftcard-products", async (req, res) => {
       products.push(doc.data());
     });
 
-    // Ordenar por fecha de creación
+    // Ordenar por fecha de creaci�n
     products.sort((a, b) => {
       const dateA = a.createdAt?._seconds || 0;
       const dateB = b.createdAt?._seconds || 0;
@@ -3190,7 +3227,7 @@ app.get("/api/giftcards/sold", async (req, res) => {
       giftCards.push(doc.data());
     });
 
-    // Ordenar por fecha de creación
+    // Ordenar por fecha de creaci�n
     giftCards.sort((a, b) => {
       const dateA = a.createdAt?._seconds || 0;
       const dateB = b.createdAt?._seconds || 0;
@@ -3325,7 +3362,7 @@ app.put("/api/giftcards/:giftCardId/update-email", async (req, res) => {
   if (!emailRegex.test(recipientEmail)) {
     return res.status(400).json({
       success: false,
-      message: "Email inválido"
+      message: "Email inv�lido"
     });
   }
 
@@ -3373,7 +3410,7 @@ app.put("/api/giftcards/:giftCardId/update-email", async (req, res) => {
 
 // ============================================
 // ENDPOINT: PUT /api/giftcards/:giftCardId/mark-used
-// Marcar gift card como usada manualmente (saldo = 0, status = used, desactivar cupón)
+// Marcar gift card como usada manualmente (saldo = 0, status = used, desactivar cup�n)
 // ============================================
 app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
   const { giftCardId } = req.params;
@@ -3425,7 +3462,7 @@ app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
       usageCount: FieldValue.increment(1)
     });
 
-    // Registrar transacción de uso manual
+    // Registrar transacci�n de uso manual
     const transactionId = `tx_manual_${Date.now()}`;
     await db.collection("giftcard_transactions").doc(transactionId).set({
       transactionId,
@@ -3443,7 +3480,7 @@ app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
 
     console.log(`? Gift card ${giftCard.code} marcada como usada manualmente`);
 
-    // Desactivar cupón en TiendaNube si existe
+    // Desactivar cup�n en TiendaNube si existe
     if (giftCard.tiendanubeCouponId) {
       try {
         const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -3460,15 +3497,15 @@ app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
                 'User-Agent': 'GlowLab (info@techdi.com.ar)'
               },
               body: JSON.stringify({
-                valid: false // Desactivar cupón
+                valid: false // Desactivar cup�n
               })
             }
           );
 
           if (couponResponse.ok) {
-            console.log(`? Cupón ${giftCard.code} desactivado en TiendaNube`);
+            console.log(`? Cup�n ${giftCard.code} desactivado en TiendaNube`);
             
-            // Actualizar en la colección de cupones también
+            // Actualizar en la colecci�n de cupones tambi�n
             const couponSnapshot = await db.collection("promonube_coupons")
               .where("storeId", "==", storeId)
               .where("code", "==", giftCard.code)
@@ -3482,18 +3519,18 @@ app.put("/api/giftcards/:giftCardId/mark-used", async (req, res) => {
               });
             }
           } else {
-            console.warn(`?? No se pudo desactivar cupón en TiendaNube: ${couponResponse.status}`);
+            console.warn(`?? No se pudo desactivar cup�n en TiendaNube: ${couponResponse.status}`);
           }
         }
       } catch (couponError) {
-        console.error('? Error desactivando cupón:', couponError);
-        // No fallar la operación principal por esto
+        console.error('? Error desactivando cup�n:', couponError);
+        // No fallar la operaci�n principal por esto
       }
     }
 
     res.json({
       success: true,
-      message: "Gift card marcada como usada y cupón desactivado",
+      message: "Gift card marcada como usada y cup�n desactivado",
       giftCard: {
         code: giftCard.code,
         previousBalance: balanceBefore,
@@ -3521,7 +3558,7 @@ app.get("/api/giftcards/:code/balance", async (req, res) => {
   if (!code) {
     return res.json({
       success: false,
-      message: "Código es requerido"
+      message: "C�digo es requerido"
     });
   }
 
@@ -3544,7 +3581,7 @@ app.get("/api/giftcards/:code/balance", async (req, res) => {
 
     // Verificar si est? vencida
     if (giftCard.expiresAt && giftCard.expiresAt.toDate() < new Date()) {
-      // Actualizar status en Firestore si todavía no fue marcada como expirada
+      // Actualizar status en Firestore si todav�a no fue marcada como expirada
       if (giftCard.status !== 'expired') {
         await snapshot.docs[0].ref.update({ status: 'expired' });
       }
@@ -3627,7 +3664,7 @@ app.post("/api/giftcards/redeem", async (req, res) => {
     const giftCardDoc = snapshot.docs[0];
     const giftCard = giftCardDoc.data();
 
-    // Validar que pertenece a la tienda (si se envía storeId)
+    // Validar que pertenece a la tienda (si se env�a storeId)
     if (storeId && giftCard.storeId !== storeId) {
       return res.json({ success: false, message: "Gift card no pertenece a esta tienda" });
     }
@@ -3658,7 +3695,7 @@ app.post("/api/giftcards/redeem", async (req, res) => {
       });
     }
 
-    // Actualizar balance con transacción Firestore (evita doble gasto por requests simultáneos)
+    // Actualizar balance con transacci�n Firestore (evita doble gasto por requests simult�neos)
     let newBalance, newStatus;
     try {
       await db.runTransaction(async (txn) => {
@@ -3688,7 +3725,7 @@ app.post("/api/giftcards/redeem", async (req, res) => {
       throw txError;
     }
 
-    // Registrar transacción
+    // Registrar transacci�n
     const transactionId = `tx_${Date.now()}`;
     await db.collection("giftcard_transactions").doc(transactionId).set({
       transactionId,
@@ -3762,7 +3799,7 @@ app.post("/api/giftcards/:id/reload", async (req, res) => {
       status: 'active'
     });
 
-    // Registrar transacción
+    // Registrar transacci�n
     const transactionId = `tx_${Date.now()}`;
     await db.collection("giftcard_transactions").doc(transactionId).set({
       transactionId,
@@ -3799,7 +3836,7 @@ app.post("/api/giftcards/:id/reload", async (req, res) => {
 });
 
 // ============================================
-// GIFT CARD V2 � Sistema con variantes (F�sica/Digital � Montos)
+// GIFT CARD V2 ? Sistema con variantes (F?sica/Digital ? Montos)
 // ============================================
 
 // Helper: agregar nota interna a una orden de TiendaNube
@@ -3854,10 +3891,10 @@ app.get("/api/giftcard-v2/config", async (req, res) => {
   }
 });
 
-// ENDPOINT: POST /api/giftcard-v2/setup � crea el producto en TiendaNube y guarda config
+// ENDPOINT: POST /api/giftcard-v2/setup ? crea el producto en TiendaNube y guarda config
 app.post("/api/giftcard-v2/setup", async (req, res) => {
   try {
-    const { storeId, amounts, productName = "Gift Card", description = "Gift Card � eleg� el tipo y el monto que quer�s regalar." } = req.body;
+    const { storeId, amounts, productName = "Gift Card", description = "Gift Card ? eleg? el tipo y el monto que quer?s regalar." } = req.body;
     if (!storeId || !amounts || !amounts.length) {
       return res.status(400).json({ success: false, message: "storeId y amounts son requeridos" });
     }
@@ -3865,10 +3902,10 @@ app.post("/api/giftcard-v2/setup", async (req, res) => {
     if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Store not found" });
     const accessToken = storeDoc.data().accessToken;
 
-    // Construir variantes: para cada monto ? F�sica + Digital
+    // Construir variantes: para cada monto ? F?sica + Digital
     const variants = [];
     for (const amount of amounts) {
-      variants.push({ price: amount.toString(), stock_management: false, values: [{ es: "F�sica" }, { es: `$${amount}` }] });
+      variants.push({ price: amount.toString(), stock_management: false, values: [{ es: "F?sica" }, { es: `$${amount}` }] });
       variants.push({ price: amount.toString(), stock_management: false, values: [{ es: "Digital" }, { es: `$${amount}` }] });
     }
 
@@ -3906,7 +3943,7 @@ app.post("/api/giftcard-v2/setup", async (req, res) => {
       emailMessage: '',
       imageUrl: null,
       digitalValue: 'Digital',
-      physicalValue: 'F�sica',
+      physicalValue: 'F?sica',
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()
     };
@@ -3919,14 +3956,14 @@ app.post("/api/giftcard-v2/setup", async (req, res) => {
   }
 });
 
-// ENDPOINT: PUT /api/giftcard-v2/config � actualiza montos y/o estado habilitado
+// ENDPOINT: PUT /api/giftcard-v2/config ? actualiza montos y/o estado habilitado
 app.put("/api/giftcard-v2/config", async (req, res) => {
   try {
     const { storeId, amounts, enabled } = req.body;
     if (!storeId) return res.status(400).json({ success: false, message: "storeId required" });
 
     const configDoc = await db.collection("giftcard_v2_config").doc(storeId).get();
-    if (!configDoc.exists) return res.status(404).json({ success: false, message: "Config no encontrada, ejecut� setup primero." });
+    if (!configDoc.exists) return res.status(404).json({ success: false, message: "Config no encontrada, ejecut? setup primero." });
 
     const config = configDoc.data();
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -3946,7 +3983,7 @@ app.put("/api/giftcard-v2/config", async (req, res) => {
         const existingVariants = await variantsRes.json();
         const existingAmounts = [...new Set(existingVariants.map(v => parseFloat(v.price)))];
 
-        // Eliminar variantes de montos que ya no est�n
+        // Eliminar variantes de montos que ya no est?n
         for (const variant of existingVariants) {
           if (!amounts.includes(parseFloat(variant.price))) {
             await fetch(`https://api.tiendanube.com/v1/${storeId}/products/${config.productId}/variants/${variant.id}`, {
@@ -3959,7 +3996,7 @@ app.put("/api/giftcard-v2/config", async (req, res) => {
         // Agregar variantes para nuevos montos
         for (const amount of amounts) {
           if (!existingAmounts.includes(amount)) {
-            for (const tipo of ['F�sica', 'Digital']) {
+            for (const tipo of ['F?sica', 'Digital']) {
               await fetch(`https://api.tiendanube.com/v1/${storeId}/products/${config.productId}/variants`, {
                 method: 'POST',
                 headers: { 'Authentication': `bearer ${accessToken}`, 'Content-Type': 'application/json', 'User-Agent': 'GlowLab (info@techdi.com.ar)' },
@@ -3980,7 +4017,7 @@ app.put("/api/giftcard-v2/config", async (req, res) => {
   }
 });
 
-// ENDPOINT: GET /api/giftcard-v2/orders � lista �rdenes de gift cards v2
+// ENDPOINT: GET /api/giftcard-v2/orders ? lista ?rdenes de gift cards v2
 app.get("/api/giftcard-v2/orders", async (req, res) => {
   try {
     const { storeId, limit = 100 } = req.query;
@@ -4001,7 +4038,7 @@ app.get("/api/giftcard-v2/orders", async (req, res) => {
   }
 });
 
-// ENDPOINT: POST /api/giftcard-v2/resend-email � reenv�a email de gift card digital
+// ENDPOINT: POST /api/giftcard-v2/resend-email ? reenv?a email de gift card digital
 app.post("/api/giftcard-v2/resend-email", async (req, res) => {
   try {
     const { storeId, orderId } = req.body;
@@ -4023,14 +4060,14 @@ app.post("/api/giftcard-v2/resend-email", async (req, res) => {
   }
 });
 
-// ENDPOINT: POST /api/giftcard-v2/upload-image � sube imagen a Storage y la asigna al producto TN
+// ENDPOINT: POST /api/giftcard-v2/upload-image ? sube imagen a Storage y la asigna al producto TN
 app.post("/api/giftcard-v2/upload-image", async (req, res) => {
   try {
     const { storeId, imageBase64, mimeType = 'image/jpeg' } = req.body;
     if (!storeId || !imageBase64) return res.status(400).json({ success: false, message: "storeId e imageBase64 son requeridos" });
 
     const configDoc = await db.collection("giftcard_v2_config").doc(storeId).get();
-    if (!configDoc.exists) return res.status(404).json({ success: false, message: "Config no encontrada, ejecut� setup primero." });
+    if (!configDoc.exists) return res.status(404).json({ success: false, message: "Config no encontrada, ejecut? setup primero." });
     const config = configDoc.data();
 
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
@@ -4072,7 +4109,7 @@ app.post("/api/giftcard-v2/upload-image", async (req, res) => {
   }
 });
 
-// ENDPOINT: PUT /api/giftcard-v2/design � actualiza descripci�n y mensaje de email
+// ENDPOINT: PUT /api/giftcard-v2/design ? actualiza descripci?n y mensaje de email
 app.put("/api/giftcard-v2/design", async (req, res) => {
   try {
     const { storeId, description, emailMessage } = req.body;
@@ -4086,7 +4123,7 @@ app.put("/api/giftcard-v2/design", async (req, res) => {
     if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Store not found" });
     const accessToken = storeDoc.data().accessToken;
 
-    // Actualizar descripci�n del producto en TiendaNube
+    // Actualizar descripci?n del producto en TiendaNube
     if (description !== undefined && description.trim()) {
       const tnUpdate = await fetch(`https://api.tiendanube.com/v1/${storeId}/products/${config.productId}`, {
         method: 'PUT',
@@ -4097,7 +4134,7 @@ app.put("/api/giftcard-v2/design", async (req, res) => {
         },
         body: JSON.stringify({ description: { es: description } })
       });
-      if (!tnUpdate.ok) console.error("?? Error actualizando descripci�n en TN:", await tnUpdate.text());
+      if (!tnUpdate.ok) console.error("?? Error actualizando descripci?n en TN:", await tnUpdate.text());
     }
 
     const updates = { updatedAt: FieldValue.serverTimestamp() };
@@ -4106,10 +4143,10 @@ app.put("/api/giftcard-v2/design", async (req, res) => {
 
     await db.collection("giftcard_v2_config").doc(storeId).update(updates);
     const updated = await db.collection("giftcard_v2_config").doc(storeId).get();
-    console.log(`? Dise�o gift card v2 actualizado para store ${storeId}`);
+    console.log(`? Dise?o gift card v2 actualizado para store ${storeId}`);
     return res.json({ success: true, config: updated.data() });
   } catch (error) {
-    console.error("Error actualizando dise�o gift card v2:", error);
+    console.error("Error actualizando dise?o gift card v2:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -4189,7 +4226,7 @@ app.post("/api/webhooks/order", async (req, res) => {
             
             console.log(`?? Monto calculado: Precio: $${productSubtotal} | Descuento aplicado | Final: $${giftCardAmount}`);
             
-            // Generar código único
+            // Generar c�digo �nico
             const code = generateGiftCardCode();
             const giftCardId = `gift_${Date.now()}_${order.id}_${product.id}`;
             
@@ -4233,13 +4270,13 @@ app.post("/api/webhooks/order", async (req, res) => {
             await db.collection("promonube_giftcards").doc(giftCardId).set(giftCardData);
             console.log(`? Gift Card generada: ${code} por $${giftCardAmount}`);
             
-            // Crear cupón en TiendaNube para que funcione en el checkout
+            // Crear cup�n en TiendaNube para que funcione en el checkout
             try {
               const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
               if (storeDoc.exists) {
                 const accessToken = storeDoc.data().accessToken;
                 
-                // Calcular fecha de expiración para el cupón (mismo que la gift card)
+                // Calcular fecha de expiraci�n para el cup�n (mismo que la gift card)
                 const expiryDate = new Date(expiresAt);
                 const expiryString = expiryDate.toISOString().split('T')[0]; // YYYY-MM-DD
                 
@@ -4255,21 +4292,21 @@ app.post("/api/webhooks/order", async (req, res) => {
                     type: 'absolute',
                     value: giftCardAmount.toString(),
                     valid: true,
-                    max_uses: 1, // ?único uso
+                    max_uses: 1, // ?�nico uso
                     end_date: expiryString
                   })
                 });
                 
                 if (couponResponse.ok) {
                   const couponData = await couponResponse.json();
-                  console.log(`? Cupón creado en TiendaNube: ${code} (ID: ${couponData.id})`);
+                  console.log(`? Cup�n creado en TiendaNube: ${code} (ID: ${couponData.id})`);
                   
-                  // Guardar referencia del cupón en la gift card
+                  // Guardar referencia del cup�n en la gift card
                   await db.collection("promonube_giftcards").doc(giftCardId).update({
                     tiendanubeCouponId: couponData.id
                   });
                   
-                  // También guardarlo en la colección de cupones para tracking
+                  // Tambi�n guardarlo en la colecci�n de cupones para tracking
                   const couponId = `coupon_giftcard_${Date.now()}`;
                   await db.collection("promonube_coupons").doc(couponId).set({
                     couponId,
@@ -4289,15 +4326,15 @@ app.post("/api/webhooks/order", async (req, res) => {
                   
                 } else {
                   const errorText = await couponResponse.text();
-                  console.error(`? Error creando cupón en TiendaNube: ${couponResponse.status} - ${errorText}`);
+                  console.error(`? Error creando cup�n en TiendaNube: ${couponResponse.status} - ${errorText}`);
                 }
               }
             } catch (couponError) {
-              console.error('? Error al crear cupón:', couponError);
-              // No fallar todo el proceso si falla la creación del cupón
+              console.error('? Error al crear cup�n:', couponError);
+              // No fallar todo el proceso si falla la creaci�n del cup�n
             }
             
-            // Enviar email con el código
+            // Enviar email con el c�digo
             const recipientEmail = order.customer?.email || order.contact_email;
             if (recipientEmail) {
               // Obtener nombre de la tienda
@@ -4321,7 +4358,7 @@ app.post("/api/webhooks/order", async (req, res) => {
     }
 
     // ============================================
-    // 2. GIFT CARD V2 � Producto con variantes (F�sica/Digital � Montos)
+    // 2. GIFT CARD V2 ? Producto con variantes (F?sica/Digital ? Montos)
     // ============================================
     if (order.payment_status === 'paid' && order.products && Array.isArray(order.products)) {
       try {
@@ -4334,7 +4371,7 @@ app.post("/api/webhooks/order", async (req, res) => {
               if (productIdStr === v2Config.productId) {
                 console.log(`?? Gift Card V2 detectada en orden #${order.number}`);
 
-                // Detectar tipo (Digital / F�sica) de los valores de variante
+                // Detectar tipo (Digital / F?sica) de los valores de variante
                 const variantValues = product.variant_values || [];
                 const valuesStr = variantValues.map(v => (typeof v === 'string' ? v : (v?.es || v?.en || '')).toLowerCase()).join(' ');
                 const isDigital = valuesStr.includes('digital');
@@ -4367,12 +4404,12 @@ app.post("/api/webhooks/order", async (req, res) => {
                 await db.collection("giftcard_v2_orders").doc(v2OrderId).set(v2OrderData);
 
                 // Agregar nota en la orden de TiendaNube
-                const typeLabel = isDigital ? 'Digital ??' : 'F�sica ??';
-                const noteMsg = `?? Gift Card ${typeLabel} � $${amount.toLocaleString('es-AR')} | C�digo: ${code}${isDigital ? ' (Email enviado al comprador)' : ' (Despachar como producto f�sico)'}`;
+                const typeLabel = isDigital ? 'Digital ??' : 'F?sica ??';
+                const noteMsg = `?? Gift Card ${typeLabel} ? $${amount.toLocaleString('es-AR')} | C?digo: ${code}${isDigital ? ' (Email enviado al comprador)' : ' (Despachar como producto f?sico)'}`;
                 const noteOk = await addOrderNote(storeId, accessToken, order.id, noteMsg);
                 await db.collection("giftcard_v2_orders").doc(v2OrderId).update({ noteAdded: noteOk });
 
-                // Si es digital: crear cup�n TN + enviar email
+                // Si es digital: crear cup?n TN + enviar email
                 if (isDigital) {
                   try {
                     const couponRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/coupons`, {
@@ -4383,12 +4420,12 @@ app.post("/api/webhooks/order", async (req, res) => {
                     if (couponRes.ok) {
                       const couponData = await couponRes.json();
                       await db.collection("giftcard_v2_orders").doc(v2OrderId).update({ tiendanubeCouponId: couponData.id });
-                      console.log(`? Cup�n TN creado para gift card v2: ${code} (ID: ${couponData.id})`);
+                      console.log(`? Cup?n TN creado para gift card v2: ${code} (ID: ${couponData.id})`);
                     } else {
-                      console.error(`? Error creando cup�n TN para gift card v2: ${await couponRes.text()}`);
+                      console.error(`? Error creando cup?n TN para gift card v2: ${await couponRes.text()}`);
                     }
                   } catch (couponErr) {
-                    console.error('? Error cup�n gift card v2:', couponErr);
+                    console.error('? Error cup?n gift card v2:', couponErr);
                   }
 
                   if (buyerEmail) {
@@ -4425,9 +4462,9 @@ app.post("/api/webhooks/order", async (req, res) => {
     }
     
     if (couponCode) {
-      console.log(`??? Cupón detectado: ${couponCode}`);
+      console.log(`??? Cup�n detectado: ${couponCode}`);
       
-      // Buscar el cupón en Firestore
+      // Buscar el cup�n en Firestore
       const couponSnapshot = await db.collection("promonube_coupons")
         .where("storeId", "==", storeId)
         .where("code", "==", couponCode)
@@ -4448,12 +4485,12 @@ app.post("/api/webhooks/order", async (req, res) => {
           orderId: order.id.toString(),
           orderNumber: order.number || order.id,
           
-          // Información del cliente
+          // Informaci�n del cliente
           customerEmail: order.customer?.email || order.contact_email || null,
           customerName: order.customer?.name || order.contact_name || null,
           customerId: order.customer?.id ? order.customer.id.toString() : null,
           
-          // Información de la orden
+          // Informaci�n de la orden
           subtotal: parseFloat(order.subtotal || 0),
           total: parseFloat(order.total || 0),
           discountValue: parseFloat(order.discount_coupon?.value || order.coupon?.value || 0),
@@ -4467,7 +4504,7 @@ app.post("/api/webhooks/order", async (req, res) => {
 
         console.log(`? Registro de uso guardado: ${usageId}`);
         
-        // Actualizar contador de usos en el cupón (si existe el campo)
+        // Actualizar contador de usos en el cup�n (si existe el campo)
         if (typeof couponData.currentUses === 'number') {
           await db.collection("promonube_coupons").doc(couponDoc.id).update({
             currentUses: FieldValue.increment(1),
@@ -4476,19 +4513,41 @@ app.post("/api/webhooks/order", async (req, res) => {
           });
           console.log(`?? Contador de usos actualizado para ${couponCode}`);
 
-          // Si es cupón de ruleta, marcar spin_wheel_results como usado
+          // Si es cup�n de ruleta, marcar spin_wheel_results como usado
           if (couponData.source === 'spin_wheel' && couponCode) {
             const spinResultsQuery = await db.collection('spin_wheel_results')
               .where('couponCode', '==', couponCode)
               .limit(1)
               .get();
             if (!spinResultsQuery.empty) {
-              await spinResultsQuery.docs[0].ref.update({ couponUsed: true });
+              const spinDoc = spinResultsQuery.docs[0];
+              await spinDoc.ref.update({ couponUsed: true });
+
+              // Incrementar contadores agregados de la ruleta para analytics
+              const wheelIdFromSpin = spinDoc.data().wheelId;
+              if (wheelIdFromSpin) {
+                try {
+                  const orderTotal = parseFloat(order.total || 0) || 0;
+                  const orderDiscount = parseFloat(
+                    (Array.isArray(order.discount_coupon) ? 0 : order.discount_coupon) ||
+                    (Array.isArray(order.coupon) ? order.coupon[0]?.discount : order.coupon?.discount) ||
+                    0
+                  ) || 0;
+                  await db.collection('promonube_spin_wheels').doc(wheelIdFromSpin).update({
+                    'stats.couponsUsed': FieldValue.increment(1),
+                    'stats.totalRevenue': FieldValue.increment(orderTotal),
+                    'stats.totalDiscount': FieldValue.increment(orderDiscount),
+                    'stats.lastUpdatedAt': FieldValue.serverTimestamp()
+                  });
+                } catch (statsErr) {
+                  console.error('Error actualizando stats de ruleta:', statsErr.message);
+                }
+              }
             }
           }
         }
       } else {
-        console.log(`?? Cupón ${couponCode} no encontrado en PromoNube (puede ser cupón nativo de TiendaNube)`);
+        console.log(`?? Cup�n ${couponCode} no encontrado en PromoNube (puede ser cup�n nativo de TiendaNube)`);
       }
     }
 
@@ -4517,13 +4576,13 @@ app.post("/api/webhooks/store/redact", async (req, res) => {
     }
 
     const storeId = store_id.toString();
-    console.log(`??? Procesando desinstalación de la tienda ${storeId}...`);
+    console.log(`??? Procesando desinstalaci�n de la tienda ${storeId}...`);
 
-    // Obtener datos de la tienda antes de eliminar para registro histórico
+    // Obtener datos de la tienda antes de eliminar para registro hist�rico
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
     const storeData = storeDoc.exists ? storeDoc.data() : {};
     
-    // Guardar registro de desinstalación en colección histórica
+    // Guardar registro de desinstalaci�n en colecci�n hist�rica
     await db.collection("promonube_uninstalls").add({
       storeId: storeId,
       storeName: storeData.name || storeData.storeName || 'Sin nombre',
@@ -4536,7 +4595,7 @@ app.post("/api/webhooks/store/redact", async (req, res) => {
       isDemoAccount: storeData.isDemoAccount || false
     });
     
-    console.log(`?? Registro de desinstalación guardado para ${storeId}`);
+    console.log(`?? Registro de desinstalaci�n guardado para ${storeId}`);
 
     // Eliminar todos los datos de la tienda
     await db.collection("promonube_stores").doc(storeId).delete();
@@ -4581,7 +4640,7 @@ app.post("/api/webhooks/store/redact", async (req, res) => {
   }
 });
 
-// WEBHOOK: Customers Redact - cuando un cliente solicita eliminación de datos
+// WEBHOOK: Customers Redact - cuando un cliente solicita eliminaci�n de datos
 app.post("/api/webhooks/customers/redact", async (req, res) => {
   try {
     console.log("?? Webhook customers/redact recibido:", JSON.stringify(req.body, null, 2));
@@ -4613,7 +4672,7 @@ app.post("/api/webhooks/customers/redact", async (req, res) => {
           giftCard.customerId === customerId ||
           giftCard.customerEmail === customerEmail) {
         
-        // Anonimizar datos personales pero mantener el código funcional
+        // Anonimizar datos personales pero mantener el c�digo funcional
         anonymizePromises.push(
           doc.ref.update({
             recipientEmail: `deleted-user-${Date.now()}@anonymized.local`,
@@ -4772,7 +4831,7 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
 
     const currency = store.currency || 'ARS';
     
-    // Plan único PRO (todos los planId mapean a 'pro')
+    // Plan �nico PRO (todos los planId mapean a 'pro')
     const plan = PLANS.pro;
     const normalizedPlanId = (planId === 'free') ? 'free' : 'pro';
 
@@ -4784,12 +4843,12 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
       });
     }
 
-    // Obtener precio según moneda
+    // Obtener precio seg�n moneda
     const price = getPlanPrice(currency);
 
-    // NOTA: No necesitás crear cargo manualmente si ya lo configuraste en Partner Panel
-    // TiendaNube crea el cargo automáticamente cuando el usuario instala la app
-    // Este endpoint es OPCIONAL, solo si querés cambiar plan manualmente
+    // NOTA: No necesit�s crear cargo manualmente si ya lo configuraste en Partner Panel
+    // TiendaNube crea el cargo autom�ticamente cuando el usuario instala la app
+    // Este endpoint es OPCIONAL, solo si quer�s cambiar plan manualmente
     
     // Crear el cargo en TiendaNube (OPCIONAL - solo para cambios manuales)
     const chargeData = {
@@ -4839,7 +4898,7 @@ app.post("/api/subscription/:storeId/create-charge", async (req, res) => {
       type: "recurrent"
     });
 
-    // Responder con la URL de confirmación para redirigir al usuario
+    // Responder con la URL de confirmaci�n para redirigir al usuario
     res.json({ 
       success: true, 
       chargeId: charge.id,
@@ -4900,7 +4959,7 @@ app.post("/api/subscription/confirm-charge", async (req, res) => {
     }, { merge: true });
 
     if (realStatus === "accepted") {
-      // Activar plan PRO con todos los m�dulos
+      // Activar plan PRO con todos los m?dulos
       const modules = {};
       ALL_MODULES.forEach(m => { modules[m] = true; });
 
@@ -4923,7 +4982,7 @@ app.post("/api/subscription/confirm-charge", async (req, res) => {
 
     } else {
       // Pendiente u otro estado
-      return res.json({ success: true, activated: false, status: realStatus, message: "El cargo a�n no fue aprobado" });
+      return res.json({ success: true, activated: false, status: realStatus, message: "El cargo a?n no fue aprobado" });
     }
 
   } catch (error) {
@@ -4933,7 +4992,7 @@ app.post("/api/subscription/confirm-charge", async (req, res) => {
 });
 
 // WEBHOOK: POST /api/webhooks/app-charge
-// TiendaNube envía este webhook cuando el estado de un cargo cambia
+// TiendaNube env�a este webhook cuando el estado de un cargo cambia
 app.post("/api/webhooks/app-charge", async (req, res) => {
   try {
     console.log("?? Webhook app-charge recibido:", JSON.stringify(req.body, null, 2));
@@ -4973,17 +5032,17 @@ app.post("/api/webhooks/app-charge", async (req, res) => {
     const chargeData = chargeDoc.exists ? chargeDoc.data() : {};
     const planId = chargeData.planId;
 
-    // Si el cargo fue aceptado, activar PLAN PRO con TODOS los módulos
+    // Si el cargo fue aceptado, activar PLAN PRO con TODOS los m�dulos
     if (status === "accepted") {
-      console.log(`? Cargo aceptado, activando Plan PRO (todos los módulos) para store ${storeId}`);
+      console.log(`? Cargo aceptado, activando Plan PRO (todos los m�dulos) para store ${storeId}`);
 
-      // Activar TODOS los módulos
+      // Activar TODOS los m�dulos
       const modules = {};
       ALL_MODULES.forEach(moduleName => {
         modules[moduleName] = true;
       });
 
-      // Actualizar suscripción a PRO
+      // Actualizar suscripci�n a PRO
       await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
         plan: 'pro',
         status: "active",
@@ -5016,7 +5075,7 @@ app.post("/api/webhooks/app-charge", async (req, res) => {
 });
 
 // WEBHOOK: POST /api/webhooks/app-suspended
-// TiendaNube envía cuando suspenden el acceso por falta de pago
+// TiendaNube env�a cuando suspenden el acceso por falta de pago
 app.post("/api/webhooks/app-suspended", async (req, res) => {
   try {
     console.log("?? Webhook app/suspended recibido:", JSON.stringify(req.body, null, 2));
@@ -5031,7 +5090,7 @@ app.post("/api/webhooks/app-suspended", async (req, res) => {
 
     console.log(`?? Suspendiendo acceso para store ${storeId} por falta de pago`);
 
-    // Desactivar suscripción pero mantener datos
+    // Desactivar suscripci�n pero mantener datos
     await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
       status: "suspended",
       suspendedAt: new Date().toISOString(),
@@ -5057,7 +5116,7 @@ app.post("/api/webhooks/app-suspended", async (req, res) => {
 });
 
 // WEBHOOK: POST /api/webhooks/app-resumed
-// TiendaNube envía cuando se restablece el acceso después de pagar
+// TiendaNube env�a cuando se restablece el acceso despu�s de pagar
 app.post("/api/webhooks/app-resumed", async (req, res) => {
   try {
     console.log("? Webhook app/resumed recibido:", JSON.stringify(req.body, null, 2));
@@ -5072,14 +5131,14 @@ app.post("/api/webhooks/app-resumed", async (req, res) => {
 
     console.log(`? Restableciendo acceso para store ${storeId}`);
 
-    // Reactivar suscripción
+    // Reactivar suscripci�n
     await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
       status: "active",
       resumedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }, { merge: true });
 
-    // Desmarcar suspensión
+    // Desmarcar suspensi�n
     await db.collection("promonube_stores").doc(storeId).update({
       suspended: false,
       resumedAt: new Date().toISOString(),
@@ -5116,38 +5175,38 @@ app.post("/api/admin/activate-demo", async (req, res) => {
   try {
     console.log(`?? Activando/Extendiendo tienda DEMO: ${storeId}`);
 
-    // Obtener suscripción actual para verificar si ya existe demo
+    // Obtener suscripci�n actual para verificar si ya existe demo
     const currentSub = await db.collection("stores").doc(storeId).collection("subscription").doc("current").get();
     let expirationDate;
 
     if (expirationDays) {
-      // Modo DÍAS: Calcular desde hoy O desde fecha de expiración actual si est? vigente
+      // Modo D�AS: Calcular desde hoy O desde fecha de expiraci�n actual si est? vigente
       const days = parseInt(expirationDays);
       const now = new Date();
       
       if (currentSub.exists && currentSub.data().demoExpiresAt) {
         const currentExpiration = new Date(currentSub.data().demoExpiresAt);
         
-        // Si la demo actual AÚN NO expir?, EXTENDER desde esa fecha
+        // Si la demo actual A�N NO expir?, EXTENDER desde esa fecha
         if (currentExpiration > now) {
           expirationDate = new Date(currentExpiration.getTime() + days * 24 * 60 * 60 * 1000);
-          console.log(`?? Extendiendo demo vigente: ${currentExpiration.toISOString()} + ${days} días = ${expirationDate.toISOString()}`);
+          console.log(`?? Extendiendo demo vigente: ${currentExpiration.toISOString()} + ${days} d�as = ${expirationDate.toISOString()}`);
         } else {
           // Si ya expir?, calcular desde HOY
           expirationDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-          console.log(`?? Demo expirada. Nueva desde HOY + ${days} días = ${expirationDate.toISOString()}`);
+          console.log(`?? Demo expirada. Nueva desde HOY + ${days} d�as = ${expirationDate.toISOString()}`);
         }
       } else {
         // No hay demo previa, calcular desde HOY
         expirationDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-        console.log(`?? Nueva demo desde HOY + ${days} días = ${expirationDate.toISOString()}`);
+        console.log(`?? Nueva demo desde HOY + ${days} d�as = ${expirationDate.toISOString()}`);
       }
     } else {
-      // Default: 30 días desde hoy
+      // Default: 30 d�as desde hoy
       expirationDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Activar TODOS los módulos
+    // Activar TODOS los m�dulos
     const modules = {};
     ALL_MODULES.forEach(moduleName => {
       modules[moduleName] = true;
@@ -5261,7 +5320,7 @@ app.get("/api/subscription/:storeId/charges", async (req, res) => {
       });
     });
 
-    // Ordenar por fecha (más reciente primero)
+    // Ordenar por fecha (m�s reciente primero)
     charges.sort((a, b) => {
       const dateA = new Date(a.createdAt || 0);
       const dateB = new Date(b.createdAt || 0);
@@ -5283,14 +5342,14 @@ app.get("/api/subscription/:storeId/charges", async (req, res) => {
 });
 
 // GET /api/subscription/:storeId/status
-// Consulta el estado completo de la suscripción incluyendo último cargo
+// Consulta el estado completo de la suscripci�n incluyendo �ltimo cargo
 app.get("/api/subscription/:storeId/status", async (req, res) => {
   const { storeId } = req.params;
 
   try {
     console.log(`?? Consultando estado completo para store ${storeId}`);
 
-    // Obtener suscripción actual
+    // Obtener suscripci�n actual
     const subscriptionDoc = await db.collection("stores")
       .doc(storeId)
       .collection("subscription")
@@ -5301,7 +5360,7 @@ app.get("/api/subscription/:storeId/status", async (req, res) => {
       ? subscriptionDoc.data()
       : { plan: 'free', status: 'inactive', modules: { coupons: true } };
 
-    // Para planes pro/trial, asegurar que los módulos nuevos están incluidos
+    // Para planes pro/trial, asegurar que los m�dulos nuevos est�n incluidos
     const storedModules = subscription.modules || {};
     if (subscription.plan === 'trial' || subscription.plan === 'pro' || subscription.isDemoAccount) {
       for (const mod of ALL_MODULES) {
@@ -5310,7 +5369,7 @@ app.get("/api/subscription/:storeId/status", async (req, res) => {
       subscription.modules = storedModules;
     }
 
-    // Obtener último cargo
+    // Obtener �ltimo cargo
     const chargesSnapshot = await db.collection("app_charges")
       .where("storeId", "==", storeId)
       .get();
@@ -5348,7 +5407,7 @@ app.get("/api/subscription/:storeId/status", async (req, res) => {
 });
 
 // GET /api/subscription/:storeId/charge/:chargeId
-// Consulta el detalle de un cargo específico
+// Consulta el detalle de un cargo espec�fico
 app.get("/api/subscription/:storeId/charge/:chargeId", async (req, res) => {
   const { storeId, chargeId } = req.params;
 
@@ -5390,7 +5449,7 @@ app.get("/api/subscription/:storeId/charge/:chargeId", async (req, res) => {
 
 // ============================================
 // ENDPOINT: POST /api/giftcards/resend-email
-// Reenvía el email de una gift card existente
+// Reenv�a el email de una gift card existente
 // ============================================
 app.post("/api/giftcards/resend-email", async (req, res) => {
   try {
@@ -5442,7 +5501,7 @@ app.post("/api/giftcards/resend-email", async (req, res) => {
     );
 
     if (emailResult.emailSent) {
-      // Actualizar fecha de envío
+      // Actualizar fecha de env�o
       await giftCardDoc.ref.update({
         sentAt: FieldValue.serverTimestamp()
       });
@@ -5862,7 +5921,7 @@ async function registerCountdownScript(store) {
   try {
     console.log(`?? Registrando script de countdown en store ${store.storeId}`);
     
-    const scriptUrl = `https://apipromonube-jlfopowzaq-uc.a.run.app/api/countdown-widget.js?store=${store.storeId}`;
+    const scriptUrl = `${HOSTING_URL}/api/countdown-widget.js?store=${store.storeId}`;
     
     const accessToken = store.accessToken;
     
@@ -5975,7 +6034,7 @@ async function registerSpinWheelScript(store, wheelId) {
   try {
     console.log(`?? Registrando script para ruleta ${wheelId} en store ${store.storeId}`);
     
-    const scriptUrl = `https://apipromonube-jlfopowzaq-uc.a.run.app/api/spin-wheel-widget.js?wheelId=${wheelId}`;
+    const scriptUrl = `${HOSTING_URL}/api/spin-wheel-widget.js?wheelId=${wheelId}`;
     
     const accessToken = store.accessToken;
     
@@ -5994,7 +6053,7 @@ async function registerSpinWheelScript(store, wheelId) {
     }
 
     // Crear script tag en TiendaNube usando la API de Scripts
-    // IMPORTANTE: No incluir 'id' en el POST, TiendaNube lo genera automáticamente
+    // IMPORTANTE: No incluir 'id' en el POST, TiendaNube lo genera autom�ticamente
     const response = await fetch(`https://api.tiendanube.com/v1/${store.storeId}/scripts`, {
       method: 'POST',
       headers: {
@@ -6084,6 +6143,32 @@ async function unregisterSpinWheelScript(store, wheelId) {
   }
 }
 
+// GET /api/store-info - Informaci�n b�sica de la tienda
+app.get("/api/store-info", async (req, res) => {
+  const { storeId } = req.query;
+  if (!storeId) {
+    return res.json({ success: false, message: "storeId requerido" });
+  }
+  try {
+    const doc = await db.collection("promonube_stores").doc(String(storeId)).get();
+    if (!doc.exists) {
+      return res.json({ success: false, message: "Tienda no encontrada" });
+    }
+    const d = doc.data() || {};
+    res.json({
+      success: true,
+      store: {
+        storeId: String(storeId),
+        name: d.name || d.storeName || "",
+        url: d.url || d.storeUrl || "",
+      },
+    });
+  } catch (e) {
+    console.error("store-info error:", e);
+    res.status(500).json({ success: false, message: "Error" });
+  }
+});
+
 // GET /api/spin-wheels - Lista todas las ruletas de la tienda
 app.get("/api/spin-wheels", async (req, res) => {
   const { storeId } = req.query;
@@ -6109,7 +6194,7 @@ app.get("/api/spin-wheels", async (req, res) => {
   }
 });
 
-// GET /api/spin-wheel/:wheelId - Obtiene configuración de una ruleta
+// GET /api/spin-wheel/:wheelId - Obtiene configuraci�n de una ruleta
 app.get("/api/spin-wheel/:wheelId", async (req, res) => {
   const { wheelId } = req.params;
   const { storeId } = req.query;
@@ -6162,7 +6247,7 @@ app.post("/api/spin-wheel/create", async (req, res) => {
 
     await db.collection("promonube_spin_wheels").doc(wheelId).set(wheelData);
 
-    // Si est? activada, registrar script tag automáticamente
+    // Si est? activada, registrar script tag autom�ticamente
     if (config.enabled || config.active) {
       const store = await getStoreById(storeId);
       if (store) {
@@ -6179,7 +6264,7 @@ app.post("/api/spin-wheel/create", async (req, res) => {
   }
 });
 
-// PUT /api/spin-wheel/:wheelId - Actualiza configuración de ruleta
+// PUT /api/spin-wheel/:wheelId - Actualiza configuraci�n de ruleta
 app.put("/api/spin-wheel/:wheelId", async (req, res) => {
   const { wheelId } = req.params;
   const { storeId, ...config } = req.body;
@@ -6324,12 +6409,12 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
       const previousSpinsCount = previousSpinsQuery.size;
       
       if (previousSpinsCount >= maxSpinsPerEmail) {
-        console.log(`?? Email ${email} ya particip? ${previousSpinsCount} veces en ruleta ${wheelId} (máximo: ${maxSpinsPerEmail})`);
+        console.log(`?? Email ${email} ya particip? ${previousSpinsCount} veces en ruleta ${wheelId} (m�ximo: ${maxSpinsPerEmail})`);
         return res.json({ 
           success: false, 
           message: maxSpinsPerEmail === 1 
-            ? "Ya participaste en esta ruleta. Solo podés jugar una vez."
-            : `Ya alcanzaste el máximo de ${maxSpinsPerEmail} intentos en esta ruleta.`
+            ? "Ya participaste en esta ruleta. Solo pod�s jugar una vez."
+            : `Ya alcanzaste el m�ximo de ${maxSpinsPerEmail} intentos en esta ruleta.`
         });
       }
     }
@@ -6346,7 +6431,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
     let selectedPrize = null;
     let selectedPrizeIndex = 0;
 
-    console.log(`?? Iniciando selección de premio. Random: ${random.toFixed(2)}%`);
+    console.log(`?? Iniciando selecci�n de premio. Random: ${random.toFixed(2)}%`);
     console.log(`?? Premios disponibles:`, prizes.map((p, i) => `${i}: ${p.label} (${p.probability}%)`));
 
     for (let i = 0; i < prizes.length; i++) {
@@ -6355,7 +6440,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
       if (random <= cumulative) {
         selectedPrize = prizes[i];
         selectedPrizeIndex = i;
-        console.log(`? Premio seleccionado por probabilidad: índice ${i} - ${prizes[i].label}`);
+        console.log(`? Premio seleccionado por probabilidad: �ndice ${i} - ${prizes[i].label}`);
         break;
       }
     }
@@ -6363,24 +6448,24 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
     if (!selectedPrize) {
       selectedPrize = prizes[prizes.length - 1]; // Fallback
       selectedPrizeIndex = prizes.length - 1;
-      console.log(`?? Fallback al último premio: ${selectedPrize.label}`);
+      console.log(`?? Fallback al �ltimo premio: ${selectedPrize.label}`);
     }
     
-    // ?? Calcular ángulo del centro del segmento ganador
+    // ?? Calcular �ngulo del centro del segmento ganador
     const segmentAngle = 360 / prizes.length;
     const segmentStartAngle = -90 + (selectedPrizeIndex * segmentAngle);
     const targetAngle = segmentStartAngle + (segmentAngle / 2);
     
-    console.log(`?? Premio seleccionado: [${selectedPrizeIndex}] ${selectedPrize.label} - ángulo: ${targetAngle}�`);
+    console.log(`?? Premio seleccionado: [${selectedPrizeIndex}] ${selectedPrize.label} - �ngulo: ${targetAngle}?`);
 
-    // Crear cupón si el premio no es "none"
+    // Crear cup�n si el premio no es "none"
     let couponCode = null;
     let couponExpiresAt = null;
     
-    console.log(`?? Verificando tipo de premio: ${selectedPrize.type} (${selectedPrize.type !== 'none' ? 'CREAR?? CUPÓN' : 'NO CREAR?? CUPÓN'})`);
+    console.log(`?? Verificando tipo de premio: ${selectedPrize.type} (${selectedPrize.type !== 'none' ? 'CREAR?? CUP�N' : 'NO CREAR?? CUP�N'})`);
     
     if (selectedPrize.type !== 'none') {
-      console.log(`? Creando cupón para premio: ${selectedPrize.label}`);
+      console.log(`? Creando cup�n para premio: ${selectedPrize.label}`);
       const store = await getStoreById(wheelData.storeId);
       if (!store) {
         console.error(`? Tienda no encontrada: ${wheelData.storeId}`);
@@ -6389,17 +6474,17 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
       
       console.log(`? Store encontrado: ${store.storeId}, accessToken: ${store.accessToken ? 'S??' : 'NO'}`);
 
-      // ?? GENERAR CUPÓN ?ÚNICO con prefijo personalizable
+      // ?? GENERAR CUP�N ?�NICO con prefijo personalizable
       const prefix = wheelData.couponPrefix || 'RULETA';
       const uniqueId = Date.now().toString().slice(-6) + Math.random().toString(36).substr(2, 4).toUpperCase();
       couponCode = `${prefix}${uniqueId}`;
       
-      // ? CUPÓN V??LIDO POR 15 MINUTOS (configurable)
+      // ? CUP�N V??LIDO POR 15 MINUTOS (configurable)
       const expirationMinutes = wheelData.couponExpirationMinutes || 15;
       const expirationDate = new Date(Date.now() + expirationMinutes * 60 * 1000);
       couponExpiresAt = expirationDate.toISOString();
       
-      // Crear cupón en TiendaNube con fecha de expiración
+      // Crear cup�n en TiendaNube con fecha de expiraci�n
       const couponData = {
         code: couponCode,
         type: selectedPrize.type,
@@ -6410,7 +6495,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
         end_date: expirationDate.toISOString().split('T')[0]
       };
 
-      console.log(`?? Creando cupón en TiendaNube:`, {
+      console.log(`?? Creando cup�n en TiendaNube:`, {
         code: couponCode,
         type: selectedPrize.type,
         value: selectedPrize.value,
@@ -6430,25 +6515,25 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
 
       if (!tnResponse.ok) {
         const errorText = await tnResponse.text();
-        console.error("? Error creando cupón en TiendaNube:", {
+        console.error("? Error creando cup�n en TiendaNube:", {
           status: tnResponse.status,
           statusText: tnResponse.statusText,
           error: errorText,
           couponData
         });
-        // NO retornar error, continuar sin cupón
+        // NO retornar error, continuar sin cup�n
         couponCode = null;
         couponExpiresAt = null;
       } else {
         const tnCoupon = await tnResponse.json();
-        console.log(`? Cupón creado en TiendaNube exitosamente:`, { 
+        console.log(`? Cup�n creado en TiendaNube exitosamente:`, { 
           code: couponCode, 
           id: tnCoupon.id,
           type: tnCoupon.type,
           value: tnCoupon.value
         });
         
-        // Guardar en Firestore con más detalles
+        // Guardar en Firestore con m�s detalles
         const couponId = `coupon_wheel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         await db.collection("promonube_coupons").doc(couponId).set({
           couponId: couponId,
@@ -6470,7 +6555,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
           tiendanubeCouponId: tnCoupon.id
         });
         
-        console.log(`? Cupón único creado: ${couponCode} (expira en ${expirationMinutes} min)`);
+        console.log(`? Cup�n �nico creado: ${couponCode} (expira en ${expirationMinutes} min)`);
       }
     }
 
@@ -6489,10 +6574,13 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
       timestamp: new Date().toISOString()
     });
 
-    // Actualizar estadísticas
+    // Actualizar estad�sticas (incluye stats agregadas para analytics)
     await wheelRef.update({
       totalSpins: (wheelData.totalSpins || 0) + 1,
-      emailsCollected: (wheelData.emailsCollected || 0) + (email ? 1 : 0)
+      emailsCollected: (wheelData.emailsCollected || 0) + (email ? 1 : 0),
+      'stats.totalSpins': FieldValue.increment(1),
+      'stats.couponsGenerated': FieldValue.increment(couponCode ? 1 : 0),
+      'stats.lastUpdatedAt': FieldValue.serverTimestamp()
     });
 
     // ?? SINCRONIZAR EMAIL CON INTEGRACIONES (Perfit, Mailchimp, etc) - Solo si hay email
@@ -6500,7 +6588,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
       const store = await getStoreById(wheelData.storeId);
       if (store) {
         // Determinar la lista Perfit: prioridad lista de la ruleta, luego lista por defecto
-        // Convertir a número si es un ID numérico (Perfit usa IDs numéricos)
+        // Convertir a n�mero si es un ID num�rico (Perfit usa IDs num�ricos)
         const rawListId = wheelData.perfitListId || store.perfitDefaultList;
         const parsedListId = rawListId ? (isNaN(rawListId) ? rawListId : parseInt(rawListId)) : null;
 
@@ -6538,7 +6626,7 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
 
     console.log("? Giro procesado:", { wheelId, email, prize: selectedPrize.label, couponCode });
 
-    // Responder con TODOS los datos necesarios para el countdown + ángulo de la ruleta
+    // Responder con TODOS los datos necesarios para el countdown + �ngulo de la ruleta
     res.json({
       success: true,
       prize: selectedPrize,
@@ -6555,101 +6643,291 @@ app.post("/api/spin-wheel/:wheelId/spin", async (req, res) => {
   }
 });
 
-// GET /api/spin-wheel/:wheelId/analytics - Obtiene estadísticas de una ruleta
+// GET /api/spin-wheel/:wheelId/analytics - Obtiene estad�sticas de una ruleta
+// Optimizado: usa contadores agregados + sample limitado para distribuciones/timeline
 app.get("/api/spin-wheel/:wheelId/analytics", async (req, res) => {
   const { wheelId } = req.params;
   const { storeId } = req.query;
+  const days = Math.max(1, Math.min(parseInt(req.query.days) || 30, 365)); // ventana timeline (default 30d)
 
   if (!storeId) {
     return res.json({ success: false, message: "storeId requerido" });
   }
 
   try {
-    // Verificar que la ruleta existe y pertenece a la tienda
+    // Verificar ruleta y permisos
     const wheelDoc = await db.collection("promonube_spin_wheels").doc(wheelId).get();
-    
     if (!wheelDoc.exists) {
       return res.json({ success: false, message: "Ruleta no encontrada" });
     }
-
     const wheelData = wheelDoc.data();
-    
     if (wheelData.storeId !== storeId) {
       return res.status(403).json({ success: false, message: "Acceso denegado" });
     }
 
-    // Obtener todos los resultados de giros (sin orderBy para evitar errores de índice)
-    const resultsSnapshot = await db.collection("spin_wheel_results")
-      .where("wheelId", "==", wheelId)
-      .get();
+    const stats = wheelData.stats || {};
+    const useCachedCounters = !!stats.lastUpdatedAt;
 
-    const results = [];
+    // === 1. CONTADORES PRINCIPALES (r�pido, v�a count() aggregations) ===
+    const spinsRef = db.collection("spin_wheel_results").where("wheelId", "==", wheelId);
+
+    // totalSpins lo tomamos de cache si existe, sino con count()
+    // couponsGenerated SIEMPRE se calcula con count() para evitar caches desactualizados
+    let totalSpins, couponsGenerated;
+    if (useCachedCounters && typeof stats.totalSpins === 'number' && stats.totalSpins > 0) {
+      totalSpins = stats.totalSpins;
+    } else {
+      const totalSnap = await spinsRef.count().get();
+      totalSpins = totalSnap.data().count;
+    }
+
+    // Calcular siempre con aggregation (r�pido y siempre correcto)
+    try {
+      const withCouponSnap = await db.collection("spin_wheel_results")
+        .where("wheelId", "==", wheelId)
+        .where("couponCode", "!=", null)
+        .count().get();
+      couponsGenerated = withCouponSnap.data().count;
+    } catch (e) {
+      // Si falla el �ndice, usar el sample
+      couponsGenerated = stats.couponsGenerated || 0;
+    }
+
+
+    // === 2. SAMPLE para distribuci�n de premios + emails �nicos + timeline ===
+    // Limitamos a �ltimos N d�as o 5000 docs (lo que sea menor) para no reventar memoria
+    const sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
+    const SAMPLE_LIMIT = 5000;
+
+    let sampleSnapshot;
+    try {
+      sampleSnapshot = await db.collection("spin_wheel_results")
+        .where("wheelId", "==", wheelId)
+        .where("timestamp", ">=", sinceMs)
+        .orderBy("timestamp", "desc")
+        .limit(SAMPLE_LIMIT)
+        .get();
+    } catch (idxErr) {
+      // Fallback si no hay �ndice compuesto
+      sampleSnapshot = await db.collection("spin_wheel_results")
+        .where("wheelId", "==", wheelId)
+        .limit(SAMPLE_LIMIT)
+        .get();
+    }
+
     const prizeDistribution = {};
-    let totalSpins = 0;
-    let uniqueEmails = new Set();
+    const uniqueEmails = new Set();
+    const timeline = {};
+    const sampleCouponCodes = new Set();
+    const recentSpins = [];
+    // Desglose por premio: key = prizeId || prizeLabel
+    const prizeBreakdown = {};
+    // Map couponCode -> spin info para enriquecer luego
+    const spinByCoupon = {};
+    // Heatmap: matriz 7 d�as (0=domingo) x 24 horas
+    const heatmap = Array.from({ length: 7 }, () => Array(24).fill(0));
 
-    resultsSnapshot.forEach(doc => {
-      const data = doc.data();
-      results.push({ id: doc.id, ...data });
-      totalSpins++;
-      if (data.email) {
-        uniqueEmails.add(data.email);
+    sampleSnapshot.forEach(doc => {
+      const d = doc.data();
+      const prizeLabel = d.prizeLabel || d.prizeType || 'Desconocido';
+      prizeDistribution[prizeLabel] = (prizeDistribution[prizeLabel] || 0) + 1;
+      if (d.email) uniqueEmails.add(d.email);
+      if (d.couponCode) {
+        sampleCouponCodes.add(d.couponCode);
+        spinByCoupon[d.couponCode] = {
+          email: d.email,
+          prizeLabel,
+          prizeType: d.prizeType,
+          prizeValue: d.prizeValue,
+          timestamp: d.timestamp
+        };
       }
 
-      // Contar distribución de premios
-      const prizeLabel = data.prizeLabel || data.prizeType || 'Desconocido';
-      prizeDistribution[prizeLabel] = (prizeDistribution[prizeLabel] || 0) + 1;
+      if (d.timestamp) {
+        const dt = new Date(d.timestamp);
+        const date = dt.toISOString().split('T')[0];
+        timeline[date] = (timeline[date] || 0) + 1;
+        const dayOfWeek = dt.getDay();
+        const hour = dt.getHours();
+        if (dayOfWeek >= 0 && dayOfWeek < 7 && hour >= 0 && hour < 24) {
+          heatmap[dayOfWeek][hour]++;
+        }
+      }
+
+      // Desglose por premio �nico (combina label+type+value)
+      const breakdownKey = `${prizeLabel}__${d.prizeType || ''}__${d.prizeValue || ''}`;
+      if (!prizeBreakdown[breakdownKey]) {
+        prizeBreakdown[breakdownKey] = {
+          prizeLabel,
+          prizeType: d.prizeType || '',
+          prizeValue: d.prizeValue || '',
+          generated: 0,
+          withCoupon: 0,
+          used: 0,
+          pending: 0,
+          expired: 0,
+          totalDiscount: 0,
+          totalRevenue: 0
+        };
+      }
+      const pb = prizeBreakdown[breakdownKey];
+      pb.generated++;
+      if (d.couponCode) pb.withCoupon++;
+
+      if (recentSpins.length < 10) {
+        recentSpins.push({
+          email: d.email,
+          prize: prizeLabel,
+          couponCode: d.couponCode,
+          timestamp: d.timestamp,
+          used: d.couponUsed || false
+        });
+      }
     });
 
-    // Ordenar resultados manualmente por timestamp
-    results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    const sampledSize = sampleSnapshot.size;
+    const isSampled = sampledSize >= SAMPLE_LIMIT || sampledSize < totalSpins;
 
-    // Obtener cupones generados y su uso
-    const couponsGenerated = results.filter(r => r.couponCode).length;
-    
-    // Buscar cupones usados (en la colección de uso de cupones)
-    const usedCouponsSnapshot = await db.collection("coupon_usage")
-      .where("storeId", "==", storeId)
-      .get();
+    // Si el sample cubre todos los giros, podemos confiar en sampleCouponCodes.size
+    // (esto evita problemas con counters cacheados desactualizados)
+    if (!isSampled || sampleCouponCodes.size > couponsGenerated) {
+      couponsGenerated = sampleCouponCodes.size;
+    }
 
-    const wheelCouponCodes = results.filter(r => r.couponCode).map(r => r.couponCode);
+    // === 3. CUPONES � Cruce con promonube_coupons (estado real) y coupon_usage (revenue) ===
     let couponsUsed = 0;
     let totalRevenue = 0;
     let totalDiscount = 0;
+    let couponsPending = 0;
+    let couponsExpired = 0;
+    let couponsExpiringSoon = 0; // pendientes que vencen en <24h
+    const expiringSoonList = [];
+    const topCoupons = [];
+    const nowMs = Date.now();
+    const SOON_MS = 24 * 60 * 60 * 1000;
 
-    usedCouponsSnapshot.forEach(doc => {
-      const usage = doc.data();
-      // Comparar con couponCode (campo correcto en coupon_usage)
-      if (wheelCouponCodes.includes(usage.couponCode)) {
-        couponsUsed++;
-        totalRevenue += usage.total || usage.orderTotal || 0;
-        totalDiscount += usage.discountValue || usage.discountAmount || 0;
+    if (sampleCouponCodes.size > 0) {
+      // 3.a � promonube_coupons (estado del cup�n)
+      const codes = Array.from(sampleCouponCodes);
+      const couponsByCode = {};
+      for (let i = 0; i < codes.length; i += 30) {
+        const chunk = codes.slice(i, i + 30);
+        try {
+          const snap = await db.collection("promonube_coupons")
+            .where("storeId", "==", storeId)
+            .where("code", "in", chunk)
+            .get();
+          snap.forEach(doc => {
+            const c = doc.data();
+            if (c.code) couponsByCode[c.code] = c;
+          });
+        } catch (e) { /* noop */ }
       }
-    });
 
-    // Calcular métricas
-    const conversionRate = couponsGenerated > 0 ? (couponsUsed / couponsGenerated * 100).toFixed(2) : 0;
-    const avgOrderValue = couponsUsed > 0 ? (totalRevenue / couponsUsed).toFixed(2) : 0;
+      sampleCouponCodes.forEach(code => {
+        const coupon = couponsByCode[code];
+        const spin = spinByCoupon[code];
+        const used = !!(coupon && coupon.used);
+        const expiresAt = coupon ? coupon.expiresAt : null;
+        const expiresMs = expiresAt ? new Date(expiresAt).getTime() : null;
+        const expired = expiresMs ? expiresMs < nowMs : false;
+        const expiringSoon = !used && !expired && expiresMs && (expiresMs - nowMs) < SOON_MS;
 
-    // Timeline: agrupar por día
-    const timeline = {};
-    results.forEach(r => {
-      const date = new Date(r.timestamp).toISOString().split('T')[0];
-      timeline[date] = (timeline[date] || 0) + 1;
-    });
+        if (spin) {
+          const breakdownKey = `${spin.prizeLabel}__${spin.prizeType || ''}__${spin.prizeValue || ''}`;
+          const pb = prizeBreakdown[breakdownKey];
+          if (pb) {
+            if (used) pb.used++;
+            else if (expired) pb.expired++;
+            else pb.pending++;
+          }
+        }
+
+        if (used) couponsUsed++;
+        else if (expired) couponsExpired++;
+        else couponsPending++;
+
+        if (expiringSoon) {
+          couponsExpiringSoon++;
+          if (expiringSoonList.length < 20) {
+            expiringSoonList.push({
+              couponCode: code,
+              email: spin && spin.email,
+              prize: spin && spin.prizeLabel,
+              expiresAt
+            });
+          }
+        }
+      });
+
+      // 3.b � coupon_usage para revenue/discount real
+      const usageSnap = await db.collection("coupon_usage")
+        .where("storeId", "==", storeId)
+        .get();
+
+      usageSnap.forEach(doc => {
+        const u = doc.data();
+        if (sampleCouponCodes.has(u.couponCode)) {
+          const orderTotal = parseFloat(u.total || u.orderTotal || 0) || 0;
+          const discount = parseFloat(u.discountValue || u.discountAmount || 0) || 0;
+          totalRevenue += orderTotal;
+          totalDiscount += discount;
+
+          // Sumar al breakdown
+          const spin = spinByCoupon[u.couponCode];
+          if (spin) {
+            const breakdownKey = `${spin.prizeLabel}__${spin.prizeType || ''}__${spin.prizeValue || ''}`;
+            const pb = prizeBreakdown[breakdownKey];
+            if (pb) {
+              pb.totalRevenue += orderTotal;
+              pb.totalDiscount += discount;
+            }
+          }
+
+          topCoupons.push({
+            couponCode: u.couponCode,
+            email: (spin && spin.email) || u.email || '',
+            prize: (spin && spin.prizeLabel) || '',
+            total: orderTotal,
+            discount: discount,
+            usedAt: u.usedAt || u.timestamp || null,
+            orderId: u.orderId || ''
+          });
+        }
+      });
+    }
+
+    // NO sobrescribir con cache: los valores del sample son m�s confiables
+    // (los counters cacheados pueden estar desactualizados si nunca se llam� a recompute-stats)
+
+    // Top 10 cupones por monto descontado
+    topCoupons.sort((a, b) => b.discount - a.discount);
+    const topCouponsLimited = topCoupons.slice(0, 10);
+
+    // Convertir prizeBreakdown a array con conversion rate
+    const prizeBreakdownArr = Object.values(prizeBreakdown).map(p => {
+      const conv = p.withCoupon > 0
+        ? parseFloat((p.used / p.withCoupon * 100).toFixed(2))
+        : 0;
+      return {
+        ...p,
+        conversionRate: conv,
+        totalDiscount: parseFloat(p.totalDiscount.toFixed(2)),
+        totalRevenue: parseFloat(p.totalRevenue.toFixed(2))
+      };
+    }).sort((a, b) => b.generated - a.generated);
+
+    // === 4. M�TRICAS DERIVADAS ===
+    const conversionRate = couponsGenerated > 0
+      ? parseFloat((couponsUsed / couponsGenerated * 100).toFixed(2))
+      : 0;
+    const avgOrderValue = couponsUsed > 0
+      ? parseFloat((totalRevenue / couponsUsed).toFixed(2))
+      : 0;
 
     const timelineArray = Object.keys(timeline)
       .sort()
       .map(date => ({ date, spins: timeline[date] }));
-
-    // ?últimos 10 giros
-    const recentSpins = results.slice(0, 10).map(r => ({
-      email: r.email,
-      prize: r.prizeLabel,
-      couponCode: r.couponCode,
-      timestamp: r.timestamp,
-      used: r.couponUsed || false
-    }));
 
     res.json({
       success: true,
@@ -6658,19 +6936,108 @@ app.get("/api/spin-wheel/:wheelId/analytics", async (req, res) => {
         uniqueEmails: uniqueEmails.size,
         couponsGenerated,
         couponsUsed,
-        conversionRate: parseFloat(conversionRate),
+        couponsPending,
+        couponsExpired,
+        couponsExpiringSoon,
+        expiringSoonList,
+        conversionRate,
         totalRevenue: parseFloat(totalRevenue.toFixed(2)),
         totalDiscount: parseFloat(totalDiscount.toFixed(2)),
-        avgOrderValue: parseFloat(avgOrderValue),
+        avgOrderValue,
+        roi: totalDiscount > 0 ? parseFloat(((totalRevenue - totalDiscount) / totalDiscount * 100).toFixed(2)) : 0,
         prizeDistribution,
+        prizeBreakdown: prizeBreakdownArr,
+        topCoupons: topCouponsLimited,
         timeline: timelineArray,
-        recentSpins
+        heatmap,
+        recentSpins,
+        // metadata
+        sampledSize,
+        isSampled,
+        sampleDays: days,
+        cachedStatsAt: stats.lastUpdatedAt || null
       }
     });
 
   } catch (error) {
     console.error("Error obteniendo analytics:", error);
-    res.status(500).json({ success: false, message: "Error al obtener analytics" });
+    res.status(500).json({ success: false, message: "Error al obtener analytics: " + error.message });
+  }
+});
+
+// POST /api/spin-wheel/:wheelId/recompute-stats - Recalcula contadores agregados
+// Pesado pero solo se ejecuta on-demand desde el panel
+app.post("/api/spin-wheel/:wheelId/recompute-stats", async (req, res) => {
+  const { wheelId } = req.params;
+  const { storeId } = req.body;
+
+  if (!storeId) return res.json({ success: false, message: "storeId requerido" });
+
+  try {
+    const wheelDoc = await db.collection("promonube_spin_wheels").doc(wheelId).get();
+    if (!wheelDoc.exists) return res.json({ success: false, message: "Ruleta no encontrada" });
+    if (wheelDoc.data().storeId !== storeId) return res.status(403).json({ success: false, message: "Acceso denegado" });
+
+    // Contar totales con aggregations (eficiente)
+    const [totalSnap] = await Promise.all([
+      db.collection("spin_wheel_results").where("wheelId", "==", wheelId).count().get()
+    ]);
+    const totalSpins = totalSnap.data().count;
+
+    // Para couponCodes y revenue: necesitamos iterar pero en chunks
+    let couponsGenerated = 0;
+    let lastDoc = null;
+    const couponCodes = new Set();
+    const PAGE = 1000;
+
+    while (true) {
+      let q = db.collection("spin_wheel_results")
+        .where("wheelId", "==", wheelId)
+        .orderBy("__name__")
+        .limit(PAGE);
+      if (lastDoc) q = q.startAfter(lastDoc);
+      const snap = await q.get();
+      if (snap.empty) break;
+      snap.forEach(d => {
+        const data = d.data();
+        if (data.couponCode) {
+          couponsGenerated++;
+          couponCodes.add(data.couponCode);
+        }
+      });
+      lastDoc = snap.docs[snap.docs.length - 1];
+      if (snap.size < PAGE) break;
+    }
+
+    // Cupones usados desde coupon_usage
+    const usageSnap = await db.collection("coupon_usage").where("storeId", "==", storeId).get();
+    let couponsUsed = 0;
+    let totalRevenue = 0;
+    let totalDiscount = 0;
+    usageSnap.forEach(d => {
+      const u = d.data();
+      if (couponCodes.has(u.couponCode)) {
+        couponsUsed++;
+        totalRevenue += parseFloat(u.total || u.orderTotal || 0) || 0;
+        totalDiscount += parseFloat(u.discountValue || u.discountAmount || 0) || 0;
+      }
+    });
+
+    const stats = {
+      totalSpins,
+      couponsGenerated,
+      couponsUsed,
+      totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+      totalDiscount: parseFloat(totalDiscount.toFixed(2)),
+      lastUpdatedAt: FieldValue.serverTimestamp()
+    };
+
+    await db.collection("promonube_spin_wheels").doc(wheelId).update({ stats });
+
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error("Error recomputando stats:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -6701,17 +7068,94 @@ app.get("/api/spin-wheel/:wheelId/export", async (req, res) => {
     resultsSnapshot.forEach(doc => results.push({ id: doc.id, ...doc.data() }));
     results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-    // Generar CSV
-    const csvHeader = "Email,Premio,Tipo,Valor,Cupon,Fecha,Cupon Usado";
+    // Enriquecer con datos del cup�n (uso real, orderId, etc)
+    const couponCodes = results.map(r => r.couponCode).filter(Boolean);
+    const couponsByCode = {};
+    if (couponCodes.length) {
+      // Firestore "in" admite m�x 30 valores por query ? batchear
+      for (let i = 0; i < couponCodes.length; i += 30) {
+        const chunk = couponCodes.slice(i, i + 30);
+        try {
+          const snap = await db.collection("promonube_coupons")
+            .where("storeId", "==", storeId)
+            .where("code", "in", chunk)
+            .get();
+          snap.forEach(doc => {
+            const d = doc.data();
+            if (d.code) couponsByCode[d.code] = d;
+          });
+        } catch (e) {
+          console.warn("Error batch coupons:", e.message);
+        }
+      }
+    }
+
+    const now = Date.now();
+    const fmt = (iso) => {
+      if (!iso) return '';
+      try { return new Date(iso).toLocaleString('es-AR'); } catch(e) { return ''; }
+    };
+    const escape = (v) => String(v == null ? '' : v).replace(/"/g, '""');
+
+    const tipoLabel = (t) => {
+      if (t === 'percentage') return 'Descuento %';
+      if (t === 'absolute' || t === 'fixed') return 'Descuento $';
+      if (t === 'shipping' || t === 'free_shipping') return 'Env�o gratis';
+      if (t === 'product') return 'Producto';
+      if (t === 'no_prize' || t === 'none') return 'Sin premio';
+      return t || '';
+    };
+
+    // CSV: 14 columnas detalladas
+    const csvHeader = [
+      'Fecha del giro',
+      'Email',
+      'Premio',
+      'Tipo de premio',
+      'Valor',
+      'Cup�n generado',
+      'C�digo cup�n',
+      'Estado del cup�n',
+      'Cup�n usado',
+      'Fecha de uso',
+      'Pedido (ID)',
+      'Usos / M�x',
+      'Vence',
+      'Vencido'
+    ].join(',');
+
     const csvRows = results.map(r => {
-      const email = (r.email || '').replace(/"/g, '""');
-      const prize = (r.prizeLabel || '').replace(/"/g, '""');
-      const type = r.prizeType || '';
-      const value = r.prizeValue || '';
-      const coupon = r.couponCode || '';
-      const date = r.timestamp ? new Date(r.timestamp).toLocaleString('es-AR') : '';
-      const used = r.couponUsed ? 'Si' : 'No';
-      return `"${email}","${prize}","${type}","${value}","${coupon}","${date}","${used}"`;
+      const coupon = r.couponCode ? couponsByCode[r.couponCode] : null;
+      const used = !!(coupon ? coupon.used : r.couponUsed);
+      const expiresAt = coupon ? coupon.expiresAt : r.couponExpiresAt;
+      const expired = expiresAt ? new Date(expiresAt).getTime() < now : false;
+
+      let estado;
+      if (!r.couponCode) estado = 'Sin cup�n';
+      else if (used) estado = 'Usado';
+      else if (expired) estado = 'Vencido sin usar';
+      else estado = 'Pendiente';
+
+      const usosMax = coupon
+        ? `${coupon.currentUses || 0} / ${coupon.maxUses || 1}`
+        : (r.couponCode ? '0 / 1' : '');
+
+      return [
+        fmt(r.timestamp),
+        escape(r.email),
+        escape(r.prizeLabel),
+        escape(tipoLabel(r.prizeType)),
+        escape(r.prizeValue),
+        r.couponCode ? 'S�' : 'No',
+        escape(r.couponCode),
+        escape(estado),
+        used ? 'S�' : 'No',
+        fmt(coupon && coupon.usedAt),
+        escape(coupon && coupon.orderId),
+        escape(usosMax),
+        fmt(expiresAt),
+        expired ? 'S�' : 'No'
+      ].map(v => `"${v}"`).join(',');
     });
 
     const csv = [csvHeader, ...csvRows].join('\n');
@@ -6733,13 +7177,13 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
   
   // Configurar headers para JavaScript
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
 
   try {
     let wheelData;
     let finalWheelId;
 
-    // Si no hay wheelId, buscar por storeId (parámetro "store" que TiendaNube pasa automáticamente)
+    // Si no hay wheelId, buscar por storeId (par�metro "store" que TiendaNube pasa autom�ticamente)
     if (!wheelId && store) {
       console.log(`?? Buscando ruletas activas para store ${store}`);
       
@@ -6761,7 +7205,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       
       console.log(`? Ruleta encontrada: ${finalWheelId} - ${wheelData.name}`);
     } else if (wheelId) {
-      // Si hay wheelId específico, usarlo
+      // Si hay wheelId espec�fico, usarlo
       const wheelDoc = await db.collection("promonube_spin_wheels").doc(wheelId).get();
 
       if (!wheelDoc.exists) {
@@ -6796,22 +7240,22 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
 (function() {
   'use strict';
   
-  // Configuración de la ruleta
+  // Configuraci�n de la ruleta
   const WHEEL_CONFIG = ${JSON.stringify({
     wheelId: finalWheelId,
     storeId: wheelData.storeId,
     name: wheelData.name,
-    title: wheelData.title || '¡Girá y Ganá!',
+    title: wheelData.title || '�Gir� y Gan�!',
     subtitle: wheelData.subtitle || 'Dejanos tu email y gan? descuentos exclusivos',
     buttonText: wheelData.buttonText || '?? GIRAR RULETA',
-    successMessage: wheelData.successMessage || '¡Felicitaciones! Ganaste:',
+    successMessage: wheelData.successMessage || '�Felicitaciones! Ganaste:',
     prizes: wheelData.prizes || wheelData.segments || [],
     primaryColor: wheelData.primaryColor || '#667eea',
     secondaryColor: wheelData.secondaryColor || '#764ba2',
     textColor: wheelData.textColor || '#FFFFFF',
     buttonColor: wheelData.buttonColor || '#FFFFFF',
     buttonTextColor: wheelData.buttonTextColor || wheelData.primaryColor || '#667eea',
-    // Nuevas opciones de diseño premium
+    // Nuevas opciones de dise�o premium
     fontFamily: wheelData.fontFamily || 'modern',
     modalStyle: wheelData.modalStyle || 'gradient', // gradient | solid | glass
     wheelBorderColor: wheelData.wheelBorderColor || '#FFFFFF',
@@ -6826,10 +7270,10 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     exitIntent: wheelData.exitIntent || false,
     showEmailField: wheelData.showEmailField !== false, // Por defecto true (mostrar campo de email)
     requireEmail: wheelData.requireEmail !== false, // Por defecto true (email obligatorio)
-    centerEmoji: wheelData.centerEmoji !== undefined ? wheelData.centerEmoji : '\uD83C\uDF81' // Emoji del centro (vac�o = sin emoji)
+    centerEmoji: wheelData.centerEmoji !== undefined ? wheelData.centerEmoji : '\uD83C\uDF81' // Emoji del centro (vac?o = sin emoji)
   }, null, 2)};
   
-  const API_URL = "https://apipromonube-jlfopowzaq-uc.a.run.app";
+  const API_URL = "${_SRV_BASE}";
   const STORAGE_KEY = 'promonube_wheel_' + WHEEL_CONFIG.wheelId;
   
   // Verificar si ya particip?
@@ -6838,7 +7282,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     return;
   }
   
-  // Font presets premium (cada uno carga Google Fonts específico)
+  // Font presets premium (cada uno carga Google Fonts espec�fico)
   const FONT_PRESETS = {
     modern:    { stack: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", url: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap' },
     poppins:   { stack: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif", url: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap' },
@@ -6861,7 +7305,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     document.head.appendChild(fontLink);
   }
 
-  // Radios según estilo
+  // Radios seg�n estilo
   const RADIUS_PRESETS = { sharp: '4px', rounded: '20px', pill: '32px' };
   const modalRadius = RADIUS_PRESETS[WHEEL_CONFIG.borderRadiusStyle] || '20px';
   const buttonRadius = WHEEL_CONFIG.borderRadiusStyle === 'pill' ? '999px' : (WHEEL_CONFIG.borderRadiusStyle === 'sharp' ? '4px' : '12px');
@@ -7045,7 +7489,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       display: block;
     }
 
-    /* Centro: disco blanco + anillo conc�ntrico */
+    /* Centro: disco blanco + anillo conc?ntrico */
     .pn-wheel-center {
       position: absolute;
       top: 50%;
@@ -7284,7 +7728,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
   styleEl.textContent = styles;
   document.head.appendChild(styleEl);
   
-  // Función para crear la rueda visual
+  // Funci�n para crear la rueda visual
   function createWheel() {
     const prizes = WHEEL_CONFIG.prizes;
     if (!prizes || prizes.length === 0) {
@@ -7297,14 +7741,14 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     console.log('?? Premios en orden visual (de arriba en sentido horario):');
     prizes.forEach((p, i) => {
       const angle = (i * (360 / prizes.length)) - 90;
-      console.log(\`  [\${i}] \${p.label} - comienza en \${angle}�\`);
+      console.log(\`  [\${i}] \${p.label} - comienza en \${angle}?\`);
     });
     console.log('================================');
     
     // Colores vibrantes predeterminados
     const defaultColors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A8E6CF', '#FF8B94', '#C7CEEA'];
 
-    // Tamaño de texto adaptivo según número de segmentos
+    // Tama�o de texto adaptivo seg�n n�mero de segmentos
     const numPrizes = prizes.length;
     let fontSize = 16;
     let maxLabelLen = 12;
@@ -7323,7 +7767,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       const endAngle = startAngle + segmentAngle;
       const color = prize.color || defaultColors[index % defaultColors.length];
 
-      // Convertir ángulos a coordenadas
+      // Convertir �ngulos a coordenadas
       const startRad = startAngle * Math.PI / 180;
       const endRad = endAngle * Math.PI / 180;
 
@@ -7386,7 +7830,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     \`;
   }
   
-  // Función para mostrar la ruleta
+  // Funci�n para mostrar la ruleta
   function showWheel() {
     // Crear overlay
     const overlay = document.createElement('div');
@@ -7416,7 +7860,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     
     document.body.appendChild(overlay);
     
-    // Manejar el clic en el botón de girar
+    // Manejar el clic en el bot�n de girar
     const spinBtn = document.getElementById('pn-spin-btn');
     const emailInput = document.getElementById('pn-email');
     
@@ -7428,7 +7872,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     }
   }
   
-  // Función para manejar el giro
+  // Funci�n para manejar el giro
   async function handleSpin() {
     const emailInput = document.getElementById('pn-email');
     const spinBtn = document.getElementById('pn-spin-btn');
@@ -7467,48 +7911,48 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         return;
       }
       
-      // ?? ANIMAR RUEDA hacia el ángulo exacto del premio ganado
+      // ?? ANIMAR RUEDA hacia el �ngulo exacto del premio ganado
       const wheel = document.getElementById('pn-wheel');
       const targetAngle = data.targetAngle || 0;
       const prizeIndex = data.prizeIndex;
       const prizeLabel = data.prize.label;
       
-      // IMPORTANTE: El puntero est? arriba (en la posición de las 12 del reloj)
-      // Los segmentos se dibujan empezando desde -90� (arriba)
-      // targetAngle es el ángulo del CENTRO del segmento ganador (ya normalizado 0-360)
+      // IMPORTANTE: El puntero est? arriba (en la posici�n de las 12 del reloj)
+      // Los segmentos se dibujan empezando desde -90? (arriba)
+      // targetAngle es el �ngulo del CENTRO del segmento ganador (ya normalizado 0-360)
       
       // Para que el segmento ganador quede bajo el puntero:
-      // 1. El puntero est? en la posición 270� del círculo (arriba = -90� = 270�)
-      // 2. Queremos rotar la rueda para que targetAngle llegue a 270�
-      // 3. Rotación necesaria = 270 - targetAngle
+      // 1. El puntero est? en la posici�n 270? del c�rculo (arriba = -90? = 270?)
+      // 2. Queremos rotar la rueda para que targetAngle llegue a 270?
+      // 3. Rotaci�n necesaria = 270 - targetAngle
       
-      // IMPORTANTE: randomSpins DEBE ser entero para que la posición final sea correcta
+      // IMPORTANTE: randomSpins DEBE ser entero para que la posici�n final sea correcta
       const randomSpins = 5 + Math.floor(Math.random() * 3); // 5, 6 o 7 vueltas completas
       
-      // Calcular rotación usando prizeIndex directamente (más robusto)
+      // Calcular rotaci�n usando prizeIndex directamente (m�s robusto)
       const numPrizes = WHEEL_CONFIG.prizes.length;
       const segAngle = 360 / numPrizes;
       // El centro del segmento N est? a (N + 0.5) * segAngle grados CW desde el top
       // Para que quede bajo el puntero (top), rotar CW por: 360 - (N + 0.5) * segAngle
       const finalAngle = 360 - ((prizeIndex + 0.5) * segAngle);
-      // Pequeño offset aleatorio para que no caiga SIEMPRE en el centro exacto,
+      // Peque�o offset aleatorio para que no caiga SIEMPRE en el centro exacto,
       // pero mantenido al 20% del segmento para garantizar que siempre quede
-      // visualmente sobre el premio correcto (sin ambigüedad en los bordes).
+      // visualmente sobre el premio correcto (sin ambig�edad en los bordes).
       const segmentOffset = (Math.random() - 0.5) * (segAngle * 0.2);
       const totalRotation = (randomSpins * 360) + finalAngle + segmentOffset;
       
       console.log(\`?? ============ SPINNING HACIA PREMIO ============\`);
       console.log(\`   ?? Premio: \${prizeLabel}\`);
-      console.log(\`   ?? ?índice: \${prizeIndex}\`);
-      console.log(\`   ?? ?ángulo del segmento: \${targetAngle}�\`);
-      console.log(\`   ?? ?ángulo final (270 - \${targetAngle}): \${finalAngle}�\`);
-      console.log(\`   ?? Rotación total: \${totalRotation}� (\${randomSpins.toFixed(1)} vueltas)\`);
+      console.log(\`   ?? ?�ndice: \${prizeIndex}\`);
+      console.log(\`   ?? ?�ngulo del segmento: \${targetAngle}?\`);
+      console.log(\`   ?? ?�ngulo final (270 - \${targetAngle}): \${finalAngle}?\`);
+      console.log(\`   ?? Rotaci�n total: \${totalRotation}? (\${randomSpins.toFixed(1)} vueltas)\`);
       console.log(\`   ?? Segmentos totales: \${window.WHEEL_PRIZES?.length || 'unknown'}\`);
       console.log(\`============================================\`);
       
       wheel.style.transform = \`rotate(\${totalRotation}deg)\`;
       
-      // Esperar a que termine la animación (5 segundos)
+      // Esperar a que termine la animaci�n (5 segundos)
       setTimeout(() => {
         showResult(data);
       }, 5000);
@@ -7518,11 +7962,11 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       spinBtn.disabled = false;
       if (emailInput) emailInput.disabled = false;
       spinBtn.textContent = WHEEL_CONFIG.buttonText;
-      alert('Ocurrió un error. Por favor intentá de nuevo.');
+      alert('Ocurri� un error. Por favor intent� de nuevo.');
     }
   }
   
-  // Función para mostrar el resultado
+  // Funci�n para mostrar el resultado
   function showResult(data) {
     const overlay = document.getElementById('pn-wheel-overlay');
     
@@ -7536,13 +7980,13 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         <div class="pn-modal">
           <button class="pn-close" onclick="closeCouponModal()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
           <div style="text-align: center; padding: 20px 0;">
-            <h1 class="pn-title" style="font-size: 38px; margin-bottom: 12px;">¡FELICITACIONES!</h1>
+            <h1 class="pn-title" style="font-size: 38px; margin-bottom: 12px;">�FELICITACIONES!</h1>
             <p class="pn-subtitle" style="font-size: 18px; margin-bottom: 8px;">DESBLOQUEASTE</p>
             <div style="font-size: 52px; font-weight: 900; margin: 20px 0; text-shadow: 0 4px 12px rgba(0,0,0,0.3);">
               \${data.prize && data.prize.label ? data.prize.label : 'DESCUENTO'}
             </div>
             
-            <p class="pn-subtitle" style="font-size: 16px; margin: 24px 0 12px;">TU CUPÓN DE DESCUENTO ES:</p>
+            <p class="pn-subtitle" style="font-size: 16px; margin: 24px 0 12px;">TU CUP�N DE DESCUENTO ES:</p>
             <div class="pn-coupon" onclick="copyCoupon('\${data.couponCode}', this)">
               \${data.couponCode}
             </div>
@@ -7563,7 +8007,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
               USAR MI DESCUENTO
             </button>
             <p class="pn-hint" style="margin-top: 16px; font-size: 13px;">
-              Hacé clic en el cupón para copiarlo
+              Hac� clic en el cup�n para copiarlo
             </p>
           </div>
         </div>
@@ -7575,7 +8019,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       // Iniciar countdown
       startCountdown(expiresAt, 'pn-countdown-display');
       
-      // Guardar cupón en localStorage para persistir
+      // Guardar cup�n en localStorage para persistir
       localStorage.setItem('pn_active_coupon', JSON.stringify({
         code: data.couponCode,
         expiresAt: data.couponExpiresAt,
@@ -7619,7 +8063,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     }
   }
   
-  // ? Función para countdown con animaciones mejoradas
+  // ? Funci�n para countdown con animaciones mejoradas
   function startCountdown(expiresAt, elementId) {
     const countdownEl = document.getElementById(elementId);
     if (!countdownEl) return;
@@ -7633,7 +8077,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         countdownEl.style.color = '#ff4444';
         countdownEl.style.animation = 'none';
         
-        // Remover sticky bar y cupón del localStorage
+        // Remover sticky bar y cup�n del localStorage
         const stickyBar = document.getElementById('pn-sticky-bar');
         if (stickyBar) stickyBar.remove();
         localStorage.removeItem('pn_active_coupon');
@@ -7660,7 +8104,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       setTimeout(updateCountdown, 1000);
     }
     
-    // Agregar animación de pulse si no existe
+    // Agregar animaci�n de pulse si no existe
     if (!document.getElementById('pn-pulse-animation')) {
       const pulseStyle = document.createElement('style');
       pulseStyle.id = 'pn-pulse-animation';
@@ -7798,7 +8242,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
       
       <div class="sticky-content">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-weight: 600;">Tu cupón:</span>
+          <span style="font-weight: 600;">Tu cup�n:</span>
         </div>
         <div class="sticky-coupon" onclick="copyCoupon('\${couponCode}', this)">
           \${couponCode}
@@ -7840,7 +8284,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
     }
   };
   
-  // Restaurar sticky bar si hay cupón activo
+  // Restaurar sticky bar si hay cup�n activo
   function restoreStickyBar() {
     const savedCoupon = localStorage.getItem('pn_active_coupon');
     if (!savedCoupon) return;
@@ -7857,13 +8301,13 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         localStorage.removeItem('pn_active_coupon');
       }
     } catch (e) {
-      console.error('[PromoNube] Error restaurando cupón:', e);
+      console.error('[PromoNube] Error restaurando cup�n:', e);
     }
   }
   
-  // Determinar cuándo mostrar la ruleta
+  // Determinar cu�ndo mostrar la ruleta
   function initWheel() {
-    // Restaurar sticky bar si hay cupón activo
+    // Restaurar sticky bar si hay cup�n activo
     restoreStickyBar();
     
     const delay = (WHEEL_CONFIG.delaySeconds || 0) * 1000;
@@ -7877,7 +8321,7 @@ app.get("/api/spin-wheel-widget.js", async (req, res) => {
         }
       });
     } else {
-      // Mostrar después del delay
+      // Mostrar despu�s del delay
       setTimeout(showWheel, delay);
     }
   }
@@ -7925,7 +8369,7 @@ app.get("/api/countdowns", async (req, res) => {
       });
     });
 
-    // Ordenar por fecha de creación (más recientes primero)
+    // Ordenar por fecha de creaci�n (m�s recientes primero)
     countdowns.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     console.log(`? ${countdowns.length} cuentas regresivas encontradas`);
@@ -7937,7 +8381,7 @@ app.get("/api/countdowns", async (req, res) => {
   }
 });
 
-// GET /api/countdown/:countdownId - Obtiene configuración de una cuenta regresiva
+// GET /api/countdown/:countdownId - Obtiene configuraci�n de una cuenta regresiva
 app.get("/api/countdown/:countdownId", async (req, res) => {
   const { countdownId } = req.params;
   const { storeId } = req.query;
@@ -7990,7 +8434,7 @@ app.post("/api/countdowns/create", async (req, res) => {
 
     await db.collection("promonube_countdowns").doc(countdownId).set(countdownData);
 
-    // Registrar script automáticamente si el countdown est? habilitado
+    // Registrar script autom�ticamente si el countdown est? habilitado
     if (countdownData.enabled) {
       const store = await getStoreById(storeId);
       if (store) {
@@ -8007,7 +8451,7 @@ app.post("/api/countdowns/create", async (req, res) => {
   }
 });
 
-// PUT /api/countdowns/:countdownId - Actualiza configuración de countdown
+// PUT /api/countdowns/:countdownId - Actualiza configuraci�n de countdown
 app.put("/api/countdowns/:countdownId", async (req, res) => {
   const { countdownId } = req.params;
   const { storeId, ...config } = req.body;
@@ -8067,7 +8511,7 @@ app.delete("/api/countdowns/:countdownId", async (req, res) => {
 
     await countdownRef.delete();
 
-    // Si era el último countdown activo, remover script
+    // Si era el �ltimo countdown activo, remover script
     if (wasEnabled) {
       const remainingCountdownsSnapshot = await db.collection("promonube_countdowns")
         .where("storeId", "==", storeId)
@@ -8128,7 +8572,7 @@ app.patch("/api/countdowns/:countdownId/toggle", async (req, res) => {
         // Primer countdown activo: instalar script
         await registerCountdownScript(store);
       } else if (!willHaveActiveCountdowns) {
-        // ?último countdown desactivado: remover script
+        // ?�ltimo countdown desactivado: remover script
         await unregisterCountdownScript(store);
       }
     }
@@ -8184,7 +8628,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
 
   try {
     if (!store) {
@@ -8216,7 +8660,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       const startDate = data.startDate ? new Date(data.startDate) : null;
       const endDate = new Date(data.endDate);
 
-      // Filtrar según tipo y fechas
+      // Filtrar seg�n tipo y fechas
       let shouldShow = false;
 
       if (data.type === 'active') {
@@ -8247,9 +8691,9 @@ app.get("/api/countdown-widget.js", async (req, res) => {
   'use strict';
 
   const COUNTDOWN_CONFIG = ${JSON.stringify(countdown)};
-  const API_URL = 'https://apipromonube-jlfopowzaq-uc.a.run.app';
+  const API_URL = '${_SRV_BASE}';
 
-  // Prevenir múltiples inicializaciones
+  // Prevenir m�ltiples inicializaciones
   if (window.promonubeCountdownLoaded) return;
   window.promonubeCountdownLoaded = true;
 
@@ -8286,7 +8730,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       animation: pnCountdownSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     \`;
 
-    // Agregar animación
+    // Agregar animaci�n
     if (!document.getElementById('pn-countdown-styles')) {
       const style = document.createElement('style');
       style.id = 'pn-countdown-styles';
@@ -8311,7 +8755,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       document.head.appendChild(style);
     }
 
-    // Insertar la barra en la posición correcta
+    // Insertar la barra en la posici�n correcta
     if (COUNTDOWN_CONFIG.position === 'top' && COUNTDOWN_CONFIG.pushContent !== false) {
       document.body.insertBefore(bar, document.body.firstChild);
     } else {
@@ -8351,7 +8795,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
     bar.appendChild(message);
     bar.appendChild(timer);
 
-    // Botón CTA solo para tipo 'active'
+    // Bot�n CTA solo para tipo 'active'
     if (COUNTDOWN_CONFIG.type === 'active' && COUNTDOWN_CONFIG.buttonText && COUNTDOWN_CONFIG.buttonUrl) {
       const button = document.createElement('a');
       button.href = COUNTDOWN_CONFIG.buttonUrl;
@@ -8390,7 +8834,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       bar.appendChild(button);
     }
 
-    // Botón de cerrar opcional
+    // Bot�n de cerrar opcional
     if (COUNTDOWN_CONFIG.showCloseButton !== false) {
       const closeBtn = document.createElement('button');
       closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
@@ -8415,12 +8859,12 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       closeBtn.onclick = () => {
         bar.style.animation = 'pnCountdownSlideOut 0.3s ease-out forwards';
         setTimeout(() => bar.remove(), 300);
-        // Guardar en localStorage para no volver a mostrar en esta sesión
+        // Guardar en localStorage para no volver a mostrar en esta sesi�n
         localStorage.setItem('pn_countdown_closed_' + COUNTDOWN_CONFIG.id, Date.now());
       };
       bar.appendChild(closeBtn);
 
-      // Agregar animación de salida
+      // Agregar animaci�n de salida
       const style = document.getElementById('pn-countdown-styles');
       if (style && !style.textContent.includes('pnCountdownSlideOut')) {
         style.textContent += \`
@@ -8434,13 +8878,13 @@ app.get("/api/countdown-widget.js", async (req, res) => {
       }
     }
 
-    // Verificar si fue cerrado previamente en esta sesión
+    // Verificar si fue cerrado previamente en esta sesi�n
     const closedTime = localStorage.getItem('pn_countdown_closed_' + COUNTDOWN_CONFIG.id);
     if (closedTime && (Date.now() - closedTime < 3600000)) { // 1 hora
       return;
     }
 
-    // Registrar impresión
+    // Registrar impresi�n
     trackCountdown('impression');
 
     // Iniciar countdown
@@ -8513,7 +8957,7 @@ app.get("/api/countdown-widget.js", async (req, res) => {
 // ENDPOINTS: NEW PRODUCT BADGE (Badge "Nuevo")
 // ============================================
 
-// GET /api/new-badge-config/:storeId - Obtiene configuración del badge
+// GET /api/new-badge-config/:storeId - Obtiene configuraci�n del badge
 app.get("/api/new-badge-config/:storeId", async (req, res) => {
   const { storeId } = req.params;
 
@@ -8521,7 +8965,7 @@ app.get("/api/new-badge-config/:storeId", async (req, res) => {
     const configDoc = await db.collection("promonube_new_badge_config").doc(storeId).get();
 
     if (!configDoc.exists) {
-      // Devolver configuración por defecto
+      // Devolver configuraci�n por defecto
       return res.json({
         success: true,
         config: {
@@ -8550,11 +8994,11 @@ app.get("/api/new-badge-config/:storeId", async (req, res) => {
     });
   } catch (error) {
     console.error("Error obteniendo config badge:", error);
-    res.status(500).json({ success: false, message: "Error al obtener configuración" });
+    res.status(500).json({ success: false, message: "Error al obtener configuraci�n" });
   }
 });
 
-// POST /api/new-badge-config/:storeId - Guarda o actualiza configuración del badge
+// POST /api/new-badge-config/:storeId - Guarda o actualiza configuraci�n del badge
 app.post("/api/new-badge-config/:storeId", async (req, res) => {
   const { storeId } = req.params;
   const config = req.body;
@@ -8572,16 +9016,16 @@ app.post("/api/new-badge-config/:storeId", async (req, res) => {
 
     await db.collection("promonube_new_badge_config").doc(storeId).set(configData, { merge: true });
 
-    console.log("? Configuración de badge guardada para store:", storeId);
+    console.log("? Configuraci�n de badge guardada para store:", storeId);
 
-    res.json({ success: true, message: "Configuración guardada correctamente" });
+    res.json({ success: true, message: "Configuraci�n guardada correctamente" });
   } catch (error) {
     console.error("Error guardando config badge:", error);
-    res.status(500).json({ success: false, message: "Error al guardar configuración" });
+    res.status(500).json({ success: false, message: "Error al guardar configuraci�n" });
   }
 });
 
-// GET /api/product-dates/:storeId - Obtiene fechas de creación de productos
+// GET /api/product-dates/:storeId - Obtiene fechas de creaci�n de productos
 app.get("/api/product-dates/:storeId", async (req, res) => {
   const { storeId } = req.params;
 
@@ -8606,14 +9050,14 @@ app.get("/api/product-dates/:storeId", async (req, res) => {
 
     console.log(`?? AccessToken encontrado para store ${storeId}`);
 
-    // Obtener TODOS los productos usando paginación
+    // Obtener TODOS los productos usando paginaci�n
     let allProducts = [];
     let page = 1;
     let hasMore = true;
     const perPage = 200;
 
     while (hasMore) {
-      console.log(`?? Obteniendo página ${page}...`);
+      console.log(`?? Obteniendo p�gina ${page}...`);
       
       const productsResponse = await fetch(
         `https://api.tiendanube.com/v1/${storeId}/products?per_page=${perPage}&page=${page}`,
@@ -8635,13 +9079,13 @@ app.get("/api/product-dates/:storeId", async (req, res) => {
       }
 
       const products = await productsResponse.json();
-      console.log(`? Página ${page}: ${products.length} productos`);
+      console.log(`? P�gina ${page}: ${products.length} productos`);
       
       if (products.length > 0) {
         allProducts = allProducts.concat(products);
         page++;
         
-        // Si recibimos menos de perPage, es la última página
+        // Si recibimos menos de perPage, es la �ltima p�gina
         if (products.length < perPage) {
           hasMore = false;
         }
@@ -8677,7 +9121,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
 
   try {
     if (!store) {
@@ -8689,7 +9133,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
       return res.send('// PromoNube: plan inactivo');
     }
 
-    // Obtener configuración del badge para esta tienda (cach? en memoria)
+    // Obtener configuraci�n del badge para esta tienda (cach? en memoria)
     const configDoc = await getCachedDoc("promonube_new_badge_config", store);
 
     if (!configDoc.exists || !configDoc.data().enabled) {
@@ -8705,13 +9149,13 @@ app.get("/api/new-badge-script.js", async (req, res) => {
   const BADGE_CONFIG = ${JSON.stringify(config)};
   const STORE_ID = "${store}";
 
-  // Prevenir múltiples inicializaciones
+  // Prevenir m�ltiples inicializaciones
   if (window.promonubeNewBadgeLoaded) return;
   window.promonubeNewBadgeLoaded = true;
 
   console.log('??? PromoNube New Badge Script cargado');
 
-  // Función para calcular si un producto es "nuevo"
+  // Funci�n para calcular si un producto es "nuevo"
   function isProductNew(createdAtString) {
     if (!createdAtString) return false;
     
@@ -8722,7 +9166,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     return daysDiff <= BADGE_CONFIG.daysToShowAsNew;
   }
 
-  // Función para crear el badge
+  // Funci�n para crear el badge
   function createBadge() {
     const badge = document.createElement('div');
     badge.className = 'pn-new-product-badge';
@@ -8802,7 +9246,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     return badge;
   }
 
-  // Función para agregar badge a un producto
+  // Funci�n para agregar badge a un producto
   function addBadgeToProduct(productElement, createdAt) {
     if (!isProductNew(createdAt)) return;
     
@@ -8814,7 +9258,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     
     if (!imageContainer) return;
 
-    // Asegurar que el contenedor tenga posición relativa
+    // Asegurar que el contenedor tenga posici�n relativa
     const currentPosition = window.getComputedStyle(imageContainer).position;
     if (currentPosition === 'static') {
       imageContainer.style.position = 'relative';
@@ -8827,10 +9271,10 @@ app.get("/api/new-badge-script.js", async (req, res) => {
   // Variable global para almacenar fechas de productos
   let productDatesMap = {};
 
-  // Función para obtener fechas de productos desde la API
+  // Funci�n para obtener fechas de productos desde la API
   async function loadProductDates() {
     try {
-      const response = await fetch(\`https://apipromonube-jlfopowzaq-uc.a.run.app/api/product-dates/\${STORE_ID}\`);
+      const response = await fetch(\`${_SRV_BASE}/api/product-dates/\${STORE_ID}\`);
       const data = await response.json();
       
       if (data.success && data.productDates) {
@@ -8845,7 +9289,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     }
   }
 
-  // Función para procesar productos en TiendaNube
+  // Funci�n para procesar productos en TiendaNube
   function processProducts() {
     // Selectores comunes para productos en TiendaNube
     const productSelectors = [
@@ -8921,7 +9365,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
     document.head.appendChild(style);
   }
 
-  // Observar cambios en el DOM para productos cargados dinámicamente
+  // Observar cambios en el DOM para productos cargados din�micamente
   function observeDOM() {
     const observer = new MutationObserver((mutations) => {
       let shouldProcess = false;
@@ -8952,7 +9396,7 @@ app.get("/api/new-badge-script.js", async (req, res) => {
       processProducts();
       observeDOM();
 
-      // Re-procesar después de 1 segundo por si hay lazy loading
+      // Re-procesar despu�s de 1 segundo por si hay lazy loading
       setTimeout(processProducts, 1000);
     } else {
       console.warn('?? PromoNube: No se pudieron cargar las fechas de productos');
@@ -9006,7 +9450,7 @@ app.get("/api/badges", async (req, res) => {
     badges.sort((a, b) => {
       const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
       const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-      return dateB - dateA; // Más recientes primero
+      return dateB - dateA; // M�s recientes primero
     });
 
     res.json(badges);
@@ -9016,7 +9460,7 @@ app.get("/api/badges", async (req, res) => {
   }
 });
 
-// GET /api/badges/:badgeId - Obtener un badge específico
+// GET /api/badges/:badgeId - Obtener un badge espec�fico
 app.get("/api/badges/:badgeId", async (req, res) => {
   const { badgeId } = req.params;
   const { storeId } = req.query;
@@ -9246,7 +9690,7 @@ app.get("/api/badges-script.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
 
   try {
     if (!store) {
@@ -9285,7 +9729,7 @@ app.get("/api/badges-script.js", async (req, res) => {
   const BADGES_CONFIG = ${JSON.stringify(badges)};
   const STORE_ID = "${store}";
 
-  // Prevenir múltiples inicializaciones
+  // Prevenir m�ltiples inicializaciones
   if (window.promonubeBadgesLoaded) return;
   window.promonubeBadgesLoaded = true;
 
@@ -9380,7 +9824,7 @@ app.get("/api/badges-script.js", async (req, res) => {
   // Cargar datos de productos desde la API
   async function loadProductData() {
     try {
-      const response = await fetch(\`https://apipromonube-jlfopowzaq-uc.a.run.app/api/products/metadata?storeId=\${STORE_ID}\`);
+      const response = await fetch(\`${_SRV_BASE}/api/products/metadata?storeId=\${STORE_ID}\`);
       const data = await response.json();
       productDataMap = data.products || {};
       console.log('?? Datos de productos cargados:', Object.keys(productDataMap).length);
@@ -9510,7 +9954,7 @@ app.get("/api/badges-script.js", async (req, res) => {
     // Evitar duplicados
     if (productElement.querySelector('.pn-badge-container')) return;
 
-    // Optimización: Si hay badges de tipo "all_products", agregarlos directamente sin consultar metadata
+    // Optimizaci�n: Si hay badges de tipo "all_products", agregarlos directamente sin consultar metadata
     const allProductsBadges = BADGES_CONFIG.filter(badge => badge.ruleType === 'all_products');
     const otherBadges = BADGES_CONFIG.filter(badge => badge.ruleType !== 'all_products');
 
@@ -9533,7 +9977,7 @@ app.get("/api/badges-script.js", async (req, res) => {
     container.className = 'pn-badge-container';
 
     // Agregar solo el primer badge que coincida
-    // (para evitar superposición, se puede mejorar con lógica de múltiples badges)
+    // (para evitar superposici�n, se puede mejorar con l�gica de m�ltiples badges)
     const badgeEl = createBadgeElement(matchingBadges[0]);
     container.appendChild(badgeEl);
 
@@ -9610,7 +10054,7 @@ app.get("/api/badges-script.js", async (req, res) => {
   async function init() {
     injectStyles();
     
-    // Optimización: Solo cargar metadata si hay badges que la necesitan
+    // Optimizaci�n: Solo cargar metadata si hay badges que la necesitan
     const needsMetadata = BADGES_CONFIG.some(badge => badge.ruleType !== 'all_products');
     
     if (needsMetadata) {
@@ -9621,7 +10065,7 @@ app.get("/api/badges-script.js", async (req, res) => {
         console.warn('?? PromoNube: No se pudieron cargar los datos de productos');
       }
     } else {
-      console.log('? Modo rápido: Todos los badges son "all_products", no se necesita metadata');
+      console.log('? Modo r�pido: Todos los badges son "all_products", no se necesita metadata');
     }
 
     processProducts();
@@ -9647,7 +10091,7 @@ app.get("/api/badges-script.js", async (req, res) => {
   }
 });
 
-// GET /api/products/metadata - Obtener metadata de productos para evaluación de badges
+// GET /api/products/metadata - Obtener metadata de productos para evaluaci�n de badges
 app.get("/api/products/metadata", async (req, res) => {
   const { storeId } = req.query;
 
@@ -9670,7 +10114,7 @@ app.get("/api/products/metadata", async (req, res) => {
       return res.status(401).json({ error: "No hay token de acceso" });
     }
 
-    // Obtener productos de TiendaNube con paginación
+    // Obtener productos de TiendaNube con paginaci�n
     let allProducts = [];
     let page = 1;
     let hasMore = true;
@@ -9793,7 +10237,7 @@ app.get("/api/tiendanube/products/search", async (req, res) => {
   }
 });
 
-// GET /api/tiendanube/categories - Obtener categorías
+// GET /api/tiendanube/categories - Obtener categor�as
 app.get("/api/tiendanube/categories", async (req, res) => {
   const { storeId } = req.query;
 
@@ -9828,14 +10272,14 @@ app.get("/api/tiendanube/categories", async (req, res) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Error TiendaNube categories:", response.status, errorText);
-      return res.status(response.status).json({ error: "Error obteniendo categorías" });
+      return res.status(response.status).json({ error: "Error obteniendo categor�as" });
     }
 
     const data = await response.json();
     res.json(data);
 
   } catch (error) {
-    console.error("Error obteniendo categorías:", error);
+    console.error("Error obteniendo categor�as:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -9844,7 +10288,7 @@ app.get("/api/tiendanube/categories", async (req, res) => {
 // STYLE CUSTOMIZATION ENDPOINTS
 // ============================================
 
-// GET /api/tiendanube/menus - Obtener menús de TiendaNube con sus items
+// GET /api/tiendanube/menus - Obtener men�s de TiendaNube con sus items
 app.get("/api/tiendanube/menus", async (req, res) => {
   const { storeId } = req.query;
 
@@ -9871,47 +10315,46 @@ app.get("/api/tiendanube/menus", async (req, res) => {
 
     console.log("Llamando a TiendaNube API para store:", storeId);
 
-    // Llamar a la API de TiendaNube para obtener los menús
-    const menusResponse = await axios.get(
+    const tnHeaders = {
+      "Authentication": `bearer ${accessToken}`,
+      "User-Agent": "PromoNube App (contacto@promonube.com)"
+    };
+
+    // Llamar a la API de TiendaNube para obtener los menus (fetch nativo Node 22)
+    const menusResp = await fetch(
       `https://api.tiendanube.com/v1/${storeId}/navigation_menus`,
-      {
-        headers: {
-          "Authentication": `bearer ${accessToken}`,
-          "User-Agent": "PromoNube App (contacto@promonube.com)"
-        }
-      }
+      { headers: tnHeaders }
     );
+    if (!menusResp.ok) {
+      const errText = await menusResp.text();
+      throw new Error(`TN menus ${menusResp.status}: ${errText}`);
+    }
+    const menusData = await menusResp.json();
+    console.log("Menus obtenidos:", menusData.length);
 
-    console.log("Menús obtenidos:", menusResponse.data.length);
-
-    // Para cada men?, obtener sus items
+    // Para cada menu, obtener sus items
     const menusWithItems = await Promise.all(
-      menusResponse.data.map(async (menu) => {
+      menusData.map(async (menu) => {
         try {
-          const itemsResponse = await axios.get(
+          const itemsResp = await fetch(
             `https://api.tiendanube.com/v1/${storeId}/navigation_menus/${menu.id}/navigation_menu_items`,
-            {
-              headers: {
-                "Authentication": `bearer ${accessToken}`,
-                "User-Agent": "PromoNube App (contacto@promonube.com)"
-              }
-            }
+            { headers: tnHeaders }
           );
-          
-          console.log(`Men? ${menu.name}: ${itemsResponse.data.length} items`);
-          
+          if (!itemsResp.ok) throw new Error(`TN items ${itemsResp.status}`);
+          const itemsData = await itemsResp.json();
+
           return {
             id: menu.id,
             name: menu.name,
             handle: menu.handle,
-            items: itemsResponse.data.map(item => ({
+            items: itemsData.map(item => ({
               id: item.id,
               name: item.name,
               position: item.position
             }))
           };
         } catch (error) {
-          console.error(`Error obteniendo items del men? ${menu.id}:`, error.message);
+          console.error(`Error obteniendo items del menu ${menu.id}:`, error.message);
           return {
             id: menu.id,
             name: menu.name,
@@ -9922,25 +10365,25 @@ app.get("/api/tiendanube/menus", async (req, res) => {
       })
     );
 
-    console.log("Enviando respuesta con", menusWithItems.length, "menús");
+    console.log("Enviando respuesta con", menusWithItems.length, "men�s");
 
     res.json({
       success: true,
       menus: menusWithItems
     });
   } catch (error) {
-    console.error("Error obteniendo menús de TiendaNube:", error.message);
+    console.error("Error obteniendo men�s de TiendaNube:", error.message);
     console.error("Error completo:", error.response?.data || error);
     res.status(500).json({ 
       success: false, 
-      message: "Error al obtener menús",
+      message: "Error al obtener men�s",
       details: error.message,
       apiError: error.response?.data || null
     });
   }
 });
 
-// GET /api/style-config - Obtener configuración de personalización
+// GET /api/style-config - Obtener configuraci�n de personalizaci�n
 app.get("/api/style-config", async (req, res) => {
   const { storeId } = req.query;
 
@@ -9952,7 +10395,7 @@ app.get("/api/style-config", async (req, res) => {
     const styleDoc = await db.collection("promonube_style_config").doc(storeId).get();
     
     if (!styleDoc.exists) {
-      // Retornar configuración por defecto completa
+      // Retornar configuraci�n por defecto completa
       return res.json({
         success: true,
         config: {
@@ -9964,13 +10407,13 @@ app.get("/api/style-config", async (req, res) => {
           topHeader: { enabled: false, backgroundColor: '#f5f5f5', textColor: '#333333', fontFamily: 'system-ui', alignment: 'center', items: [] },
           announcementBar: { enabled: false, backgroundColor: '#8B0000', textColor: '#ffffff', fontSize: 13, fontWeight: 500, fontFamily: 'system-ui', padding: 11, visibility: 'both', messages: [], borderEnabled: false, borderTop: false, borderBottom: true, borderLeft: false, borderRight: false, borderStyle: 'solid', borderWidth: 1, borderColor: '#ffffff' },
           topAnnouncementBar: { enabled: false, backgroundColor: '#1a1a1a', textColor: '#ffffff', fontSize: 13, fontWeight: 500, fontFamily: 'system-ui', padding: 11, visibility: 'both', messages: [], borderEnabled: false, borderTop: false, borderBottom: true, borderLeft: false, borderRight: false, borderStyle: 'solid', borderWidth: 1, borderColor: '#ffffff' },
-          enhancedSearch: { enabled: false, popularSearches: [], primaryColor: '#000000', textColor: '#1a1a1a', backgroundColor: '#ffffff', maxResults: 8, fontFamily: 'inherit', fontSize: '15', fontWeight: '500', headerText: 'Búsquedas Populares', showHeader: true, showIcons: true, defaultEmoji: '??', borderRadius: '12', animationType: 'fade', hoverBgColor: '' },
-          searchBar: { enabled: false, placeholder: '¿Qué estás buscando?', inputPlaceholder: 'Buscar productos...', buttonText: 'Buscar', backgroundColor: '#000000', backgroundOpacity: 0.85, buttonColor: '#000000', titleColor: '#ffffff', titleSize: 42, titlePosition: 'center', showLogo: false, logoUrl: '', logoSize: 100, suggestions: [], closeButtonColor: '#000000' },
+          enhancedSearch: { enabled: false, popularSearches: [], primaryColor: '#000000', textColor: '#1a1a1a', backgroundColor: '#ffffff', maxResults: 8, fontFamily: 'inherit', fontSize: '15', fontWeight: '500', headerText: 'B�squedas Populares', showHeader: true, showIcons: true, defaultEmoji: '??', borderRadius: '12', animationType: 'fade', hoverBgColor: '' },
+          searchBar: { enabled: false, placeholder: '�Qu� est�s buscando?', inputPlaceholder: 'Buscar productos...', buttonText: 'Buscar', backgroundColor: '#000000', backgroundOpacity: 0.85, buttonColor: '#000000', titleColor: '#ffffff', titleSize: 42, titlePosition: 'center', showLogo: false, logoUrl: '', logoSize: 100, suggestions: [], closeButtonColor: '#000000' },
           shopTheLook: { enabled: false, title: 'Shop the Look', subtitle: '', hotspotColor: '#ffffff', hotspotTextColor: '#111111', hotspotBorderColor: 'rgba(255,255,255,0.35)', hotspotSize: 32, hotspotShape: 'circle', hotspotAnimation: 'pulse', hotspotLabelMode: 'auto', hotspotFontSize: 18, hotspotFontWeight: '700', hoverCardEnabled: true, hoverCardBg: '#ffffff', hoverCardText: '#111111', hoverCardButtonBg: '#111111', hoverCardButtonText: '#ffffff', hoverCardButtonLabel: 'Ver producto', injectSelector: '', injectPosition: 'after', looks: [] },
           scrollReveal: { enabled: false, selectors: '.product-item, .js-item-product, .home-section, .banner, .featured-products .item', animation: 'fade-up', duration: 700, distance: 40, stagger: 80, once: true, threshold: 0.12 },
           customCursor: { enabled: false, style: 'dot-ring', dotColor: '#111111', ringColor: '#111111', dotSize: 8, ringSize: 36, mixBlendMode: 'difference', hideOnMobile: true },
-          tabTitle: { enabled: false, messages: ['👋 ¡Volvé!', '🛍️ Te estamos esperando', '💝 Tus productos te extrañan'], interval: 2500, restoreOnFocus: true },
-          backToTop: { enabled: false, icon: '↑', position: 'bottom-right', offset: 30, size: 48, backgroundColor: '#111111', textColor: '#ffffff', borderRadius: 50, showAfter: 400, animation: 'fade', pulse: false }
+          tabTitle: { enabled: false, messages: ['?? �Volv�!', '??? Te estamos esperando', '?? Tus productos te extra�an'], interval: 2500, restoreOnFocus: true },
+          backToTop: { enabled: false, icon: '?', position: 'bottom-right', offset: 30, size: 48, backgroundColor: '#111111', textColor: '#ffffff', borderRadius: 50, showAfter: 400, animation: 'fade', pulse: false }
         }
       });
     }
@@ -10070,76 +10513,21 @@ async function removeAllStoreScripts(storeId) {
 }
 
 async function ensureStyleScriptInstalled(storeId) {
+  // Los scripts de GlowLab se gestionan desde el Partner Portal (App Scripts),
+  // no desde la API de scripts por tienda. TiendaNube deprecó el POST /scripts.
+  // Solo verificamos que la tienda exista y tenga token valido.
   try {
-    console.log(`?? Verificando script de Style para store ${storeId}...`);
-
     const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
-    if (!storeDoc.exists) {
-      console.log(`??  Store ${storeId} no encontrado en Firestore`);
-      return { scriptInstalled: false };
-    }
-
-    const accessToken = storeDoc.data().accessToken;
-    const scriptUrl = `${CLOUD_FUNCTION_URL}/style-widget.js?store=${storeId}`;
-
-    // Listar scripts existentes
-    const scriptsResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
-      headers: {
-        'Authentication': `bearer ${accessToken}`,
-        'User-Agent': 'GlowLab (info@techdi.com.ar)'
-      }
-    });
-
-    if (!scriptsResponse.ok) {
-      console.log(`??  Error consultando scripts: ${scriptsResponse.status}`);
-      return { scriptInstalled: false };
-    }
-
-    const scriptsData = await scriptsResponse.json();
-    const scripts = Array.isArray(scriptsData) ? scriptsData : (scriptsData.result || []);
-    
-    // Buscar si ya existe un script de style
-    const existingScript = scripts.find(s => 
-      s.src && s.src.includes('style-widget')
-    );
-
-    if (existingScript) {
-      console.log(`? Script de Style ya instalado (ID: ${existingScript.id || 'N/A'})`);
-      return { scriptInstalled: true };
-    }
-
-    // Instalar el script
-    console.log(`?? Instalando script de Style...`);
-    const installResponse = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
-      method: 'POST',
-      headers: {
-        'Authentication': `bearer ${accessToken}`,
-        'User-Agent': 'GlowLab (info@techdi.com.ar)',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        event: 'onload',
-        src: scriptUrl,
-        where: 'store'
-      })
-    });
-
-    if (!installResponse.ok) {
-      const errorText = await installResponse.text();
-      console.log(`??  No se pudo instalar script automáticamente: ${errorText}`);
-      return { scriptInstalled: false };
-    }
-
-    const installedScript = await installResponse.json();
-    console.log(`? Script de Style instalado exitosamente (ID: ${installedScript.id || 'N/A'})`);
+    if (!storeDoc.exists) return { scriptInstalled: false };
+    // Si llegamos hasta aquí, los scripts del Partner Portal ya están auto-instalados.
     return { scriptInstalled: true };
   } catch (error) {
-    console.error(`? Error en ensureStyleScriptInstalled:`, error.message);
+    console.error(`Error en ensureStyleScriptInstalled:`, error.message);
     return { scriptInstalled: false };
   }
 }
 
-// POST /api/style-config - Guardar configuración de personalización
+// POST /api/style-config - Guardar configuraci�n de personalizaci�n
 app.post("/api/style-config", async (req, res) => {
   const { storeId, config } = req.body;
 
@@ -10148,7 +10536,7 @@ app.post("/api/style-config", async (req, res) => {
   }
 
   try {
-    // Guardar configuración
+    // Guardar configuraci�n
     await db.collection("promonube_style_config").doc(storeId).set({
       ...config,
       updatedAt: new Date().toISOString()
@@ -10156,7 +10544,7 @@ app.post("/api/style-config", async (req, res) => {
 
     console.log("? Style config guardada para store:", storeId);
 
-    // Invalidar cach? en memoria para que el próximo request de widget use datos frescos
+    // Invalidar cach? en memoria para que el pr�ximo request de widget use datos frescos
     invalidateConfigCache(storeId);
 
     // Verificar e instalar el script si es necesario
@@ -10170,7 +10558,7 @@ app.post("/api/style-config", async (req, res) => {
 
     res.json({
       success: true,
-      message: "Configuración guardada correctamente",
+      message: "Configuraci�n guardada correctamente",
       scriptInstalled
     });
   } catch (error) {
@@ -10183,7 +10571,7 @@ app.post("/api/style-config", async (req, res) => {
 // ENHANCED SEARCH ENDPOINTS
 // ============================================
 
-// GET /api/enhanced-search-config/:storeId - Obtener configuración del buscador mejorado
+// GET /api/enhanced-search-config/:storeId - Obtener configuraci�n del buscador mejorado
 app.get("/api/enhanced-search-config/:storeId", async (req, res) => {
   const { storeId } = req.params;
 
@@ -10196,7 +10584,7 @@ app.get("/api/enhanced-search-config/:storeId", async (req, res) => {
     const styleDoc = await db.collection("promonube_style_config").doc(storeId).get();
     
     if (!styleDoc.exists || !styleDoc.data().enhancedSearch) {
-      // Configuración por defecto
+      // Configuraci�n por defecto
       return res.json({
         success: true,
         config: {
@@ -10204,7 +10592,7 @@ app.get("/api/enhanced-search-config/:storeId", async (req, res) => {
           popularSearches: [
             { text: 'sillas', link: '' },
             { text: 'mesas', link: '' },
-            { text: 'decoración', link: '' }
+            { text: 'decoraci�n', link: '' }
           ],
           primaryColor: '#000000',
           textColor: '#1a1a1a',
@@ -10213,7 +10601,7 @@ app.get("/api/enhanced-search-config/:storeId", async (req, res) => {
           fontFamily: 'inherit',
           fontSize: '15',
           fontWeight: '500',
-          headerText: 'Búsquedas Populares',
+          headerText: 'B�squedas Populares',
           showHeader: true,
           showIcons: true,
           defaultEmoji: '??',
@@ -10234,18 +10622,18 @@ app.get("/api/enhanced-search-config/:storeId", async (req, res) => {
   }
 });
 
-// GET /api/enhanced-search-script.js - Servir el script Enhanced Search dinámicamente (sin cache)
+// GET /api/enhanced-search-script.js - Servir el script Enhanced Search din�micamente (sin cache)
 app.get("/api/enhanced-search-script.js", (req, res) => {
   const scriptContent = `// ?? PromoNube Enhanced Search - Script de Buscador Mejorado
-// Version: 1.2.0 - Servido dinámicamente
-// ?última actualizaci?n: Enero 13, 2026
+// Version: 1.2.0 - Servido din�micamente
+// ?�ltima actualizaci?n: Enero 13, 2026
 
 (function() {
   'use strict';
   
   console.log('?? PromoNube Enhanced Search cargando... v1.2');
-  
-  const API_URL = 'https://apipromonube-jlfopowzaq-uc.a.run.app';
+
+  const API_URL = '${_SRV_BASE}';
   
   let STORE_ID = null;
   
@@ -10284,22 +10672,22 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
     .then(response => response.json())
     .then(data => {
       if (!data.success || !data.config) {
-        console.log('?? PromoNube Enhanced Search: No hay configuración');
+        console.log('?? PromoNube Enhanced Search: No hay configuraci�n');
         return;
       }
       
       const CONFIG = data.config;
       
       if (!CONFIG.enabled) {
-        console.log('?? PromoNube Enhanced Search: Desactivado en configuración');
+        console.log('?? PromoNube Enhanced Search: Desactivado en configuraci�n');
         return;
       }
       
-      console.log('? PromoNube Enhanced Search: Configuración cargada', CONFIG);
+      console.log('? PromoNube Enhanced Search: Configuraci�n cargada', CONFIG);
       initEnhancedSearch(CONFIG);
     })
     .catch(error => {
-      console.error('? PromoNube Enhanced Search: Error cargando configuración', error);
+      console.error('? PromoNube Enhanced Search: Error cargando configuraci�n', error);
     });
   
   function findSearchInput() {
@@ -10318,7 +10706,7 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
     for (const sel of selectors) {
       const input = document.querySelector(sel);
       if (input) {
-        console.log('? Input de búsqueda encontrado:', sel);
+        console.log('? Input de b�squeda encontrado:', sel);
         return input;
       }
     }
@@ -10361,7 +10749,7 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
         border-bottom: 2px solid \${primaryColor}20;
         background: linear-gradient(135deg, \${primaryColor}05 0%, \${primaryColor}10 100%);
       \`;
-      header.innerHTML = '?? <span style="margin-left: 6px;">Búsquedas Populares</span>';
+      header.innerHTML = '?? <span style="margin-left: 6px;">B�squedas Populares</span>';
       dropdown.appendChild(header);
       
       CONFIG.popularSearches.forEach(function(search) {
@@ -10465,7 +10853,7 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
     const searchInput = findSearchInput();
     
     if (!searchInput) {
-      console.log('?? PromoNube Enhanced Search: Input de búsqueda no encontrado');
+      console.log('?? PromoNube Enhanced Search: Input de b�squeda no encontrado');
       setTimeout(() => initEnhancedSearch(CONFIG), 1000);
       return;
     }
@@ -10523,11 +10911,11 @@ app.get("/api/enhanced-search-script.js", (req, res) => {
 })();`;
 
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
   res.send(scriptContent);
 });
 
-// POST /api/enhanced-search-config/:storeId - Guardar configuración del buscador mejorado
+// POST /api/enhanced-search-config/:storeId - Guardar configuraci�n del buscador mejorado
 app.post("/api/enhanced-search-config/:storeId", async (req, res) => {
   const { storeId } = req.params;
   const config = req.body;
@@ -10537,7 +10925,7 @@ app.post("/api/enhanced-search-config/:storeId", async (req, res) => {
   }
 
   try {
-    // Escribe en promonube_style_config (misma colección que lee el widget y el GET)
+    // Escribe en promonube_style_config (misma colecci�n que lee el widget y el GET)
     await db.collection("promonube_style_config").doc(storeId).set({
       enhancedSearch: { ...config, updatedAt: FieldValue.serverTimestamp() }
     }, { merge: true });
@@ -10546,7 +10934,7 @@ app.post("/api/enhanced-search-config/:storeId", async (req, res) => {
 
     res.json({
       success: true,
-      message: "Configuración de buscador guardada correctamente"
+      message: "Configuraci�n de buscador guardada correctamente"
     });
   } catch (error) {
     console.error("Error guardando enhanced search config:", error);
@@ -10559,7 +10947,7 @@ app.get("/api/enhanced-search-widget.js", async (req, res) => {
   const { store } = req.query;
 
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
 
   if (!store) return res.send('// Error: store requerido');
 
@@ -10709,7 +11097,7 @@ app.get("/api/enhanced-search-widget.js", async (req, res) => {
     return { d: d, listEl: listEl, hdrIconEl: hdrIconEl, hdrLblEl: hdrLblEl, badgeEl: badgeEl };
   }
 
-  // Renderiza búsquedas populares en listEl
+  // Renderiza b�squedas populares en listEl
   function renderPopular(listEl) {
     var primary   = CONFIG.primaryColor    || '#6c63ff';
     var textCol   = CONFIG.textColor       || '#1a1a2e';
@@ -11039,7 +11427,7 @@ app.get("/api/enhanced-search-widget.js", async (req, res) => {
 app.get("/style-widget.js", (req, res) => {
   const fallbackStore = req.query.store || '';
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400');
   res.send(`(function() {
   'use strict';
   function getStoreId() {
@@ -11051,19 +11439,19 @@ app.get("/style-widget.js", (req, res) => {
   var storeId = getStoreId();
   if (!storeId) { console.warn('PromoNube: no se pudo detectar storeId'); return; }
   var s = document.createElement('script');
-  s.src = 'https://apipromonube-jlfopowzaq-uc.a.run.app/api/style-widget.js?store=' + storeId;
+  s.src = 'https://pedidos-lett-2.web.app/api/style-widget.js?store=' + storeId;
   s.async = true;
   document.head.appendChild(s);
   console.log('PromoNube Style Widget: cargando para store', storeId);
 })();`);
 });
 
-// GET /api/style-widget.js - Script de personalización embebible
+// GET /api/style-widget.js - Script de personalizaci�n embebible
 app.get("/api/style-widget.js", async (req, res) => {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
 
   try {
     if (!store) {
@@ -11075,11 +11463,11 @@ app.get("/api/style-widget.js", async (req, res) => {
       return res.send('// PromoNube: plan inactivo');
     }
 
-    // Cargar configuración desde cach? en memoria (reduce lecturas Firestore)
+    // Cargar configuraci�n desde cach? en memoria (reduce lecturas Firestore)
     const styleDoc = await getCachedDoc("promonube_style_config", store);
     
     if (!styleDoc.exists) {
-      return res.send("// No hay configuración de Style");
+      return res.send("// No hay configuraci�n de Style");
     }
 
     const config = styleDoc.data();
@@ -11105,14 +11493,14 @@ app.get("/api/style-widget.js", async (req, res) => {
       'a[href*="api.whatsapp.com"]'
     ];
     
-    // Buscar SOLO el botón flotante de WhatsApp (no links en footer u otras secciones)
+    // Buscar SOLO el bot�n flotante de WhatsApp (no links en footer u otras secciones)
     let btn = null;
     for (const sel of selectors) {
       const candidates = document.querySelectorAll(sel);
       for (let i = 0; i < candidates.length; i++) {
         const el = candidates[i];
         const style = window.getComputedStyle(el);
-        // El botón flotante de WPP típicamente es fixed/absolute y tiene aspecto de botón circular
+        // El bot�n flotante de WPP t�picamente es fixed/absolute y tiene aspecto de bot�n circular
         if (style.position === 'fixed' || style.position === 'absolute' || 
             el.classList.contains('whatsapp-button') || el.classList.contains('js-btn-fixed-bottom')) {
           // Verificar que NO est? dentro del footer
@@ -11127,7 +11515,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     if (!btn) return;
 
-    // Marcar el botón encontrado con una clase única para aplicar estilos solo a ?l
+    // Marcar el bot�n encontrado con una clase �nica para aplicar estilos solo a ?l
     btn.classList.add('pn-wa-customized');
 
     const styleEl = document.createElement('style');
@@ -11148,7 +11536,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     
     styleEl.textContent = css;
     document.head.appendChild(styleEl);
-    console.log('PromoNube Style: WhatsApp customizado (solo botón flotante)');
+    console.log('PromoNube Style: WhatsApp customizado (solo bot�n flotante)');
   }
 
   function customizeBanners() {
@@ -11164,10 +11552,10 @@ app.get("/api/style-widget.js", async (req, res) => {
     console.log('PromoNube Banners: Iniciando...', CONFIG.banners);
 
     // Buscar SOLO los slides del carrusel principal del home (NO productos)
-    // IMPORTANTE: Excluir explícitamente los slides de productos
+    // IMPORTANTE: Excluir expl�citamente los slides de productos
     let slides = null;
     
-    // Intentar selector más específico para el home banner principal
+    // Intentar selector m�s espec�fico para el home banner principal
     const homeSlider = document.querySelector('.js-home-main-slider-container:not(.js-product-slider)');
     
     if (homeSlider) {
@@ -11180,7 +11568,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       }
     }
     
-    // Filtrar SOLO slides que NO están dentro de .js-product-slider o product-detail
+    // Filtrar SOLO slides que NO est�n dentro de .js-product-slider o product-detail
     if (slides && slides.length > 0) {
       slides = Array.from(slides).filter(function(slide) {
         const isProductSlide = slide.closest('.js-product-slider') || 
@@ -11192,7 +11580,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                             (containerSlide && containerSlide.classList.contains('swiper-slide-duplicate'));
         return !isProductSlide && !isDuplicate;
       });
-      console.log('PromoNube: Slides después de filtrar productos/duplicados:', slides.length);
+      console.log('PromoNube: Slides despu�s de filtrar productos/duplicados:', slides.length);
     } else {
       slides = [];
     }
@@ -11212,7 +11600,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       console.log('PromoNube: Procesando slide', slideIndex);
       
       if (!slideElement) {
-        console.warn('PromoNube: No existe slide en índice', slideIndex, '(solo hay', slides.length, 'slides)');
+        console.warn('PromoNube: No existe slide en �ndice', slideIndex, '(solo hay', slides.length, 'slides)');
         return;
       }
 
@@ -11296,7 +11684,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
         const btn = document.createElement('a');
         btn.href = btnConfig.url || '#';
-        btn.textContent = btnConfig.text || 'Ver más';
+        btn.textContent = btnConfig.text || 'Ver m�s';
         btn.target = '_blank';
         
         // Manejar borde (retrocompatibilidad con campo 'border' antiguo)
@@ -11327,7 +11715,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         };
 
         container.appendChild(btn);
-        console.log('PromoNube: Botón agregado:', btnConfig.text);
+        console.log('PromoNube: Bot�n agregado:', btnConfig.text);
       });
 
       if (getComputedStyle(slideElement).position === 'static') {
@@ -11381,7 +11769,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         '    visibility: visible !important;' +
         '  }' +
         '}' +
-        '/* Mobile pequeño */' +
+        '/* Mobile peque�o */' +
         '@media (max-width: 480px) {' +
         '  .pn-banner-buttons { ' +
         '    gap: 8px !important; ' +
@@ -11403,7 +11791,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         '    width: auto !important;' +
         '  }' +
         '}' +
-        '/* Mobile muy pequeño */' +
+        '/* Mobile muy peque�o */' +
         '@media (max-width: 360px) {' +
         '  .pn-banner-buttons a { ' +
         '    font-size: 11px !important; ' +
@@ -11428,7 +11816,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     console.log('PromoNube Menu: Iniciando...', CONFIG.menu);
 
-    // Selector específico para MOBILE
+    // Selector espec�fico para MOBILE
     var mobileSelector = '#nav-hamburger > div > div.modal-scrollable-area > div.modal-body.nav-body > div > ul > li > a';
     var mobileLinks = document.querySelectorAll(mobileSelector);
 
@@ -11445,7 +11833,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       
       console.log('PromoNube: UL #' + h, '- Parent:', ulParentTag, '- Classes:', ul.className);
       
-      // Solo procesar UL que NO están dentro de un LI (no son submenús)
+      // Solo procesar UL que NO est�n dentro de un LI (no son submen�s)
       if (ulParentTag !== 'li') {
         var directChildren = ul.querySelectorAll(':scope > li');
         console.log('PromoNube: Este UL tiene', directChildren.length, 'LI hijos directos');
@@ -11465,7 +11853,7 @@ app.get("/api/style-widget.js", async (req, res) => {
           }
         }
         
-        // PRIMERO: Intentar encontrar categorías con submen?
+        // PRIMERO: Intentar encontrar categor�as con submen?
         var categoriesWithSubmenu = [];
         for (var li = 0; li < directChildren.length; li++) {
           var liElement = directChildren[li];
@@ -11483,14 +11871,14 @@ app.get("/api/style-widget.js", async (req, res) => {
           }
         }
         
-        // Si encontró categorías con submen?, usar esas
+        // Si encontr� categor�as con submen?, usar esas
         if (categoriesWithSubmenu.length > 0) {
           desktopLinks = categoriesWithSubmenu;
-          console.log('PromoNube: ? Encontradas', desktopLinks.length, 'categorías con submen?');
+          console.log('PromoNube: ? Encontradas', desktopLinks.length, 'categor�as con submen?');
           break;
         }
         
-        // Si NO encontró categorías con submen? pero es el PRIMER UL, usar todos sus links
+        // Si NO encontr� categor�as con submen? pero es el PRIMER UL, usar todos sus links
         if (h === 0 && directChildren.length > 0) {
           for (var li2 = 0; li2 < directChildren.length; li2++) {
             // Primero intentar :scope > a (link directo)
@@ -11510,7 +11898,7 @@ app.get("/api/style-widget.js", async (req, res) => {
               desktopLinks.push(link2);
               console.log('PromoNube: Link agregado desde LI #' + li2 + ':', link2.textContent.trim());
             } else {
-              console.log('PromoNube: LI #' + li2 + ' NO tiene ningún link');
+              console.log('PromoNube: LI #' + li2 + ' NO tiene ning�n link');
             }
           }
           console.log('PromoNube: ? Usando primer UL con', desktopLinks.length, 'items');
@@ -11530,13 +11918,13 @@ app.get("/api/style-widget.js", async (req, res) => {
     }
 
     if (desktopLinks.length === 0 && mobileLinks.length === 0) {
-      console.warn('PromoNube: NO SE ENCONTRÓ NINGÚN MENÚ');
+      console.warn('PromoNube: NO SE ENCONTR� NING�N MEN�');
       return;
     }
 
     console.log('PromoNube: Aplicando estilos a DESKTOP:', desktopLinks.length, 'items y MOBILE:', mobileLinks.length, 'items');
     
-    // Combinar ambos menús para aplicar estilos a todos
+    // Combinar ambos men�s para aplicar estilos a todos
     var allMenus = [];
     if (desktopLinks.length > 0) {
       allMenus.push({ name: 'DESKTOP', links: desktopLinks });
@@ -11550,7 +11938,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       var currentMenu = allMenus[m];
       console.log('PromoNube: Aplicando a', currentMenu.name, 'con', currentMenu.links.length, 'items');
       
-      // Construir mapa de subcategorías (para posiciones como 1.1, 2.3, etc.)
+      // Construir mapa de subcategor�as (para posiciones como 1.1, 2.3, etc.)
       var subcategoryMap = {};
       for (var mainIdx = 0; mainIdx < currentMenu.links.length; mainIdx++) {
         var mainLink = currentMenu.links[mainIdx];
@@ -11560,7 +11948,7 @@ app.get("/api/style-widget.js", async (req, res) => {
           if (submenuUl) {
             var subLinks = submenuUl.querySelectorAll(':scope > li > a');
             subcategoryMap[mainIdx + 1] = Array.prototype.slice.call(subLinks);
-            console.log('PromoNube: Categoría', (mainIdx + 1), 'tiene', subLinks.length, 'subcategorías');
+            console.log('PromoNube: Categor�a', (mainIdx + 1), 'tiene', subLinks.length, 'subcategor�as');
           }
         }
       }
@@ -11570,9 +11958,9 @@ app.get("/api/style-widget.js", async (req, res) => {
         var pos = item.position.toString();
         var targetLink = null;
         
-        console.log('PromoNube: Procesando item configurado - Posición:', pos, 'Color:', item.color, 'Emoji:', item.emoji);
+        console.log('PromoNube: Procesando item configurado - Posici�n:', pos, 'Color:', item.color, 'Emoji:', item.emoji);
         
-        // Detectar si es subcategoría (formato "1.2", "2.3")
+        // Detectar si es subcategor�a (formato "1.2", "2.3")
         if (pos.indexOf('.') !== -1) {
           var parts = pos.split('.');
           var mainPos = parseInt(parts[0]);
@@ -11580,30 +11968,30 @@ app.get("/api/style-widget.js", async (req, res) => {
           
           if (subcategoryMap[mainPos] && subcategoryMap[mainPos][subPos - 1]) {
             targetLink = subcategoryMap[mainPos][subPos - 1];
-            console.log('PromoNube: ? Subcategoría encontrada:', mainPos + '.' + subPos, '- Texto:', targetLink.textContent.trim());
+            console.log('PromoNube: ? Subcategor�a encontrada:', mainPos + '.' + subPos, '- Texto:', targetLink.textContent.trim());
           } else {
-            console.warn('PromoNube: Subcategoría', pos, 'no encontrada');
+            console.warn('PromoNube: Subcategor�a', pos, 'no encontrada');
             continue;
           }
         } else {
-          // Categoría principal
+          // Categor�a principal
           var mainPosition = parseInt(pos);
           if (mainPosition < 1 || mainPosition > currentMenu.links.length) {
-            console.warn('PromoNube: Posición', pos, 'fuera de rango (1-' + currentMenu.links.length + ')');
+            console.warn('PromoNube: Posici�n', pos, 'fuera de rango (1-' + currentMenu.links.length + ')');
             continue;
           }
           targetLink = currentMenu.links[mainPosition - 1];
-          console.log('PromoNube: ? Categoría principal encontrada:', pos, '- Texto:', targetLink.textContent.trim());
+          console.log('PromoNube: ? Categor�a principal encontrada:', pos, '- Texto:', targetLink.textContent.trim());
         }
         
         if (!targetLink) {
-          console.warn('PromoNube: No se encontró link en posición', pos);
+          console.warn('PromoNube: No se encontr� link en posici�n', pos);
           continue;
         }
 
-        console.log('PromoNube: Aplicando estilos a posición', pos);
+        console.log('PromoNube: Aplicando estilos a posici�n', pos);
 
-        // Aplicar estilos directamente al elemento con máxima prioridad
+        // Aplicar estilos directamente al elemento con m�xima prioridad
         var currentStyle = targetLink.getAttribute('style') || '';
         
         if (item.color) {
@@ -11614,7 +12002,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         }
         if (item.fontSize) {
           var fontSize = item.fontSize.toString().trim();
-          // Si es solo un número (con o sin decimales), agregar 'px' automáticamente
+          // Si es solo un n�mero (con o sin decimales), agregar 'px' autom�ticamente
           if (!isNaN(parseFloat(fontSize)) && isFinite(fontSize) && !fontSize.match(/px|rem|em|%|pt|pc|vh|vw/i)) {
             fontSize = fontSize + 'px';
           }
@@ -11664,15 +12052,15 @@ app.get("/api/style-widget.js", async (req, res) => {
             } else if (item.emojiPosition === 'after') {
               targetLink.innerHTML = targetLink.innerHTML + '<span> ' + item.emoji + '</span>';
             }
-            console.log('PromoNube: Emoji agregado a posición', pos);
+            console.log('PromoNube: Emoji agregado a posici�n', pos);
           }
         }
 
         // Agregar imagen en dropdown si est? configurada
         if (item.imageUrl && item.imageUrl.trim() !== '') {
-          console.log('PromoNube: Procesando imagen para posición', pos);
+          console.log('PromoNube: Procesando imagen para posici�n', pos);
           
-          // Solo para categorías principales (no subcategorías)
+          // Solo para categor�as principales (no subcategor�as)
           if (pos.indexOf('.') === -1) {
             var mainPosition = parseInt(pos);
             if (mainPosition >= 1 && mainPosition <= currentMenu.links.length) {
@@ -11680,20 +12068,20 @@ app.get("/api/style-widget.js", async (req, res) => {
               var mainLi = mainLink.closest('li');
               
               if (mainLi) {
-                // ====== MODO MEGA-MENÚ FLOTANTE (opt-in via item.megaMenu) ======
+                // ====== MODO MEGA-MEN� FLOTANTE (opt-in via item.megaMenu) ======
                 if (item.megaMenu === true) {
                   (function(li, config) {
                     var panelId = 'pn-mega-menu-pos' + config.pos;
                     if (document.getElementById(panelId)) return;
 
-                    // Copiar los sub-links del dropdown nativo (si existen) para usarlos dentro del mega-menú
+                    // Copiar los sub-links del dropdown nativo (si existen) para usarlos dentro del mega-men�
                     var subLinks = [];
                     // Buscar TODOS los dropdowns candidatos (puede haber varios niveles) y ocultarlos
                     var nativeDropdowns = li.querySelectorAll('ul, [class*="dropdown"], [class*="submenu"], [class*="sub-menu"], [class*="Submenu"]');
                     var mainHref = mainLink.getAttribute('href') || '';
                     for (var nd = 0; nd < nativeDropdowns.length; nd++) {
                       var ndEl = nativeDropdowns[nd];
-                      // Extraer links solo del primer dropdown válido con links
+                      // Extraer links solo del primer dropdown v�lido con links
                       if (subLinks.length === 0) {
                         var links = ndEl.querySelectorAll('a');
                         for (var sl = 0; sl < links.length && sl < 30; sl++) {
@@ -11706,7 +12094,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                       ndEl.classList.add('pn-native-dropdown-hidden');
                       ndEl.setAttribute('data-pn-mega-hidden', '1');
                     }
-                    // Además, marcar el LI para ocultar cualquier sibling sospechoso del theme
+                    // Adem�s, marcar el LI para ocultar cualquier sibling sospechoso del theme
                     li.classList.add('pn-has-mega-menu');
 
                     // Crear el panel flotante
@@ -11733,7 +12121,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
                     document.body.appendChild(panel);
 
-                    // Posicionamiento: debajo del LI, ancho máximo del viewport
+                    // Posicionamiento: debajo del LI, ancho m�ximo del viewport
                     var showTimer = null, hideTimer = null;
                     function positionPanel() {
                       var r = li.getBoundingClientRect();
@@ -11764,18 +12152,18 @@ app.get("/api/style-widget.js", async (req, res) => {
                     window.addEventListener('resize', function(){ if (panel.classList.contains('pn-mm-visible')) positionPanel(); });
                     window.addEventListener('scroll', function(){ if (panel.classList.contains('pn-mm-visible')) positionPanel(); }, { passive: true });
 
-                    console.log('PromoNube: ? Mega-menú flotante creado para posición', config.pos);
+                    console.log('PromoNube: ? Mega-men� flotante creado para posici�n', config.pos);
                   })(mainLi, { pos: pos, imageUrl: item.imageUrl, imageLink: item.imageLink, caption: item.imageCaption });
-                  continue; // saltear la lógica vieja de inyección en dropdown
+                  continue; // saltear la l�gica vieja de inyecci�n en dropdown
                 }
-                // ====== FIN MODO MEGA-MENÚ ======
+                // ====== FIN MODO MEGA-MEN� ======
 
-                // DIAGNÓSTICO: Mostrar estructura del LI para debugging
-                console.log('PromoNube DEBUG: Estructura del LI para posición', pos);
+                // DIAGN�STICO: Mostrar estructura del LI para debugging
+                console.log('PromoNube DEBUG: Estructura del LI para posici�n', pos);
                 console.log('  - LI classes:', mainLi.className);
                 console.log('  - LI HTML (primeros 300 chars):', mainLi.innerHTML.substring(0, 300));
                 
-                // Buscar el dropdown/submenu con múltiples estrategias
+                // Buscar el dropdown/submenu con m�ltiples estrategias
                 var dropdown = null;
                 
                 // Estrategia 1: Buscar ul directamente
@@ -11785,7 +12173,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                 // Estrategia 2: Buscar por clases comunes de dropdown
                 if (!dropdown) {
                   dropdown = mainLi.querySelector('.dropdown-menu, .submenu, .nav-dropdown, .js-desktop-dropdown, .menu-dropdown');
-                  if (dropdown) console.log('  - ? Dropdown encontrado: Por clase común');
+                  if (dropdown) console.log('  - ? Dropdown encontrado: Por clase com�n');
                 }
                 
                 // Estrategia 3: Buscar cualquier contenedor con links dentro
@@ -11826,7 +12214,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                 
                 if (dropdown) {
                   dropdown.classList.add('pn-menu-dropdown-has-image');
-                  // ID único para esta imagen
+                  // ID �nico para esta imagen
                   var imageId = 'pn-menu-img-' + currentMenu.name + '-pos' + pos;
                   
                   // Verificar si ya existe
@@ -11868,10 +12256,10 @@ app.get("/api/style-widget.js", async (req, res) => {
                       dropdown.appendChild(imageContainer);
                     }
                     
-                    console.log('PromoNube: ? Imagen insertada en dropdown de posición', pos, '(tipo:', dropdown.tagName, ')');
+                    console.log('PromoNube: ? Imagen insertada en dropdown de posici�n', pos, '(tipo:', dropdown.tagName, ')');
                   }
                 } else {
-                  console.log('PromoNube: ?? No se encontró dropdown para posición', pos, '- Li:', mainLi);
+                  console.log('PromoNube: ?? No se encontr� dropdown para posici�n', pos, '- Li:', mainLi);
                   
                   // Fallback: crear dropdown si no existe
                   var fallbackDropdown = document.createElement('div');
@@ -11910,7 +12298,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       }
     }
 
-    // Agregar estilos CSS para las imágenes en mobile y desktop
+    // Agregar estilos CSS para las im�genes en mobile y desktop
     var imageStyles = document.createElement('style');
     imageStyles.id = 'pn-menu-image-styles';
     imageStyles.textContent = \`
@@ -12000,8 +12388,8 @@ app.get("/api/style-widget.js", async (req, res) => {
         }
       }
 
-      /* ===== MEGA-MENÚ FLOTANTE (opt-in) ===== */
-      /* Ocultar el dropdown nativo del theme cuando hay mega-menú (gana al :hover del theme) */
+      /* ===== MEGA-MEN� FLOTANTE (opt-in) ===== */
+      /* Ocultar el dropdown nativo del theme cuando hay mega-men� (gana al :hover del theme) */
       .pn-native-dropdown-hidden,
       .pn-has-mega-menu:hover .pn-native-dropdown-hidden,
       .pn-has-mega-menu:focus-within .pn-native-dropdown-hidden,
@@ -12142,10 +12530,10 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     console.log('PromoNube SearchBar: Iniciando mejora del buscador...');
 
-    // Buscar el icono/botón de búsqueda Y el input en el header (excluyendo logos)
+    // Buscar el icono/bot�n de b�squeda Y el input en el header (excluyendo logos)
     var searchTriggers = document.querySelectorAll('header .js-search-btn, header button[class*="search"], header a.js-search-btn, .utilities-item a[href*="search"], .js-utilities a[href*="search"], header input[type="search"], header input[name="q"], header .search-input, header .js-search-input');
     
-    // Filtrar para excluir elementos con "logo" en su clase o que sean imágenes
+    // Filtrar para excluir elementos con "logo" en su clase o que sean im�genes
     searchTriggers = Array.from(searchTriggers).filter(function(el) {
       var className = el.className.toLowerCase();
       var isLogo = className.includes('logo') || el.querySelector('img[alt*="logo"]') || el.closest('.logo');
@@ -12153,16 +12541,16 @@ app.get("/api/style-widget.js", async (req, res) => {
     });
     
     if (searchTriggers.length === 0) {
-      console.warn('PromoNube: No se encontró botón de búsqueda');
+      console.warn('PromoNube: No se encontr� bot�n de b�squeda');
       return;
     }
 
-    console.log('PromoNube: Encontrados', searchTriggers.length, 'triggers de búsqueda (botones e inputs)');
+    console.log('PromoNube: Encontrados', searchTriggers.length, 'triggers de b�squeda (botones e inputs)');
 
     // Crear el modal overlay
     var modalId = 'pn-search-modal';
     if (document.getElementById(modalId)) {
-      console.log('PromoNube: Modal de búsqueda ya existe');
+      console.log('PromoNube: Modal de b�squeda ya existe');
       return;
     }
 
@@ -12171,7 +12559,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     searchModal.className = 'pn-search-modal';
     searchModal.style.zIndex = '999999';
     
-    // Variables de configuración
+    // Variables de configuraci�n
     var showLogo = CONFIG.searchBar.showLogo || false;
     var logoUrl = CONFIG.searchBar.logoUrl || '';
     var logoSize = CONFIG.searchBar.logoSize || 100;
@@ -12179,18 +12567,18 @@ app.get("/api/style-widget.js", async (req, res) => {
     var suggestions = CONFIG.searchBar.suggestions || [];
     var closeButtonColor = CONFIG.searchBar.closeButtonColor || '#000000';
     
-    console.log('PromoNube: Configuración del logo:', {
+    console.log('PromoNube: Configuraci�n del logo:', {
       showLogo: showLogo,
       logoUrl: logoUrl,
       logoSize: logoSize
     });
-    console.log('PromoNube: Color botón cerrar:', closeButtonColor);
+    console.log('PromoNube: Color bot�n cerrar:', closeButtonColor);
     console.log('PromoNube: Sugerencias:', suggestions);
     
     searchModal.innerHTML = \`
       <div class="pn-search-overlay"></div>
       <div class="pn-search-container \${titlePosition === 'top' ? 'pn-search-top-layout' : ''}">
-        <button class="pn-search-close" aria-label="Cerrar búsqueda">
+        <button class="pn-search-close" aria-label="Cerrar b�squeda">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="\${closeButtonColor}" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -12198,7 +12586,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         </button>
         <div class="pn-search-content">
           \${showLogo && logoUrl ? '<img src="' + logoUrl + '" alt="Logo" class="pn-search-logo" style="max-width: ' + logoSize + 'px; height: auto; margin: 0 auto 12px; display: block;" />' : ''}
-          <h2 class="pn-search-title">\${CONFIG.searchBar.placeholder || '¿Qué estás buscando?'}</h2>
+          <h2 class="pn-search-title">\${CONFIG.searchBar.placeholder || '�Qu� est�s buscando?'}</h2>
           <form class="pn-search-form" action="/search" method="get">
             <input 
               type="text" 
@@ -12223,7 +12611,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     document.body.appendChild(searchModal);
 
-    // Función para abrir el modal
+    // Funci�n para abrir el modal
     function openSearchModal(e) {
       e.preventDefault();
       searchModal.classList.add('active');
@@ -12235,21 +12623,21 @@ app.get("/api/style-widget.js", async (req, res) => {
         if (input) input.focus();
       }, 100);
       
-      console.log('PromoNube: Modal de búsqueda abierto');
+      console.log('PromoNube: Modal de b�squeda abierto');
     }
 
-    // Función para cerrar el modal
+    // Funci�n para cerrar el modal
     function closeSearchModal() {
       searchModal.classList.remove('active');
       document.body.style.overflow = '';
-      console.log('PromoNube: Modal de búsqueda cerrado');
+      console.log('PromoNube: Modal de b�squeda cerrado');
     }
 
     // Agregar event listeners a todos los triggers
     for (var i = 0; i < searchTriggers.length; i++) {
       var trigger = searchTriggers[i];
       
-      // Si es un input, también prevenir el comportamiento por defecto al hacer focus
+      // Si es un input, tambi�n prevenir el comportamiento por defecto al hacer focus
       if (trigger.tagName === 'INPUT') {
         trigger.addEventListener('focus', openSearchModal);
         trigger.addEventListener('click', function(e) {
@@ -12264,7 +12652,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       }
     }
 
-    // Cerrar con botón X
+    // Cerrar con bot�n X
     var closeBtn = searchModal.querySelector('.pn-search-close');
     if (closeBtn) {
       closeBtn.addEventListener('click', closeSearchModal);
@@ -12296,7 +12684,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     var titlePosition = CONFIG.searchBar.titlePosition || 'center';
     
     searchStyles.textContent = \`
-      /* Modal de búsqueda - Base */
+      /* Modal de b�squeda - Base */
       .pn-search-modal {
         position: fixed;
         top: 0;
@@ -12347,7 +12735,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         padding-top: 80px;
       }
 
-      /* Botón cerrar */
+      /* Bot�n cerrar */
       .pn-search-close {
         position: absolute;
         top: 30px;
@@ -12396,7 +12784,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         display: block;
       }
 
-      /* Título */
+      /* T�tulo */
       .pn-search-title {
         color: \${titleColor} !important;
         font-size: \${titleSize}px !important;
@@ -12433,7 +12821,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         color: #999;
       }
 
-      /* Botón submit */
+      /* Bot�n submit */
       .pn-search-submit {
         background: \${buttonColor} !important;
         color: white !important;
@@ -12505,7 +12893,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         transform: translateY(0);
       }
 
-      /* Título */
+      /* T�tulo */
       .pn-search-title {
         color: white;
         font-size: 42px;
@@ -12541,7 +12929,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         color: #999;
       }
 
-      /* Botón submit */
+      /* Bot�n submit */
       .pn-search-submit {
         background: #000;
         color: white;
@@ -12723,12 +13111,12 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     console.log('PromoNube Light Toggle: Checking URL...', currentUrl);
     
-    // Si categoryUrls est? vacío, aplicar a TODOS los productos (páginas de producto)
+    // Si categoryUrls est? vac�o, aplicar a TODOS los productos (p�ginas de producto)
     // Si tiene URLs, solo aplicar si la URL actual coincide con alguna de ellas
     if (categoryUrls.length > 0) {
       const matchesAnyUrl = categoryUrls.some(url => url && currentUrl.includes(url));
       if (!matchesAnyUrl) {
-        console.log('PromoNube: No estamos en ninguna de las categorías configuradas:', categoryUrls);
+        console.log('PromoNube: No estamos en ninguna de las categor�as configuradas:', categoryUrls);
         return;
       }
     }
@@ -12817,7 +13205,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     applySecondViewHover();
 
-    // Reaplicar si hay carga dinámica de productos
+    // Reaplicar si hay carga din�mica de productos
     const observer = new MutationObserver(() => applySecondViewHover());
     observer.observe(document.body, { childList: true, subtree: true });
 
@@ -12836,7 +13224,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         productsContainer.insertBefore(fallbackWrapper, productsContainer.firstChild);
         filterContainer = fallbackWrapper;
       } else {
-        console.warn('PromoNube: No se encontró contenedor de filtros ni fallback');
+        console.warn('PromoNube: No se encontr� contenedor de filtros ni fallback');
         return;
       }
     }
@@ -12904,7 +13292,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     console.log('PromoNube: Toggle creado ?');
 
-    // Función para actualizar apariencia de las etiquetas
+    // Funci�n para actualizar apariencia de las etiquetas
     function updateLabels(isOn) {
       if (isOn) {
         view1Label.style.fontWeight = '400';
@@ -12926,7 +13314,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     // Estado inicial
     updateLabels(checkbox.checked);
 
-    // Función para activar/desactivar las luces
+    // Funci�n para activar/desactivar las luces
     function toggleLights(isOn) {
       console.log('PromoNube: Cambiando luces a:', isOn ? 'ON' : 'OFF');
 
@@ -12936,24 +13324,24 @@ app.get("/api/style-widget.js", async (req, res) => {
       console.log('PromoNube: Productos encontrados:', productItems.length);
 
       productItems.forEach(function(item) {
-        // Buscar el contenedor de imágenes (puede ser un slide o link)
+        // Buscar el contenedor de im�genes (puede ser un slide o link)
         const imageContainer = item.querySelector('a[href*="/productos/"], .item-link, .product-image');
         if (!imageContainer) return;
         
-        // Configurar contenedor con grid para superponer imágenes
+        // Configurar contenedor con grid para superponer im�genes
         imageContainer.style.display = 'grid';
         imageContainer.style.position = 'relative';
         
-        // Buscar todas las imágenes dentro del contenedor
+        // Buscar todas las im�genes dentro del contenedor
         const images = imageContainer.querySelectorAll('img');
-        console.log('PromoNube: Imágenes en producto:', images.length);
+        console.log('PromoNube: Im�genes en producto:', images.length);
         
         if (images.length >= 2) {
           // Alternar entre la primera (vista 1) y segunda imagen (vista 2)
           const imgVista1 = images[0];
           const imgVista2 = images[1];
           
-          // Forzar carga de imágenes lazy loading
+          // Forzar carga de im�genes lazy loading
           if (imgVista1.dataset.src && !imgVista1.src) {
             imgVista1.src = imgVista1.dataset.src;
           }
@@ -12961,7 +13349,7 @@ app.get("/api/style-widget.js", async (req, res) => {
             imgVista2.src = imgVista2.dataset.src;
           }
           
-          // Ambas imágenes en la misma celda del grid
+          // Ambas im�genes en la misma celda del grid
           imgVista1.style.gridArea = '1 / 1';
           imgVista1.style.width = '100%';
           imgVista1.style.height = 'auto';
@@ -13056,7 +13444,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     console.log('PromoNube: ? URL coincide! Aplicando tema personalizado...');
 
-    // Obtener configuración de colores
+    // Obtener configuraci�n de colores
     const bgColor = CONFIG.themeSwitch.backgroundColor || '#000000';
     const textColor = CONFIG.themeSwitch.textColor || '#ffffff';
     const accentColor = CONFIG.themeSwitch.accentColor || '#f59e0b';
@@ -13081,7 +13469,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         color: \${textColor} !important;
       }
       
-      /* Headers y títulos */
+      /* Headers y t�tulos */
       h1, h2, h3, h4, h5, h6,
       .page-title,
       .product-name,
@@ -13132,7 +13520,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         color: #000 !important;
       }
       
-      /* Navegación */
+      /* Navegaci�n */
       nav,
       .nav,
       .navbar,
@@ -13152,7 +13540,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         color: \${accentColor} !important;
       }
       
-      /* Menús desplegables y submenús */
+      /* Men�s desplegables y submen�s */
       .dropdown-menu,
       .submenu,
       .nav-dropdown,
@@ -13185,7 +13573,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         border: 1px solid \${accentColor}40 !important;
       }
       
-      /* Contenedor de filtros y categoría */
+      /* Contenedor de filtros y categor�a */
       .category-controls,
       .filters-container,
       .js-controls-footer,
@@ -13297,10 +13685,10 @@ app.get("/api/style-widget.js", async (req, res) => {
       }
     \`;
 
-    // Si invertColors est? activado, agregar filtro de inversión
+    // Si invertColors est? activado, agregar filtro de inversi�n
     if (invertColors) {
       cssRules += \`
-        /* Invertir imágenes para que se vean bien en fondo oscuro */
+        /* Invertir im�genes para que se vean bien en fondo oscuro */
         img:not(.no-invert) {
           filter: brightness(0.9) contrast(1.1);
         }
@@ -13358,7 +13746,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     window.promonubeBadgesScriptLoaded = true;
 
     const badgesScript = document.createElement('script');
-    badgesScript.src = 'https://apipromonube-jlfopowzaq-uc.a.run.app/api/badges-script.js?store=${store}';
+    badgesScript.src = 'https://pedidos-lett-2.web.app/api/badges-script.js?store=${store}';
     badgesScript.async = true;
     document.head.appendChild(badgesScript);
   }
@@ -13588,7 +13976,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     btn.id = 'pn-btt-btn';
     btn.setAttribute('aria-label', 'Volver arriba');
     btn.type = 'button';
-    btn.textContent = btt.icon || '↑';
+    btn.textContent = btt.icon || '?';
     btn.addEventListener('click', function() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
@@ -13653,17 +14041,17 @@ app.get("/api/style-widget.js", async (req, res) => {
       + '.pn-stl-title { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.015em; }'
       + '.pn-stl-subtitle { font-size: 15px; opacity: 0.72; margin: 0; line-height: 1.5; }'
       + '.pn-stl-look { position: relative; width: 100%; border-radius: 16px; overflow: visible; background: transparent; }'
-      + '.pn-stl-look-inner { position: relative; width: 100%; border-radius: 16px; overflow: hidden; background: #f5f5f5; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.25); }'
+      + '.pn-stl-look-inner { position: relative; width: 100%; border-radius: 16px; overflow: visible; background: #f5f5f5; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.25); }'
+      + '.pn-stl-image-clip { border-radius: 16px; overflow: hidden; line-height: 0; }'
       + '.pn-stl-look + .pn-stl-look { margin-top: 24px; }'
-      + '.pn-stl-look img.pn-stl-image { display: block; width: 100%; height: auto; }'
+      + '.pn-stl-look img.pn-stl-image { display: block !important; width: 100% !important; height: auto !important; max-height: none !important; min-height: 200px; object-fit: cover; }'
       + '.pn-stl-dot { position: absolute; width: ' + dotWidth + '; min-width: ' + dotMinWidth + '; height: ' + hotspotSize + 'px; padding: ' + dotPadding + '; transform: translate(-50%, -50%); border-radius: ' + shapeRadius + '; background: ' + hotspotColor + '; color: ' + hotspotTextColor + '; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-weight: ' + hotspotFontWeight + '; font-size: ' + hotspotFontSize + 'px; line-height: 1; letter-spacing: 0.01em; white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,0.35), 0 0 0 3px ' + hotspotBorderColor + '; z-index: 3; border: none; transition: transform 0.2s ease, box-shadow 0.2s ease; font-family: inherit; }'
       + '.pn-stl-dot:hover { transform: translate(-50%, -50%) scale(1.12); z-index: 5; }'
       + animationCss
-      + '.pn-stl-card { position: absolute; z-index: 20; background: ' + hoverCardBg + '; color: ' + hoverCardText + '; width: 240px; border-radius: 14px; box-shadow: 0 18px 50px -8px rgba(0,0,0,0.45), 0 4px 14px rgba(0,0,0,0.18); overflow: hidden; opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, calc(-100% - ' + (Math.round(hotspotSize / 2) + 12) + 'px)) translateY(4px); transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s; font-family: inherit; }'
-      + '.pn-stl-card.pn-stl-card-visible { opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, calc(-100% - ' + (Math.round(hotspotSize / 2) + 12) + 'px)) translateY(0); }'
-      + '.pn-stl-card.pn-stl-card-below { transform: translate(-50%, ' + (Math.round(hotspotSize / 2) + 12) + 'px) translateY(-4px); }'
-      + '.pn-stl-card.pn-stl-card-below.pn-stl-card-visible { transform: translate(-50%, ' + (Math.round(hotspotSize / 2) + 12) + 'px) translateY(0); }'
-      + '.pn-stl-card::after { content: ""; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%) rotate(45deg); width: 14px; height: 14px; background: ' + hoverCardBg + '; box-shadow: 3px 3px 8px -2px rgba(0,0,0,0.12); }'
+      // Hover card: position:fixed, appendada al body -> nunca clippeada por overflow
+      + '.pn-stl-card { position: fixed; z-index: 999999; background: ' + hoverCardBg + '; color: ' + hoverCardText + '; width: 240px; border-radius: 14px; box-shadow: 0 18px 50px -8px rgba(0,0,0,0.45), 0 4px 14px rgba(0,0,0,0.18); overflow: hidden; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s; font-family: inherit; transform: translateY(4px); }'
+      + '.pn-stl-card.pn-stl-card-visible { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); }'
+      + '.pn-stl-card::after { content: ""; position: absolute; left: var(--pn-arrow-left, 50%); bottom: -7px; transform: translateX(-50%) rotate(45deg); width: 14px; height: 14px; background: ' + hoverCardBg + '; box-shadow: 3px 3px 8px -2px rgba(0,0,0,0.12); }'
       + '.pn-stl-card.pn-stl-card-below::after { bottom: auto; top: -7px; box-shadow: -3px -3px 8px -2px rgba(0,0,0,0.12); }'
       + '.pn-stl-card-img { width: 100%; height: 150px; object-fit: cover; display: block; background: #f5f5f5; }'
       + '.pn-stl-card-body { padding: 12px 14px 14px; }'
@@ -13671,17 +14059,17 @@ app.get("/api/style-widget.js", async (req, res) => {
       + '.pn-stl-card-price { font-size: 15px; font-weight: 700; margin: 0 0 10px; }'
       + '.pn-stl-card-btn { display: block; width: 100%; padding: 9px 12px; background: ' + hoverCardButtonBg + '; color: ' + hoverCardButtonText + '; text-align: center; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px; box-sizing: border-box; transition: opacity 0.2s; }'
       + '.pn-stl-card-btn:hover { opacity: 0.85; color: ' + hoverCardButtonText + '; }'
-      + '.pn-stl-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 16px; animation: pnStlFade 0.25s ease; }'
+      + '.pn-stl-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 999999; display: flex; align-items: center; justify-content: center; padding: 16px; animation: pnStlFade 0.25s ease; box-sizing: border-box; }'
       + '@keyframes pnStlFade { from { opacity: 0; } to { opacity: 1; } }'
-      + '.pn-stl-modal { background: #fff; border-radius: 18px; max-width: 420px; width: 100%; overflow: hidden; position: relative; box-shadow: 0 30px 80px rgba(0,0,0,0.4); }'
-      + '.pn-stl-modal img { width: 100%; height: 280px; object-fit: cover; display: block; background: #f5f5f5; }'
+      + '.pn-stl-modal { background: #fff; border-radius: 18px; max-width: 420px; width: 100%; overflow: hidden; position: relative; box-shadow: 0 30px 80px rgba(0,0,0,0.4); max-height: 90vh; overflow-y: auto; }'
+      + '.pn-stl-modal img { width: 100%; height: 280px; object-fit: cover; display: block !important; background: #f5f5f5; }'
       + '.pn-stl-modal-body { padding: 20px 22px 22px; font-family: inherit; color: #111; }'
       + '.pn-stl-modal-name { font-size: 17px; font-weight: 600; margin: 0 0 8px; line-height: 1.3; }'
       + '.pn-stl-modal-price { font-size: 22px; font-weight: 700; margin: 0 0 16px; }'
       + '.pn-stl-modal-btn { display: block; width: 100%; padding: 14px 20px; background: #111; color: #fff; text-align: center; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 15px; letter-spacing: 0.01em; transition: opacity 0.2s; box-sizing: border-box; }'
       + '.pn-stl-modal-btn:hover { opacity: 0.85; color: #fff; }'
       + '.pn-stl-modal-close { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.95); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #111; z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }'
-      + '@media (max-width: 640px) { .pn-stl-title { font-size: 22px; } .pn-stl-card { width: 180px; } .pn-stl-card-img { height: 110px; } .pn-stl-modal img { height: 220px; } }';
+      + '@media (max-width: 640px) { .pn-stl-title { font-size: 22px; } .pn-stl-card { width: 200px; } .pn-stl-card-img { height: 120px; } .pn-stl-modal img { height: 220px; } }';
 
     var styleEl = document.createElement('style');
     styleEl.id = 'pn-stl-styles';
@@ -13699,7 +14087,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       if (mode === 'number') return String(hi + 1);
       if (mode === 'plus') return '+';
       if (mode === 'none') return '';
-      // auto: usa label custom si existe; sino seg�n shape
+      // auto: usa label custom si existe; sino seg?n shape
       if (h.label) return h.label;
       if (hotspotShape === 'tag') return 'Ver';
       return hotspotAnimation === 'pulse' ? '' : '+';
@@ -13722,14 +14110,14 @@ app.get("/api/style-widget.js", async (req, res) => {
         return '<button type="button" class="pn-stl-dot' + animClass + '" data-look="' + li + '" data-hotspot="' + hi + '" style="left:' + h.x + '%;top:' + h.y + '%;" aria-label="' + escapeHtml(h.productName || 'Ver producto') + '">' + label + '</button>';
       }).join('');
       return '<div class="pn-stl-look"><div class="pn-stl-look-inner">'
-        + '<img class="pn-stl-image" src="' + look.imageUrl + '" alt="Shop the Look" loading="lazy" />'
+        + '<div class="pn-stl-image-clip"><img class="pn-stl-image" src="' + look.imageUrl + '" alt="Shop the Look" loading="lazy" /></div>'
         + dotsHtml
         + '</div></div>';
     }).join('');
 
     section.innerHTML = headerHtml + looksHtml;
 
-    // Inyectar en la posición configurada
+    // Inyectar en la posici�n configurada
     var injected = false;
     if (stl.injectSelector) {
       try {
@@ -13742,11 +14130,16 @@ app.get("/api/style-widget.js", async (req, res) => {
           else target.parentNode.insertBefore(section, target.nextSibling);
           injected = true;
         }
-      } catch (e) { console.warn('PromoNube ShopTheLook: selector inválido', e); }
+      } catch (e) { console.warn('PromoNube ShopTheLook: selector inv�lido', e); }
     }
     if (!injected) {
       var defaultTarget = document.querySelector('.banner, .slider, .js-swiper-main, .main-slider, .hero, header + section') || document.querySelector('main') || document.body;
-      if (defaultTarget === document.body) document.body.appendChild(section);
+      if (defaultTarget === document.body) {
+        // Insertar antes del footer para evitar que quede debajo de él
+        var footerEl = document.querySelector('footer, .footer, #footer, [class*="footer"]');
+        if (footerEl && footerEl.parentNode) footerEl.parentNode.insertBefore(section, footerEl);
+        else document.body.appendChild(section);
+      }
       else if (defaultTarget.tagName === 'MAIN') defaultTarget.insertBefore(section, defaultTarget.firstChild);
       else defaultTarget.parentNode.insertBefore(section, defaultTarget.nextSibling);
     }
@@ -13776,18 +14169,43 @@ app.get("/api/style-widget.js", async (req, res) => {
       if (!h.productId && !h.productUrl) return;
       hideCard(true);
       var card = buildHoverCard(h);
-      card.style.left = dot.style.left;
-      card.style.top = dot.style.top;
-      var lookEl = dot.closest('.pn-stl-look-inner');
-      if (!lookEl) return;
-      lookEl.appendChild(card);
-      // Detectar si necesita mostrarse debajo (si el punto est? muy arriba)
-      var yPct = parseFloat(dot.style.top);
-      if (yPct < 30) card.classList.add('pn-stl-card-below');
-      requestAnimationFrame(function() { card.classList.add('pn-stl-card-visible'); });
+      // Append hidden to body first to measure dimensions
+      card.style.visibility = 'hidden';
+      document.body.appendChild(card);
+      var dotRect = dot.getBoundingClientRect();
+      var cardW = card.offsetWidth || 240;
+      var cardH = card.offsetHeight || 300;
+      var vw = window.innerWidth;
+      var vh = window.innerHeight;
+      // Center card horizontally on dot, clamped to viewport
+      var dotCx = dotRect.left + dotRect.width / 2;
+      var left = dotCx - cardW / 2;
+      left = Math.max(8, Math.min(left, vw - cardW - 8));
+      // Show above by default; show below if not enough space above
+      var MARGIN = 10;
+      var showBelow = dotRect.top < cardH + MARGIN && (vh - dotRect.bottom) > dotRect.top;
+      var top;
+      if (showBelow) {
+        top = dotRect.bottom + MARGIN;
+        card.classList.add('pn-stl-card-below');
+      } else {
+        top = dotRect.top - cardH - MARGIN;
+      }
+      top = Math.max(8, Math.min(top, vh - cardH - 8));
+      // Arrow aligns to dot center
+      var arrowLeft = dotCx - left;
+      arrowLeft = Math.max(16, Math.min(arrowLeft, cardW - 16));
+      card.style.setProperty('--pn-arrow-left', arrowLeft + 'px');
+      card.style.left = left + 'px';
+      card.style.top = top + 'px';
+      card.style.visibility = '';
       activeCard = card;
       card.addEventListener('mouseenter', function() { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } });
       card.addEventListener('mouseleave', function() { scheduleHide(); });
+      // Hide on scroll since card is position:fixed
+      var onScroll = function() { hideCard(true); window.removeEventListener('scroll', onScroll, true); };
+      window.addEventListener('scroll', onScroll, true);
+      requestAnimationFrame(function() { card.classList.add('pn-stl-card-visible'); });
     }
     function hideCard(immediate) {
       if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
@@ -13854,13 +14272,58 @@ app.get("/api/style-widget.js", async (req, res) => {
     console.log('PromoNube Shop the Look: secci?n inyectada con', looks.length, 'look(s)');
   }
 
+  // ==================== ORDER PAGE NOTICE ====================
+  function injectOrderPageNotice() {
+    // Solo en páginas de seguimiento de pedido
+    if (!/\\/(pedidos|orders|order)\\//i.test(window.location.pathname)) return;
+    if (document.getElementById('pn-order-notice')) return;
+
+    fetch(API_BASE + '/api/checkout-notice-config?storeId=' + STORE_ID)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var cfg = (data && data.config) || {};
+        if (cfg.enabled === false) return;
+
+        var phone = (cfg.whatsappPhone || '').replace(/\D/g, '');
+        var msg = encodeURIComponent(cfg.whatsappMessage || 'Hola, necesito Factura A para mi compra.');
+        var waUrl = 'https://wa.me/' + phone + '?text=' + msg;
+        var bgColor = cfg.bgColor || '#fff7ed';
+        var borderColor = cfg.borderColor || '#fb923c';
+        var textColor = cfg.textColor || '#7c2d12';
+        var btnBg = cfg.buttonBgColor || '#25d366';
+        var btnTextColor = cfg.buttonTextColor || '#ffffff';
+        var icon = cfg.iconEmoji || '\uD83E\uDDFE';
+        var title = cfg.title || '\u00bfNecesit\u00e1s Factura A?';
+        var message = cfg.message || 'Por defecto emitimos Factura B. Si necesit\u00e1s Factura A, contact\u00e1nos.';
+        var btnLabel = cfg.buttonText || 'Solicitar Factura A por WhatsApp';
+        var radius = (cfg.borderRadius || 12) + 'px';
+
+        var el = document.createElement('div');
+        el.id = 'pn-order-notice';
+        el.style.cssText = 'margin:16px 0;padding:16px;border-radius:' + radius + ';background:' + bgColor + ';border:2px solid ' + borderColor + ';font-family:Poppins,system-ui,sans-serif;';
+        el.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+          + '<span style="font-size:20px">' + icon + '</span>'
+          + '<strong style="color:' + textColor + ';font-size:16px">' + title + '</strong>'
+          + '</div>'
+          + '<p style="color:' + textColor + ';font-size:14px;margin:0 0 12px;line-height:1.5">' + message + '</p>'
+          + '<a href="' + waUrl + '" target="_blank" style="display:inline-block;background:' + btnBg + ';color:' + btnTextColor + ';padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">' + btnLabel + '</a>';
+
+        var target = document.querySelector('.order-status, .js-order-status, main, .content-main') || document.body;
+        if (target && target !== document.body) {
+          target.insertBefore(el, target.firstChild);
+        } else {
+          document.body.insertBefore(el, document.body.firstChild);
+        }
+      }).catch(function() {});
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
       customizeWhatsApp();
       customizeBanners();
       setTimeout(customizeMenu, 500); // Dar tiempo al men? para renderizar
       setTimeout(customizeSearchBar, 600); // Buscador mejorado
-      setTimeout(customizeLightToggle, 1000); // Dar tiempo a la página para cargar
+      setTimeout(customizeLightToggle, 1000); // Dar tiempo a la p�gina para cargar
       setTimeout(customizeTheme, 500); // Aplicar tema lo antes posible
       setTimeout(customizeShopTheLook, 700);
       setTimeout(injectBadgesScript, 800);
@@ -13868,13 +14331,14 @@ app.get("/api/style-widget.js", async (req, res) => {
       setTimeout(initCustomCursor, 200);
       setTimeout(initTabTitle, 100);
       setTimeout(initBackToTop, 300);
+      setTimeout(injectOrderPageNotice, 500);
     });
   } else {
     customizeWhatsApp();
     customizeBanners();
     setTimeout(customizeMenu, 500); // Dar tiempo al men? para renderizar
     setTimeout(customizeSearchBar, 600); // Buscador mejorado
-    setTimeout(customizeLightToggle, 1000); // Dar tiempo a la página para cargar
+    setTimeout(customizeLightToggle, 1000); // Dar tiempo a la p�gina para cargar
     setTimeout(customizeTheme, 500); // Aplicar tema lo antes posible
     setTimeout(customizeShopTheLook, 700);
     setTimeout(injectBadgesScript, 800);
@@ -13882,6 +14346,7 @@ app.get("/api/style-widget.js", async (req, res) => {
     setTimeout(initCustomCursor, 200);
     setTimeout(initTabTitle, 100);
     setTimeout(initBackToTop, 300);
+    setTimeout(injectOrderPageNotice, 500);
   }
 
 })();
@@ -13914,7 +14379,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
     const styleDoc = await getCachedDoc("promonube_style_config", store);
     
     if (!styleDoc.exists) {
-      return res.send("// No hay configuración");
+      return res.send("// No hay configuraci�n");
     }
 
     const config = styleDoc.data();
@@ -13947,7 +14412,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
     const tiendanubeHeader = document.querySelector('header');
     
     if (!tiendanubeHeader) {
-      console.warn('[PromoNube] No se encontró header de TiendaNube');
+      console.warn('[PromoNube] No se encontr� header de TiendaNube');
       return;
     }
 
@@ -13983,7 +14448,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
       box-sizing: border-box;
     \`;
 
-    // Separar items por posición
+    // Separar items por posici�n
     const leftItems = CONFIG.items.filter(item => (!item.position || item.position === 'left'));
     const rightItems = CONFIG.items.filter(item => item.position === 'right');
 
@@ -13998,7 +14463,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
       gap: \${alignment === 'space-between' ? '0' : '20px'};
     \`;
 
-    // Función para crear grupo de items con separadores
+    // Funci�n para crear grupo de items con separadores
     function createItemGroup(items) {
       const container = document.createElement('div');
       container.style.cssText = 'display: flex; align-items: center; gap: 0;';
@@ -14081,7 +14546,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
       return container;
     }
 
-    // Agregar items según alineaci?n
+    // Agregar items seg�n alineaci?n
     if (alignment === 'space-between' && rightItems.length > 0) {
       // Modo distribuido: izquierda y derecha
       if (leftItems.length > 0) {
@@ -14109,7 +14574,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
         z-index: 1000 !important;
       }
       
-      /* Asegurar que el men? de navegación est? por encima */
+      /* Asegurar que el men? de navegaci�n est? por encima */
       nav, .navigation, .main-nav, .navbar, .menu {
         position: relative !important;
         z-index: 1001 !important;
@@ -14195,7 +14660,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
     const styleDoc = await getCachedDoc("promonube_style_config", store);
     
     if (!styleDoc.exists) {
-      return res.send("// No hay configuración");
+      return res.send("// No hay configuraci�n");
     }
 
     const config = styleDoc.data();
@@ -14309,7 +14774,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
     \`;
 
     if (isMobile && CONFIG.messages.length > 1) {
-      // MOBILE: Modo carrusel - mostrar 1 mensaje a la vez con rotación
+      // MOBILE: Modo carrusel - mostrar 1 mensaje a la vez con rotaci�n
       let currentIndex = 0;
       const messageEl = document.createElement('div');
       messageEl.style.cssText = \`
@@ -14426,7 +14891,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
         z-index: 1000 !important;
       }
       
-      /* Asegurar que el men? de navegación est? por encima */
+      /* Asegurar que el men? de navegaci�n est? por encima */
       nav, .navigation, .main-nav, .navbar, .menu {
         position: relative !important;
         z-index: 1001 !important;
@@ -14469,11 +14934,11 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
       const header = document.querySelector('header');
       
       if (!header) {
-        console.warn('[PromoNube] ?? No se encontró el header');
+        console.warn('[PromoNube] ?? No se encontr� el header');
         return;
       }
 
-      // Estrategia configurable. Default: 'auto' (comportamiento histórico entre logo y nav)
+      // Estrategia configurable. Default: 'auto' (comportamiento hist�rico entre logo y nav)
       const insertMode = CONFIG.insertMode || 'auto';
 
       if (insertMode === 'before-header') {
@@ -14506,18 +14971,18 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
       
       // Estrategia: Insertar DESPU?S del logo pero ANTES del nav
       if (logo && nav) {
-        // Verificar que están en el mismo contenedor
+        // Verificar que est�n en el mismo contenedor
         if (logo.parentNode === nav.parentNode) {
           // Insertar entre logo y nav
           logo.parentNode.insertBefore(bar, nav);
           console.log('[PromoNube] ? Top Announcement Bar insertada entre logo y nav');
         } else {
-          // Si están en diferentes contenedores, insertar antes del nav
+          // Si est�n en diferentes contenedores, insertar antes del nav
           nav.parentNode.insertBefore(bar, nav);
           console.log('[PromoNube] ? Top Announcement Bar insertada antes del nav (diferentes contenedores)');
         }
       } else if (logo) {
-        // Solo tenemos logo, insertar después
+        // Solo tenemos logo, insertar despu�s
         if (logo.nextSibling) {
           logo.parentNode.insertBefore(bar, logo.nextSibling);
         } else {
@@ -14559,7 +15024,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
   }
 });
 
-// GET /api/announcement-bar-widget.js - Barra de ofertas con rotación
+// GET /api/announcement-bar-widget.js - Barra de ofertas con rotaci�n
 app.get("/api/announcement-bar-widget.js", async (req, res) => {
   const { store } = req.query;
   
@@ -14579,7 +15044,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
     const styleDoc = await getCachedDoc("promonube_style_config", store);
     
     if (!styleDoc.exists) {
-      return res.send("// No hay configuración");
+      return res.send("// No hay configuraci�n");
     }
 
     const config = styleDoc.data();
@@ -14623,7 +15088,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
     const insertPoint = document.querySelector('header, .header, #header, body');
     
     if (!insertPoint) {
-      console.warn('[PromoNube] No se encontró punto de inserci?n');
+      console.warn('[PromoNube] No se encontr� punto de inserci?n');
       return;
     }
 
@@ -14695,7 +15160,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
     \`;
 
     if (isMobile && CONFIG.messages.length > 1) {
-      // MOBILE: Modo carrusel - mostrar 1 mensaje a la vez con rotación suave
+      // MOBILE: Modo carrusel - mostrar 1 mensaje a la vez con rotaci�n suave
       let currentIndex = 0;
       const messageEl = document.createElement('div');
       messageEl.style.cssText = \`
@@ -14822,7 +15287,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
     \`;
     document.head.appendChild(abStyle);
 
-    // Insertar SIEMPRE después del header principal de TiendaNube (no después del Top Header)
+    // Insertar SIEMPRE despu�s del header principal de TiendaNube (no despu�s del Top Header)
     const mainHeader = document.querySelector('header, .header, #header, .site-header');
     if (mainHeader) {
       if (mainHeader.nextSibling) {
@@ -14831,7 +15296,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
         mainHeader.parentNode.appendChild(bar);
       }
     } else {
-      // ?última opción: al principio del body
+      // ?�ltima opci�n: al principio del body
       document.body.insertBefore(bar, document.body.firstChild);
     }
 
@@ -14858,7 +15323,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
 // ENDPOINTS DE INTEGRACIONES
 // ============================================
 
-// GET /api/integrations - Obtener configuración de integraciones
+// GET /api/integrations - Obtener configuraci�n de integraciones
 app.get("/api/integrations", async (req, res) => {
   const storeId = req.query.storeId;
 
@@ -14875,7 +15340,7 @@ app.get("/api/integrations", async (req, res) => {
 
     const store = storeDoc.data();
 
-    // Devolver solo los flags de configuración (no las API keys por seguridad)
+    // Devolver solo los flags de configuraci�n (no las API keys por seguridad)
     res.json({
       success: true,
       integrations: {
@@ -14980,7 +15445,7 @@ app.post("/api/integrations/perfit/test", async (req, res) => {
       const errorBody = await testResponse.text();
       return res.json({
         success: false,
-        message: `Error de autenticación con Perfit (HTTP ${testResponse.status})`,
+        message: `Error de autenticaci�n con Perfit (HTTP ${testResponse.status})`,
         details: {
           status: testResponse.status,
           statusText: testResponse.statusText,
@@ -15070,7 +15535,7 @@ app.post("/api/integrations/test", async (req, res) => {
       default:
         return res.status(400).json({ 
           success: false, 
-          message: "Integraci?n no válida" 
+          message: "Integraci?n no v�lida" 
         });
     }
 
@@ -15082,7 +15547,7 @@ app.post("/api/integrations/test", async (req, res) => {
 });
 
 // ============================================
-// ENDPOINT PARA SUBIR IM??GENES EN BASE64 (más simple)
+// ENDPOINT PARA SUBIR IM??GENES EN BASE64 (m�s simple)
 // ============================================
 app.post("/api/upload-image-base64", async (req, res) => {
   try {
@@ -15093,7 +15558,7 @@ app.post("/api/upload-image-base64", async (req, res) => {
     if (!storeId || !fileName || !fileData) {
       return res.json({ 
         success: false, 
-        message: 'Faltan parámetros requeridos' 
+        message: 'Faltan par�metros requeridos' 
       });
     }
     
@@ -15103,7 +15568,7 @@ app.post("/api/upload-image-base64", async (req, res) => {
     if (!matches || matches.length !== 3) {
       return res.json({ 
         success: false, 
-        message: 'Formato de imagen inválido' 
+        message: 'Formato de imagen inv�lido' 
       });
     }
     
@@ -15113,7 +15578,7 @@ app.post("/api/upload-image-base64", async (req, res) => {
     
     console.log(`?? File: ${fileName}, Size: ${buffer.length} bytes, Type: ${mimeType}`);
     
-    // Crear path único
+    // Crear path �nico
     const timestamp = Date.now();
     const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filePath = `${folder || 'images'}/${storeId}/${timestamp}-${sanitizedName}`;
@@ -15131,10 +15596,10 @@ app.post("/api/upload-image-base64", async (req, res) => {
     
     console.log('? File saved');
     
-    // Hacer público
+    // Hacer p�blico
     await fileUpload.makePublic();
     
-    // URL pública
+    // URL p�blica
     const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
     
     console.log(`? Public URL: ${publicUrl}`);
@@ -15191,7 +15656,7 @@ app.post("/api/upload-image", (req, res, next) => {
     console.log(`?? StoreId: ${storeId}, Folder: ${folder}`);
     console.log(`?? File: ${req.file.originalname}, Size: ${req.file.size} bytes`);
     
-    // Crear nombre único para el archivo
+    // Crear nombre �nico para el archivo
     const timestamp = Date.now();
     const sanitizedName = req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filePath = `${folder}/${storeId}/${timestamp}-${sanitizedName}`;
@@ -15209,12 +15674,12 @@ app.post("/api/upload-image", (req, res, next) => {
     
     console.log('? File saved to bucket');
     
-    // Hacer el archivo público
+    // Hacer el archivo p�blico
     await fileUpload.makePublic();
     
     console.log('? File made public');
     
-    // Obtener URL pública
+    // Obtener URL p�blica
     const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
     
     console.log(`? Public URL: ${publicUrl}`);
@@ -15239,7 +15704,7 @@ app.post("/api/upload-image", (req, res, next) => {
 // ENDPOINTS: GESTI??N DE SUSCRIPCIONES
 // ============================================
 
-// GET /api/subscription/:storeId - Obtener suscripción actual
+// GET /api/subscription/:storeId - Obtener suscripci�n actual
 app.get('/api/subscription/:storeId', async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -15248,7 +15713,7 @@ app.get('/api/subscription/:storeId', async (req, res) => {
     const subscriptionDoc = await subscriptionRef.get();
 
     if (!subscriptionDoc.exists) {
-      // Inicializar suscripción FREE si no existe
+      // Inicializar suscripci�n FREE si no existe
       await initializeStoreSubscription(storeId);
       const newDoc = await subscriptionRef.get();
       return res.json({
@@ -15266,19 +15731,19 @@ app.get('/api/subscription/:storeId', async (req, res) => {
       availablePlans: PLANS
     });
   } catch (error) {
-    console.error('Error obteniendo suscripción:', error);
+    console.error('Error obteniendo suscripci�n:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/subscription/:storeId/activate - Activar módulo individual
+// POST /api/subscription/:storeId/activate - Activar m�dulo individual
 app.post('/api/subscription/:storeId/activate', async (req, res) => {
   try {
     const { storeId } = req.params;
     const { moduleName } = req.body;
 
     if (!MODULES[moduleName]) {
-      return res.status(400).json({ success: false, error: 'Módulo no válido' });
+      return res.status(400).json({ success: false, error: 'M�dulo no v�lido' });
     }
 
     const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
@@ -15290,23 +15755,23 @@ app.post('/api/subscription/:storeId/activate', async (req, res) => {
 
     res.json({
       success: true,
-      message: `Módulo ${MODULES[moduleName].name} activado`,
+      message: `M�dulo ${MODULES[moduleName].name} activado`,
       module: moduleName
     });
   } catch (error) {
-    console.error('Error activando módulo:', error);
+    console.error('Error activando m�dulo:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/subscription/:storeId/deactivate - Desactivar módulo
+// POST /api/subscription/:storeId/deactivate - Desactivar m�dulo
 app.post('/api/subscription/:storeId/deactivate', async (req, res) => {
   try {
     const { storeId } = req.params;
     const { moduleName } = req.body;
 
     if (moduleName === 'coupons') {
-      return res.status(400).json({ success: false, error: 'No se puede desactivar Cupones (módulo gratuito)' });
+      return res.status(400).json({ success: false, error: 'No se puede desactivar Cupones (m�dulo gratuito)' });
     }
 
     const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
@@ -15318,11 +15783,11 @@ app.post('/api/subscription/:storeId/deactivate', async (req, res) => {
 
     res.json({
       success: true,
-      message: `Módulo ${MODULES[moduleName]?.name || moduleName} desactivado`,
+      message: `M�dulo ${MODULES[moduleName]?.name || moduleName} desactivado`,
       module: moduleName
     });
   } catch (error) {
-    console.error('Error desactivando módulo:', error);
+    console.error('Error desactivando m�dulo:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -15334,13 +15799,13 @@ app.post('/api/subscription/:storeId/change-plan', async (req, res) => {
     const { planId } = req.body;
 
     if (!PLANS[planId]) {
-      return res.status(400).json({ success: false, error: 'Plan no válido' });
+      return res.status(400).json({ success: false, error: 'Plan no v�lido' });
     }
 
     const plan = PLANS[planId];
     const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
     
-    // Crear objeto de módulos basado en el plan
+    // Crear objeto de m�dulos basado en el plan
     const modules = {
       coupons: true, // Siempre activo
       giftcards: plan.modules.includes('giftcards'),
@@ -15368,7 +15833,7 @@ app.post('/api/subscription/:storeId/change-plan', async (req, res) => {
   }
 });
 
-// GET /api/subscription/:storeId/check/:module - Verificar acceso a módulo
+// GET /api/subscription/:storeId/check/:module - Verificar acceso a m�dulo
 app.get('/api/subscription/:storeId/check/:module', async (req, res) => {
   try {
     const { storeId, module } = req.params;
@@ -15413,8 +15878,8 @@ app.post('/api/mp/create-preference', async (req, res) => {
     }
 
     if (!PLANS[planId]) {
-      console.error('? Plan inválido:', planId);
-      return res.status(400).json({ success: false, error: 'Plan inválido' });
+      console.error('? Plan inv�lido:', planId);
+      return res.status(400).json({ success: false, error: 'Plan inv�lido' });
     }
 
     const plan = PLANS[planId];
@@ -15432,7 +15897,7 @@ app.post('/api/mp/create-preference', async (req, res) => {
       items: [
         {
           title: `PromoNube - ${plan.name}`,
-          description: `Suscripción mensual a ${plan.name}`,
+          description: `Suscripci�n mensual a ${plan.name}`,
           quantity: 1,
           unit_price: plan.price,
           currency_id: 'ARS'
@@ -15448,7 +15913,7 @@ app.post('/api/mp/create-preference', async (req, res) => {
         pending: `https://pedidos-lett-2.web.app/payment-pending`
       },
       auto_return: 'approved',
-      notification_url: `https://apipromonube-jlfopowzaq-uc.a.run.app/api/mp/webhook`,
+      notification_url: `${_SRV_BASE}/api/mp/webhook`,
       external_reference: JSON.stringify({
         storeId: storeId,
         planId: planId,
@@ -15508,17 +15973,17 @@ app.post('/api/mp/webhook', async (req, res) => {
 
     const { type, data } = req.body;
 
-    // Validación opcional de firma (si quieres mayor seguridad)
+    // Validaci�n opcional de firma (si quieres mayor seguridad)
     const xSignature = req.headers['x-signature'];
     const xRequestId = req.headers['x-request-id'];
     
     if (xSignature) {
       console.log('?? Signature recibida:', xSignature);
-      // La validación de firma es opcional pero recomendada para producción
+      // La validaci�n de firma es opcional pero recomendada para producci�n
       // Por ahora logueamos para debugging
     }
 
-    // Responder rápido a MP (200 dentro de 10 segundos)
+    // Responder r�pido a MP (200 dentro de 10 segundos)
     res.status(200).send('OK');
 
     // Procesar en background
@@ -15527,7 +15992,7 @@ app.post('/api/mp/webhook', async (req, res) => {
       
       console.log('?? Procesando pago:', paymentId);
 
-      // Obtener información del pago desde MP
+      // Obtener informaci�n del pago desde MP
       const payment = new Payment(mpClient);
       const paymentData = await payment.get({ id: paymentId });
 
@@ -15562,7 +16027,7 @@ app.post('/api/mp/webhook', async (req, res) => {
           approvedAt: FieldValue.serverTimestamp()
         });
 
-        // Activar plan en la suscripción
+        // Activar plan en la suscripci�n
         const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
         const subscriptionDoc = await subscriptionRef.get();
 
@@ -15572,12 +16037,12 @@ app.post('/api/mp/webhook', async (req, res) => {
           return;
         }
 
-        // Calcular fecha de expiración (30 días)
+        // Calcular fecha de expiraci�n (30 d�as)
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 30);
 
         if (subscriptionDoc.exists) {
-          // Actualizar suscripción existente
+          // Actualizar suscripci�n existente
           await subscriptionRef.update({
             plan: planId,
             modules: modulesArrayToObject(plan.modules),
@@ -15588,7 +16053,7 @@ app.post('/api/mp/webhook', async (req, res) => {
             lastPaymentAmount: paymentData.transaction_amount
           });
         } else {
-          // Crear nueva suscripción
+          // Crear nueva suscripci�n
           await subscriptionRef.set({
             storeId: storeId,
             plan: planId,
@@ -15639,7 +16104,7 @@ app.post('/api/mp/webhook', async (req, res) => {
 // ============================================
 
 // GET /api/admin/stores - Obtener todas las tiendas con suscripciones
-// Middleware de autenticación admin
+// Middleware de autenticaci�n admin
 function requireAdminKey(req, res, next) {
   const adminKey = req.headers['x-admin-key'] || req.body?.adminKey || req.query?.adminKey;
   const ADMIN_KEY = process.env.ADMIN_KEY || 'demo-secret-2026';
@@ -15656,12 +16121,12 @@ app.get('/api/admin/stores', requireAdminKey, async (req, res) => {
     
     const stores = [];
     
-    // Procesar cada tienda y obtener su suscripción
+    // Procesar cada tienda y obtener su suscripci�n
     for (const storeDoc of storesSnapshot.docs) {
       const storeId = storeDoc.id;
       const storeData = storeDoc.data();
       
-      // Obtener suscripción actual desde stores/{storeId}/subscription/current
+      // Obtener suscripci�n actual desde stores/{storeId}/subscription/current
       let subscription = null;
       try {
         const subDoc = await db.collection('stores').doc(storeId).collection('subscription').doc('current').get();
@@ -15703,10 +16168,10 @@ app.get('/api/admin/stores', requireAdminKey, async (req, res) => {
           };
         }
       } catch (err) {
-        console.log(`No se pudo obtener suscripción para store ${storeId}:`, err.message);
+        console.log(`No se pudo obtener suscripci�n para store ${storeId}:`, err.message);
       }
       
-      // Si no hay suscripción, usar datos de instalación de promonube_stores
+      // Si no hay suscripci�n, usar datos de instalaci�n de promonube_stores
       if (!subscription && storeData.installedAt) {
         const installedDate = typeof storeData.installedAt === 'string' ? storeData.installedAt : storeData.installedAt.toDate?.().toISOString();
         subscription = {
@@ -15805,15 +16270,15 @@ app.post('/api/admin/activate-plan', requireAdminKey, async (req, res) => {
     const { storeId, planId } = req.body;
 
     if (!storeId || !planId) {
-      return res.status(400).json({ success: false, error: 'Faltan parámetros' });
+      return res.status(400).json({ success: false, error: 'Faltan par�metros' });
     }
 
     const plan = PLANS[planId];
     if (!plan) {
-      return res.status(400).json({ success: false, error: 'Plan inválido' });
+      return res.status(400).json({ success: false, error: 'Plan inv�lido' });
     }
 
-    // Calcular fecha de expiración (30 días)
+    // Calcular fecha de expiraci�n (30 d�as)
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
@@ -15873,11 +16338,121 @@ app.post('/api/admin/deactivate-plan', requireAdminKey, async (req, res) => {
   }
 });
 
+// POST /api/admin/force-charge - Forzar creacion + activacion de cargo $0 / trial 36500
+// dias en TiendaNube. Reemplaza el flujo manual cuando el merchant ve "Finalizo el
+// periodo de prueba" porque el cargo viejo expiro o nunca se acepto.
+app.post('/api/admin/force-charge', requireAdminKey, async (req, res) => {
+  try {
+    const { storeId } = req.body;
+    if (!storeId) return res.status(400).json({ success: false, error: 'Falta storeId' });
+
+    const storeDoc = await db.collection('promonube_stores').doc(String(storeId)).get();
+    if (!storeDoc.exists) return res.status(404).json({ success: false, error: 'Store no encontrada' });
+    const { accessToken } = storeDoc.data() || {};
+    if (!accessToken) return res.status(400).json({ success: false, error: 'Sin accessToken' });
+
+    const APP_ID = process.env.TIENDANUBE_APP_ID;
+    if (!APP_ID) return res.status(500).json({ success: false, error: 'Falta TIENDANUBE_APP_ID env' });
+
+    const tnHeaders = {
+      'Authentication': `bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'PromoNube (contacto@promonube.com)'
+    };
+
+    const log = [];
+
+    // 0) Probar /store para validar que el token funciona
+    const storeProbe = await fetch(`https://api.tiendanube.com/v1/${storeId}/store`, { headers: tnHeaders });
+    const storeBody = await storeProbe.text();
+    log.push({ step: 'token-probe', url: '/store', status: storeProbe.status, body: storeBody.substring(0, 200) });
+
+    // Probar varias rutas posibles para listar charges (TN cambio la API varias veces)
+    const candidates = [
+      `https://api.tiendanube.com/v1/${storeId}/charges`,
+      `https://api.tiendanube.com/v1/${storeId}/apps/${APP_ID}/charges`,
+      `https://api.tiendanube.com/v1/${storeId}/recurring_application_charges`
+    ];
+    let listEndpoint = null;
+    let existing = [];
+    for (const url of candidates) {
+      const r = await fetch(url, { headers: tnHeaders });
+      const txt = await r.text();
+      let parsed = null;
+      try { parsed = JSON.parse(txt); } catch (_) { parsed = txt; }
+      log.push({ step: 'probe-list', url, status: r.status, body: typeof parsed === 'string' ? parsed.substring(0, 200) : (Array.isArray(parsed) ? `array(${parsed.length})` : parsed) });
+      if (r.ok && Array.isArray(parsed)) {
+        listEndpoint = url;
+        existing = parsed;
+        break;
+      }
+    }
+    if (!listEndpoint) {
+      return res.status(500).json({ success: false, error: 'Ninguna ruta de charges responde 200', log });
+    }
+
+    log.push({ step: 'list-ok', endpoint: listEndpoint, count: existing.length,
+               charges: existing.map(c => ({ id: c.id, status: c.status, name: c.name, type: c.type })) });
+
+    // 2) Buscar uno aprobado vigente
+    const approved = existing.find(c => c.status === 'paid' || c.status === 'active' || c.status === 'approved');
+    if (approved) {
+      return res.json({ success: true, message: 'Ya hay un cargo aprobado vigente', chargeId: approved.id, log });
+    }
+
+    // 3) Buscar uno pending para devolver su confirmation_url
+    const pending = existing.find(c => c.status === 'pending');
+    if (pending && pending.confirmation_url) {
+      return res.json({
+        success: true,
+        message: 'Hay un cargo pending. Abrir confirmationUrl en el navegador del merchant.',
+        chargeId: pending.id,
+        confirmationUrl: pending.confirmation_url,
+        log
+      });
+    }
+
+    // 4) Crear cargo nuevo $0 / trial 36500 dias en el mismo endpoint que respondio
+    const createBody = {
+      type: 'recurrent',
+      name: 'PromoNube Pro - Todo Incluido',
+      price: '0',
+      currency: 'ARS',
+      trial_days: 36500,
+      return_url: `${process.env.FRONTEND_URL || 'https://pedidos-lett-2.web.app'}/#/dashboard?charge_status={{status}}&charge_id={{id}}`
+    };
+    const createRes = await fetch(listEndpoint, {
+      method: 'POST',
+      headers: tnHeaders,
+      body: JSON.stringify(createBody)
+    });
+    const createText = await createRes.text();
+    let createData = null;
+    try { createData = JSON.parse(createText); } catch (_) { createData = createText; }
+    log.push({ step: 'create', endpoint: listEndpoint, status: createRes.status, data: createData });
+
+    if (!createRes.ok || !createData?.id) {
+      return res.status(500).json({ success: false, error: 'No se pudo crear cargo', log });
+    }
+
+    res.json({
+      success: true,
+      message: 'Cargo creado. Abrir confirmationUrl en el navegador del merchant para aceptarlo.',
+      chargeId: createData.id,
+      confirmationUrl: createData.confirmation_url,
+      log
+    });
+  } catch (error) {
+    console.error('force-charge error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ============================================
 // NUBECATEGORIES ENDPOINTS
 // ============================================
 
-// GET: Obtener todas las categorías de TiendaNube
+// GET: Obtener todas las categor�as de TiendaNube
 app.get('/api/nubecategories/:storeId/categories', async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -15890,7 +16465,7 @@ app.get('/api/nubecategories/:storeId/categories', async (req, res) => {
     
     const { access_token } = storeDoc.data();
     
-    // Obtener categorías de TiendaNube
+    // Obtener categor�as de TiendaNube
     const response = await fetch(`https://api.tiendanube.com/v1/${storeId}/categories`, {
       method: 'GET',
       headers: {
@@ -15920,7 +16495,7 @@ app.get('/api/nubecategories/:storeId/categories', async (req, res) => {
   }
 });
 
-// POST: Crear nueva categoría
+// POST: Crear nueva categor�a
 app.post('/api/nubecategories/:storeId/categories', async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -15977,7 +16552,7 @@ app.post('/api/nubecategories/:storeId/categories', async (req, res) => {
   }
 });
 
-// PUT: Actualizar categoría
+// PUT: Actualizar categor�a
 app.put('/api/nubecategories/:storeId/categories/:categoryId', async (req, res) => {
   try {
     const { storeId, categoryId } = req.params;
@@ -16032,7 +16607,7 @@ app.put('/api/nubecategories/:storeId/categories/:categoryId', async (req, res) 
   }
 });
 
-// DELETE: Eliminar categoría
+// DELETE: Eliminar categor�a
 app.delete('/api/nubecategories/:storeId/categories/:categoryId', async (req, res) => {
   try {
     const { storeId, categoryId } = req.params;
@@ -16103,7 +16678,7 @@ app.get('/api/nubecategories/:storeId/changes', async (req, res) => {
 // NUBECATEGORIES AUTH ENDPOINTS
 // ============================================
 
-// POST: Intercambiar código OAuth por token
+// POST: Intercambiar c�digo OAuth por token
 app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
   try {
     const { code } = req.body;
@@ -16111,15 +16686,15 @@ app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
     if (!code) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Código de autorizaci?n requerido' 
+        message: 'C�digo de autorizaci?n requerido' 
       });
     }
 
-    console.log('?? Intercambiando código:', code);
+    console.log('?? Intercambiando c�digo:', code);
 
-    // En TiendaNube, el código ya contiene el access_token
+    // En TiendaNube, el c�digo ya contiene el access_token
     // Hacemos una prueba llamando a la API para obtener el user_id
-    // El código debe enviarse como Bearer token
+    // El c�digo debe enviarse como Bearer token
     let storeId = null;
     
     try {
@@ -16141,8 +16716,8 @@ app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
         throw new Error(`API error: ${testResponse.status}`);
       }
     } catch (error) {
-      console.error('Error validando código:', error);
-      throw new Error('Código inválido o expirado');
+      console.error('Error validando c�digo:', error);
+      throw new Error('C�digo inv�lido o expirado');
     }
 
     if (!storeId) {
@@ -16156,7 +16731,7 @@ app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
     const storeRef = db.collection("CategoriesNube_stores").doc(storeId);
     const storeDoc = await storeRef.get();
 
-    // El código act?a como access_token en TiendaNube
+    // El c�digo act?a como access_token en TiendaNube
     const access_token = code;
 
     if (!storeDoc.exists) {
@@ -16210,7 +16785,7 @@ app.post("/api/auth/nubecategories/exchange-code", async (req, res) => {
     });
 
   } catch (error) {
-    console.error('? Error intercambiando código:', error.message);
+    console.error('? Error intercambiando c�digo:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -16298,7 +16873,7 @@ app.post("/api/auth/nubecategories/login", async (req, res) => {
     if (!email || !password) {
       return res.json({ 
         success: false, 
-        message: 'Email y contraseña son requeridos' 
+        message: 'Email y contrase�a son requeridos' 
       });
     }
 
@@ -16310,18 +16885,18 @@ app.post("/api/auth/nubecategories/login", async (req, res) => {
     if (usersSnapshot.empty) {
       return res.json({ 
         success: false, 
-        message: 'Email o contraseña incorrectos' 
+        message: 'Email o contrase�a incorrectos' 
       });
     }
 
     const userDoc = usersSnapshot.docs[0];
     const userData = userDoc.data();
 
-    // Verificar contraseña
+    // Verificar contrase�a
     if (!verifyPassword(password, userData.passwordHash)) {
       return res.json({ 
         success: false, 
-        message: 'Email o contraseña incorrectos' 
+        message: 'Email o contrase�a incorrectos' 
       });
     }
 
@@ -16498,6 +17073,7 @@ app.put("/api/popups/:popupId", async (req, res) => {
     }
 
     await doc.ref.update({ ...updates, updatedAt: FieldValue.serverTimestamp() });
+    _configCache.delete(`popups:${data.storeId}`);
     res.json({ success: true, message: "Popup actualizado" });
   } catch (error) {
     console.error("Error actualizando popup:", error);
@@ -16520,6 +17096,7 @@ app.delete("/api/popups/:popupId", async (req, res) => {
     }
 
     await doc.ref.delete();
+    _configCache.delete(`popups:${data.storeId}`);
     res.json({ success: true, message: "Popup eliminado" });
   } catch (error) {
     console.error("Error eliminando popup:", error);
@@ -16543,6 +17120,7 @@ app.patch("/api/popups/:popupId/toggle", async (req, res) => {
 
     const newActive = !data.active;
     await doc.ref.update({ active: newActive, updatedAt: FieldValue.serverTimestamp() });
+    _configCache.delete(`popups:${data.storeId}`);
     res.json({ success: true, active: newActive });
   } catch (error) {
     console.error("Error toggling popup:", error);
@@ -16632,7 +17210,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
   const { store } = req.query;
 
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-  res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300"); // 5 min cache
+  res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400");
 
   try {
     if (!store) return res.send("// Error: store requerido");
@@ -16642,11 +17220,13 @@ app.get("/api/popup-widget.js", async (req, res) => {
       return res.send('// PromoNube: plan inactivo');
     }
 
-    // Buscar popups activos para esta tienda
-    const snapshot = await db.collection("promonube_popups")
-      .where("storeId", "==", store)
-      .where("active", "==", true)
-      .get();
+    // Buscar popups activos para esta tienda (cacheado en memoria 10 min)
+    const snapshot = await getCachedData(`popups:${store}`, () =>
+      db.collection("promonube_popups")
+        .where("storeId", "==", store)
+        .where("active", "==", true)
+        .get()
+    );
 
     if (snapshot.empty) return res.send("// No hay popups activos para esta tienda");
 
@@ -16665,7 +17245,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
   window.__promonubePopupLoaded = true;
 
   const POPUPS = ${JSON.stringify(popups)};
-  const API_URL = "https://apipromonube-jlfopowzaq-uc.a.run.app";
+  const API_URL = "${_SRV_BASE}";
   const STORE_ID = "${store}";
 
   // ----- UTILIDADES -----
@@ -16822,7 +17402,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
     }
     overlay.style.setProperty('--pn-overlay', design.overlayColor || 'rgba(0,0,0,0.7)');
 
-    // Botón cerrar
+    // Bot�n cerrar
     if (design.showCloseButton !== false) {
       const closeBtn = document.createElement('button');
       closeBtn.className = 'pn-close-btn';
@@ -16847,7 +17427,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
     const body = document.createElement('div');
     body.className = 'pn-body';
 
-    // Código de descuento destacado (si lo hay)
+    // C�digo de descuento destacado (si lo hay)
     if (content.discountValue) {
       const badge = document.createElement('div');
       badge.className = 'pn-badge';
@@ -16855,7 +17435,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
       body.appendChild(badge);
     }
 
-    // Título
+    // T�tulo
     if (content.title) {
       const title = document.createElement('h2');
       title.className = 'pn-title';
@@ -16879,11 +17459,11 @@ app.get("/api/popup-widget.js", async (req, res) => {
       body.appendChild(bodyText);
     }
 
-    // Código de cupón
+    // C�digo de cup�n
     if (content.discountCode) {
       const codeBox = document.createElement('div');
       codeBox.className = 'pn-code-box';
-      codeBox.innerHTML = '<span class="pn-code-label">Us? el código</span><span class="pn-code-value">' + content.discountCode + '</span>';
+      codeBox.innerHTML = '<span class="pn-code-label">Us? el c�digo</span><span class="pn-code-value">' + content.discountCode + '</span>';
       body.appendChild(codeBox);
     }
 
@@ -16912,7 +17492,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
         track(popupId, 'email_capture', emailVal);
         track(popupId, 'click');
 
-        // Mostrar mensaje de ééxito
+        // Mostrar mensaje de ��xito
         form.innerHTML = '<p class="pn-success-msg">\\u2713 \\u00A1Gracias! Te enviamos tu descuento.</p>';
         markShown(popupId);
         setTimeout(function() { overlay.remove(); }, 2500);
@@ -17026,13 +17606,1086 @@ app.get("/api/popup-widget.js", async (req, res) => {
 });
 
 // ============================================
+// M�DULO LOCAL STOCK - Stock por local (Odoo) - EXCLUSIVO ALTORANCHO
+// ============================================
+
+const LOCAL_STOCK_ALLOWED_STORES = ['2547699']; // Solo Altorancho
+const LOCAL_STOCK_API_BASE = 'https://lett.exemax.ar/odoo-api/get-product';
+const LOCAL_STOCK_DEFAULT_WAREHOUSES = ['Belgrano', 'Las Lomas']; // filtros por nombre (partial match, case-insensitive)
+const LOCAL_STOCK_LOW_THRESHOLD = 5; // < esta cantidad => 'Quedan pocos'
+const LOCAL_STOCK_CACHE_MS = 2 * 60 * 1000; // 2 minutos
+const localStockCache = new Map(); // sku -> { data, expiresAt }
+
+function isLocalStockAllowed(storeId) {
+  return LOCAL_STOCK_ALLOWED_STORES.includes(String(storeId));
+}
+
+async function fetchOdooStock(sku) {
+  // Cache hit
+  const cached = localStockCache.get(sku);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
+  // Odoo requiere GET con body raw {} (JSON-RPC). undici fetch no permite body en GET,
+  // as� que usamos https nativo.
+  const https = require('https');
+  const url = new URL(`${LOCAL_STOCK_API_BASE}/${encodeURIComponent(sku)}`);
+
+  const json = await new Promise((resolve, reject) => {
+    const body = '{}';
+    const req = https.request({
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'Accept': 'application/json'
+      },
+      timeout: 10000
+    }, (response) => {
+      let chunks = '';
+      response.on('data', c => chunks += c);
+      response.on('end', () => {
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          try { resolve(JSON.parse(chunks)); }
+          catch (e) { reject(new Error('Respuesta inv�lida de Odoo: ' + chunks.slice(0, 200))); }
+        } else {
+          reject(new Error(`Odoo respondi� ${response.statusCode}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(new Error('Timeout Odoo')); });
+    req.write(body);
+    req.end();
+  });
+
+  const result = Array.isArray(json.result) ? json.result : [];
+  const stock = result.map(r => ({
+    warehouse: r.warehouse || r.warehouse_name || '',
+    warehouseId: r.warehouse_id,
+    qty: parseFloat(r.qty || 0) || 0
+  })).filter(r => r.qty > 0);
+
+  localStockCache.set(sku, { data: stock, expiresAt: Date.now() + LOCAL_STOCK_CACHE_MS });
+  return stock;
+}
+
+// GET /api/odoo-stock?storeId=2547699&sku=TMA023CH - Proxy con filtro de warehouses
+app.get("/api/odoo-stock", async (req, res) => {
+  const { storeId, sku, all } = req.query;
+
+  if (!storeId || !sku) {
+    return res.status(400).json({ success: false, message: "storeId y sku requeridos" });
+  }
+  if (!isLocalStockAllowed(storeId)) {
+    return res.status(403).json({ success: false, message: "M�dulo no disponible para esta tienda" });
+  }
+
+  try {
+    // Leer config (warehouses permitidos) � opcional
+    const configDoc = await db.collection("promonube_local_stock_config").doc(String(storeId)).get();
+    const config = configDoc.exists ? configDoc.data() : {};
+    const allowedNames = (config.allowedWarehouses && config.allowedWarehouses.length)
+      ? config.allowedWarehouses
+      : LOCAL_STOCK_DEFAULT_WAREHOUSES;
+
+    const stock = await fetchOdooStock(sku);
+
+    let filtered = stock;
+    if (!all) {
+      filtered = stock.filter(s =>
+        allowedNames.some(name => s.warehouse.toLowerCase().includes(name.toLowerCase()))
+      );
+    }
+
+    res.set('Cache-Control', 'public, max-age=120, s-maxage=120');
+    res.json({
+      success: true,
+      sku,
+      stock: filtered,
+      totalQty: filtered.reduce((sum, s) => sum + s.qty, 0),
+      hasStock: filtered.length > 0
+    });
+  } catch (error) {
+    console.error('[LocalStock] Error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/local-stock-config?storeId=X
+app.get("/api/local-stock-config", async (req, res) => {
+  const { storeId } = req.query;
+  if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+  if (!isLocalStockAllowed(storeId)) return res.status(403).json({ success: false, message: "No autorizado" });
+
+  try {
+    const doc = await db.collection("promonube_local_stock_config").doc(String(storeId)).get();
+    const data = doc.exists ? doc.data() : {
+      enabled: true,
+      allowedWarehouses: LOCAL_STOCK_DEFAULT_WAREHOUSES,
+      title: 'Disponibilidad en sucursales',
+      buttonText: 'Ver disponibilidad en locales',
+      inStockLabel: 'Disponible',
+      lowStockLabel: 'Quedan pocos',
+      outOfStockLabel: 'No disponible',
+      lowThreshold: LOCAL_STOCK_LOW_THRESHOLD,
+      disclaimer: 'El stock puede variar por las ventas del local.',
+      primaryColor: '#353434',
+      textColor: '#353434',
+      bgColor: '#ffffff'
+    };
+    res.json({ success: true, config: data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/local-stock-config - Guardar config
+app.post("/api/local-stock-config", async (req, res) => {
+  const { storeId, config } = req.body;
+  if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+  if (!isLocalStockAllowed(storeId)) return res.status(403).json({ success: false, message: "No autorizado" });
+
+  try {
+    await db.collection("promonube_local_stock_config").doc(String(storeId)).set({
+      ...config,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/local-stock-widget.js?store=X - Widget que se inyecta en la tienda
+app.get("/api/local-stock-widget.js", async (req, res) => {
+  const { store } = req.query;
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+
+  if (!store || !isLocalStockAllowed(store)) {
+    return res.send('// Local stock no disponible para esta tienda');
+  }
+
+  try {
+    const configDoc = await db.collection("promonube_local_stock_config").doc(String(store)).get();
+    const cfg = configDoc.exists ? configDoc.data() : {};
+    if (configDoc.exists && cfg.enabled === false) {
+      return res.send('// Local stock deshabilitado');
+    }
+
+    const widgetConfig = {
+      title: cfg.title || 'Disponibilidad en sucursales',
+      buttonText: cfg.buttonText || 'Ver disponibilidad en locales',
+      inStockLabel: cfg.inStockLabel || 'Disponible',
+      lowStockLabel: cfg.lowStockLabel || 'Quedan pocos',
+      outOfStockLabel: cfg.outOfStockLabel || 'No disponible',
+      lowThreshold: typeof cfg.lowThreshold === 'number' ? cfg.lowThreshold : LOCAL_STOCK_LOW_THRESHOLD,
+      disclaimer: cfg.disclaimer || 'El stock puede variar por las ventas del local.',
+      primaryColor: cfg.primaryColor || '#353434',
+      textColor: cfg.textColor || '#353434',
+      bgColor: cfg.bgColor || '#ffffff',
+      allowedWarehouses: cfg.allowedWarehouses || LOCAL_STOCK_DEFAULT_WAREHOUSES,
+      displayOnlyPrefix: cfg.displayOnlyPrefix || 'M',
+      displayOnlyTitle: cfg.displayOnlyTitle || 'Producto solo de exhibici\u00f3n',
+      displayOnlyText: cfg.displayOnlyText || 'Disponible para ver en el local pero no hay stock para llev\u00e1rselo en el momento. Se puede comprar y coordinamos el retiro o el env\u00edo del mismo.',
+      displayOnlyExhibitedLabel: cfg.displayOnlyExhibitedLabel || 'Exhibido',
+      displayOnlyNotExhibitedLabel: cfg.displayOnlyNotExhibitedLabel || 'No exhibido',
+      headerBg: cfg.headerBg || '#ffffff',
+      headerTextColor: cfg.headerTextColor || '#353434',
+      showHeaderIcon: cfg.showHeaderIcon !== undefined ? cfg.showHeaderIcon : false,
+      modalBorderColor: cfg.modalBorderColor || '#353434',
+    };
+
+    const script = `
+/**
+ * PromoNube - Local Stock Widget (Altorancho)
+ * Tienda: ${store}
+ */
+(function() {
+  'use strict';
+  if (window.__pnLocalStockLoaded) return;
+  window.__pnLocalStockLoaded = true;
+
+  var API_BASE = "${_SRV_BASE}";
+  var STORE_ID = "${store}";
+  var CFG = ${JSON.stringify(widgetConfig)};
+
+  // Inyectar Poppins (si la tienda no la tiene ya)
+  function injectFont() {
+    if (document.getElementById('pn-ls-font')) return;
+    var link = document.createElement('link');
+    link.id = 'pn-ls-font';
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap';
+    document.head.appendChild(link);
+  }
+
+  function injectStyles() {
+    if (document.getElementById('pn-local-stock-styles')) return;
+    var s = document.createElement('style');
+    s.id = 'pn-local-stock-styles';
+    s.textContent = [
+      // Reset / isolation � defensive against theme bleed
+      '#pn-ls-trigger, #pn-ls-overlay, #pn-ls-overlay * { box-sizing: border-box !important; }',
+      '#pn-ls-overlay, #pn-ls-overlay * { font-family: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; }',
+
+      // Trigger button (en p�gina de producto) � estilo sutil tipo link
+      '.pnls-trigger {',
+      '  display: inline-flex !important; align-items: center !important; gap: 6px !important;',
+      '  margin: 10px 0 !important;',
+      '  padding: 6px 0 !important;',
+      '  background: transparent !important;',
+      '  color: ' + CFG.primaryColor + ' !important;',
+      '  border: none !important;',
+      '  border-bottom: 1px solid ' + CFG.primaryColor + ' !important;',
+      '  border-radius: 0 !important;',
+      '  font-weight: 500 !important; font-size: 13px !important; letter-spacing: 0.1px !important;',
+      '  cursor: pointer !important; transition: opacity 0.18s ease !important;',
+      '  box-shadow: none !important;',
+      '  text-transform: none !important; line-height: 1.2 !important;',
+      '  width: auto !important;',
+      '}',
+      '.pnls-trigger:hover { opacity: 0.65 !important; }',
+      '.pnls-trigger svg { width: 14px !important; height: 14px !important; stroke: ' + CFG.primaryColor + ' !important; }',
+
+      // Overlay
+      '.pnls-overlay {',
+      '  position: fixed !important; inset: 0 !important; background: rgba(20,20,20,0.55) !important;',
+      '  backdrop-filter: blur(6px) !important; -webkit-backdrop-filter: blur(6px) !important;',
+      '  z-index: 2147483600 !important; display: flex !important; align-items: center !important; justify-content: center !important;',
+      '  padding: 20px !important; opacity: 0 !important; pointer-events: none !important; transition: opacity 0.25s ease !important;',
+      '}',
+      '.pnls-overlay.is-open { opacity: 1 !important; pointer-events: auto !important; }',
+
+      // Modal container
+      '.pnls-modal {',
+      '  background: ' + CFG.bgColor + ' !important; color: ' + CFG.textColor + ' !important;',
+      '  width: 100% !important; max-width: 460px !important;',
+      '  border-radius: 22px !important; overflow: hidden !important;',
+      '  border: ' + (CFG.modalBorderColor ? '1.5px solid ' + CFG.modalBorderColor : 'none') + ' !important;',
+      '  box-shadow: 0 30px 80px rgba(0,0,0,0.35) !important;',
+      '  transform: translateY(24px) scale(0.96) !important; transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2) !important;',
+      '  position: relative !important;',
+      '}',
+      '.pnls-overlay.is-open .pnls-modal { transform: translateY(0) scale(1) !important; }',
+
+      // Hero header
+      '.pnls-hero {',
+      '  background: ' + CFG.headerBg + ' !important;',
+      '  padding: 26px 26px 22px !important; color: ' + CFG.headerTextColor + ' !important;',
+      '  border-bottom: 1px solid ' + CFG.modalBorderColor + ' !important;',
+      '  position: relative !important;',
+      '}',
+      '.pnls-hero__separator { display: none !important; }',
+      '.pnls-hero__close {',
+      '  position: absolute !important; top: 14px !important; right: 14px !important;',
+      '  background: rgba(53,52,52,0.08) !important; border: 1px solid ' + CFG.modalBorderColor + ' !important; cursor: pointer !important;',
+      '  width: 32px !important; height: 32px !important; border-radius: 50% !important;',
+      '  display: flex !important; align-items: center !important; justify-content: center !important;',
+      '  color: ' + CFG.headerTextColor + ' !important; transition: background 0.15s !important;',
+      '  padding: 0 !important;',
+      '}',
+      '.pnls-hero__close:hover { background: rgba(53,52,52,0.14) !important; }',
+      '.pnls-hero__close svg { width: 16px !important; height: 16px !important; stroke: ' + CFG.headerTextColor + ' !important; }',
+      '.pnls-hero__icon {',
+      '  width: 44px !important; height: 44px !important; border-radius: 12px !important;',
+      '  background: rgba(53,52,52,0.08) !important;',
+      '  display: ' + (CFG.showHeaderIcon ? 'flex' : 'none') + ' !important; align-items: center !important; justify-content: center !important;',
+      '  margin-bottom: 12px !important;',
+      '}',
+      '.pnls-hero__icon svg { width: 22px !important; height: 22px !important; stroke: ' + CFG.headerTextColor + ' !important; }',
+      '.pnls-hero__title {',
+      '  margin: 0 !important; padding: 0 !important;',
+      '  font-size: 18px !important; font-weight: 600 !important; letter-spacing: -0.3px !important;',
+      '  color: ' + CFG.headerTextColor + ' !important; line-height: 1.3 !important;',
+      '}',
+      '.pnls-hero__sku {',
+      '  margin: 6px 0 0 !important; padding: 0 !important;',
+      '  font-size: 12.5px !important; font-weight: 500 !important;',
+      '  color: rgba(53,52,52,0.6) !important; letter-spacing: 0.3px !important;',
+      '}',
+      '.pnls-hero__sku strong { color: ' + CFG.headerTextColor + ' !important; font-weight: 600 !important; }',
+
+      // Body
+      '.pnls-body { padding: 18px 22px 6px !important; background: ' + CFG.bgColor + ' !important; }',
+
+      '.pnls-list { list-style: none !important; padding: 0 !important; margin: 0 !important; }',
+      '.pnls-item {',
+      '  display: flex !important; justify-content: space-between !important; align-items: center !important;',
+      '  padding: 14px 14px !important; margin-bottom: 8px !important;',
+      '  border: 1px solid rgba(53,52,52,0.08) !important;',
+      '  border-radius: 14px !important;',
+      '  background: ' + CFG.bgColor + ' !important;',
+      '  transition: border-color 0.15s, background 0.15s !important;',
+      '}',
+      '.pnls-item:last-child { margin-bottom: 0 !important; }',
+      '.pnls-item--in    { border-color: rgba(22,163,74,0.30) !important;  background: rgba(22,163,74,0.04) !important; }',
+      '.pnls-item--low   { border-color: rgba(234,179,8,0.40) !important;  background: rgba(234,179,8,0.06) !important; }',
+      '.pnls-item--out   { border-color: rgba(220,38,38,0.25) !important;  background: rgba(220,38,38,0.03) !important; }',
+
+      '.pnls-item__left { display: flex !important; align-items: center !important; gap: 12px !important; min-width: 0 !important; }',
+      '.pnls-item__pin {',
+      '  width: 36px !important; height: 36px !important; border-radius: 10px !important;',
+      '  background: rgba(53,52,52,0.06) !important;',
+      '  display: flex !important; align-items: center !important; justify-content: center !important;',
+      '  flex-shrink: 0 !important;',
+      '}',
+      '.pnls-item__pin svg { width: 18px !important; height: 18px !important; stroke: ' + CFG.textColor + ' !important; }',
+      '.pnls-item__name {',
+      '  font-weight: 600 !important; font-size: 15px !important; line-height: 1.2 !important;',
+      '  color: ' + CFG.textColor + ' !important;',
+      '  margin: 0 !important; padding: 0 !important;',
+      '}',
+      '.pnls-item__city {',
+      '  font-size: 11.5px !important; color: rgba(53,52,52,0.55) !important;',
+      '  margin: 2px 0 0 !important; padding: 0 !important; font-weight: 500 !important;',
+      '}',
+
+      '.pnls-badge {',
+      '  display: inline-flex !important; align-items: center !important; gap: 6px !important;',
+      '  padding: 7px 12px !important; border-radius: 999px !important;',
+      '  font-weight: 600 !important; font-size: 12.5px !important; letter-spacing: 0.2px !important;',
+      '  white-space: nowrap !important; flex-shrink: 0 !important;',
+      '}',
+      '.pnls-badge--in    { background: #dcfce7 !important; color: #15803d !important; }',
+      '.pnls-badge--low   { background: #fef3c7 !important; color: #a16207 !important; }',
+      '.pnls-badge--out   { background: #fee2e2 !important; color: #b91c1c !important; }',
+      '.pnls-badge--display { background: #dbeafe !important; color: #1d4ed8 !important; }',
+      '.pnls-badge svg { width: 14px !important; height: 14px !important; }',
+      '.pnls-badge--in svg  { stroke: #15803d !important; }',
+      '.pnls-badge--low svg { stroke: #a16207 !important; }',
+      '.pnls-badge--out svg { stroke: #b91c1c !important; }',
+      '.pnls-badge--display svg { stroke: #1d4ed8 !important; }',
+
+      // Item variante display
+      '.pnls-item--display { border-color: rgba(29,78,216,0.30) !important; background: rgba(29,78,216,0.04) !important; }',
+
+      // Banner aviso "solo exhibici�n"
+      '.pnls-banner {',
+      '  display: flex !important; align-items: flex-start !important; gap: 12px !important;',
+      '  padding: 14px 14px !important; margin: 0 0 14px !important;',
+      '  border-radius: 14px !important;',
+      '  background: #eff6ff !important;',
+      '  border: 1px solid #bfdbfe !important;',
+      '}',
+      '.pnls-banner__icon {',
+      '  width: 36px !important; height: 36px !important; border-radius: 10px !important;',
+      '  background: #dbeafe !important;',
+      '  display: flex !important; align-items: center !important; justify-content: center !important;',
+      '  flex-shrink: 0 !important;',
+      '}',
+      '.pnls-banner__icon svg { width: 18px !important; height: 18px !important; stroke: #1d4ed8 !important; }',
+      '.pnls-banner__text { display: flex !important; flex-direction: column !important; gap: 3px !important; }',
+      '.pnls-banner__text strong {',
+      '  font-size: 13.5px !important; font-weight: 600 !important; color: #1e3a8a !important;',
+      '  line-height: 1.3 !important;',
+      '}',
+      '.pnls-banner__text span {',
+      '  font-size: 12.5px !important; font-weight: 400 !important; color: #1e40af !important;',
+      '  line-height: 1.5 !important;',
+      '}',
+
+      // Footer
+      '.pnls-footer {',
+      '  padding: 14px 22px 20px !important;',
+      '  background: rgba(53,52,52,0.03) !important;',
+      '  border-top: 1px solid rgba(53,52,52,0.07) !important;',
+      '}',
+      '.pnls-disclaimer {',
+      '  margin: 0 !important; padding: 0 !important;',
+      '  font-size: 12px !important; color: rgba(53,52,52,0.7) !important; line-height: 1.5 !important;',
+      '  display: flex !important; align-items: flex-start !important; gap: 8px !important;',
+      '  font-weight: 400 !important;',
+      '}',
+      '.pnls-disclaimer svg { width: 14px !important; height: 14px !important; flex-shrink: 0 !important; margin-top: 2px !important; stroke: rgba(53,52,52,0.6) !important; }',
+
+      // Loading / errores
+      '.pnls-loading {',
+      '  text-align: center !important; padding: 36px 12px !important;',
+      '  color: rgba(53,52,52,0.65) !important; font-size: 14px !important;',
+      '}',
+      '.pnls-spinner {',
+      '  width: 32px !important; height: 32px !important; margin: 0 auto 14px !important;',
+      '  border: 3px solid rgba(53,52,52,0.12) !important;',
+      '  border-top-color: ' + CFG.primaryColor + ' !important;',
+      '  border-radius: 50% !important; animation: pnls-spin 0.8s linear infinite !important;',
+      '}',
+      '@keyframes pnls-spin { to { transform: rotate(360deg); } }',
+
+      // Mobile
+      '@media (max-width: 480px) {',
+      '  .pnls-modal { max-width: 100% !important; border-radius: 22px 22px 0 0 !important; align-self: flex-end !important; }',
+      '  .pnls-overlay { align-items: flex-end !important; padding: 0 !important; }',
+      '  .pnls-hero { padding: 22px 20px 18px !important; }',
+      '  .pnls-body { padding: 16px 18px 4px !important; }',
+      '  .pnls-footer { padding: 12px 18px 22px !important; }',
+      '}'
+    ].join('\\n');
+    document.head.appendChild(s);
+  }
+
+  // Detectar SKU del producto
+  function detectSku() {
+    try {
+      // 1. Variante seleccionada en el form (lo m�s preciso)
+      var formVariantId = null;
+      var vInput = document.querySelector('input[name="variant_id"], select[name="variant_id"]');
+      if (vInput && vInput.value) formVariantId = String(vInput.value);
+
+      // 2. Buscar en window.LS.variants
+      if (window.LS && window.LS.variants && window.LS.variants.length) {
+        if (formVariantId) {
+          var match = window.LS.variants.find(function(v) { return String(v.id) === formVariantId; });
+          if (match && match.sku) return match.sku;
+        }
+        if (window.LS.variants[0] && window.LS.variants[0].sku) return window.LS.variants[0].sku;
+      }
+
+      // 3. window.LS.product.variants (legacy)
+      if (window.LS && window.LS.product) {
+        var p = window.LS.product;
+        if (p.variants && p.variants.length) {
+          var selected = p.selected_variant_id || (p.variants[0] && p.variants[0].id);
+          var v = p.variants.find(function(x) { return x.id == selected; }) || p.variants[0];
+          if (v && v.sku) return v.sku;
+        }
+        if (p.sku) return p.sku;
+        // Algunos temas guardan el SKU en tags
+        if (p.tags && p.tags.length) {
+          var skuLike = p.tags.find(function(t) { return /^[A-Z]{2,}\d/i.test(String(t).trim()); });
+          if (skuLike) return skuLike;
+        }
+      }
+    } catch(e) {}
+    var elSku = document.querySelector('[data-sku]');
+    if (elSku && elSku.getAttribute('data-sku')) return elSku.getAttribute('data-sku');
+    var meta = document.querySelector('meta[itemprop="sku"], meta[property="product:sku"]');
+    if (meta && meta.getAttribute('content')) return meta.getAttribute('content');
+    var itemprop = document.querySelector('[itemprop="sku"]');
+    if (itemprop) {
+      var t = itemprop.getAttribute('content') || itemprop.textContent;
+      if (t) return t.trim();
+    }
+    return null;
+  }
+
+  function isProductPage() {
+    var path = window.location.pathname.toLowerCase();
+    if (path.indexOf('/productos/') !== -1) return true;
+    if (path.indexOf('/products/') !== -1) return true;
+    if (window.LS && window.LS.product) return true;
+    return false;
+  }
+
+  function findContainer() {
+    // Prioridad: justo debajo del precio
+    var sel = [
+      '.js-product-price',
+      '.product-detail-price',
+      '.js-product-detail-price',
+      '[data-store="product-price"]',
+      '.product-price',
+      '.price-detail',
+      '.js-compat-price',
+      // Fallback: cerca del CTA
+      '.js-product-buttons',
+      '.product-detail-buttons',
+      '.js-product-form',
+      '.product-form',
+      'form[action*="/cart/add"]'
+    ];
+    for (var i = 0; i < sel.length; i++) {
+      var el = document.querySelector(sel[i]);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  // SVG icons
+  var ICON_PIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+  var ICON_STORE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1-5h16l1 5"/><path d="M5 9v11h14V9"/><path d="M9 22V13h6v9"/></svg>';
+  var ICON_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  var ICON_INFO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+  var ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  var ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+  var ICON_X     = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+
+  function classifyStock(qty) {
+    if (qty <= 0) return 'out';
+    if (qty < CFG.lowThreshold) return 'low';
+    return 'in';
+  }
+  function labelForStatus(status) {
+    if (status === 'in') return CFG.inStockLabel;
+    if (status === 'low') return CFG.lowStockLabel;
+    return CFG.outOfStockLabel;
+  }
+  function iconForStatus(status) {
+    if (status === 'in') return ICON_CHECK;
+    if (status === 'low') return ICON_CLOCK;
+    return ICON_X;
+  }
+
+  function buildBodyHtml(stock, sku) {
+    var displayOnly = sku && CFG.displayOnlyPrefix && new RegExp('^' + CFG.displayOnlyPrefix, 'i').test(String(sku).trim());
+
+    // Quedarse con la mayor cantidad por dep�sito permitido (match parcial, case-insensitive)
+    var byName = {};
+    (stock || []).forEach(function(s) {
+      CFG.allowedWarehouses.forEach(function(name) {
+        if (s.warehouse.toLowerCase().indexOf(name.toLowerCase()) !== -1) {
+          if (!byName[name] || s.qty > byName[name].qty) {
+            byName[name] = { qty: s.qty, fullName: s.warehouse };
+          }
+        }
+      });
+    });
+
+    var bannerHtml = '';
+    if (displayOnly) {
+      bannerHtml = [
+        '<div class="pnls-banner pnls-banner--display">',
+        '  <div class="pnls-banner__icon">' + ICON_INFO + '</div>',
+        '  <div class="pnls-banner__text">',
+        '    <strong>' + CFG.displayOnlyTitle + '</strong>',
+        '    <span>' + CFG.displayOnlyText + '</span>',
+        '  </div>',
+        '</div>'
+      ].join('');
+    }
+
+    var listHtml = '<ul class="pnls-list">';
+    CFG.allowedWarehouses.forEach(function(name) {
+      var entry = byName[name];
+      var qty = entry ? entry.qty : 0;
+      var status = classifyStock(qty);
+      var label, icon, itemStatus;
+      if (displayOnly) {
+        if (qty > 0) {
+          label = CFG.displayOnlyExhibitedLabel;
+          icon = ICON_INFO;
+          itemStatus = 'display';
+        } else {
+          label = CFG.displayOnlyNotExhibitedLabel;
+          icon = ICON_X;
+          itemStatus = 'out';
+        }
+      } else {
+        label = labelForStatus(status);
+        icon = iconForStatus(status);
+        itemStatus = status;
+      }
+
+      listHtml += '<li class="pnls-item pnls-item--' + itemStatus + '">';
+      listHtml +=   '<div class="pnls-item__left">';
+      listHtml +=     '<div class="pnls-item__pin">' + ICON_PIN + '</div>';
+      listHtml +=     '<div>';
+      listHtml +=       '<p class="pnls-item__name">' + name + '</p>';
+      listHtml +=       '<p class="pnls-item__city">Sucursal Altorancho</p>';
+      listHtml +=     '</div>';
+      listHtml +=   '</div>';
+      listHtml +=   '<span class="pnls-badge pnls-badge--' + itemStatus + '">' + icon + '<span>' + label + '</span></span>';
+      listHtml += '</li>';
+    });
+    listHtml += '</ul>';
+
+    return bannerHtml + listHtml;
+  }
+
+  function buildModalShell(sku, bodyHtml) {
+    var skuHtml = sku ? '<p class="pnls-hero__sku">SKU: <strong>' + sku + '</strong></p>' : '';
+    return [
+      '<div class="pnls-modal" role="dialog" aria-modal="true" aria-labelledby="pn-ls-title">',
+      '  <div class="pnls-hero">',
+      '    <button class="pnls-hero__close" aria-label="Cerrar">' + ICON_CLOSE + '</button>',
+      CFG.showHeaderIcon ? '    <div class="pnls-hero__icon">' + ICON_STORE + '</div>' : '',
+      '    <h3 id="pn-ls-title" class="pnls-hero__title">' + CFG.title + '</h3>',
+      skuHtml,
+      '  </div>',
+      '  <div class="pnls-body" id="pn-ls-body">' + bodyHtml + '</div>',
+      '  <div class="pnls-footer">',
+      '    <p class="pnls-disclaimer">' + ICON_INFO + '<span>' + CFG.disclaimer + '</span></p>',
+      '  </div>',
+      '</div>'
+    ].join('');
+  }
+
+  function createModal(sku, bodyHtml) {
+    var existing = document.getElementById('pn-ls-overlay');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'pn-ls-overlay';
+    overlay.className = 'pnls-overlay';
+    overlay.innerHTML = buildModalShell(sku, bodyHtml);
+    document.body.appendChild(overlay);
+
+    var closeBtn = overlay.querySelector('.pnls-hero__close');
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closeModal();
+    });
+    document.addEventListener('keydown', escListener);
+  }
+
+  function escListener(e) { if (e.key === 'Escape') closeModal(); }
+
+  function openModal() {
+    var loading = '<div class="pnls-loading"><div class="pnls-spinner"></div>Consultando disponibilidad...</div>';
+    var sku = detectSku();
+    createModal(sku, loading);
+    var overlay = document.getElementById('pn-ls-overlay');
+    if (overlay) {
+      requestAnimationFrame(function() { overlay.classList.add('is-open'); });
+      document.body.style.overflow = 'hidden';
+    }
+
+    if (!sku) {
+      var bodyEl = document.getElementById('pn-ls-body');
+      if (bodyEl) bodyEl.innerHTML = '<div class="pnls-loading">No pudimos identificar el producto.</div>';
+      return;
+    }
+
+    fetch(API_BASE + '/api/odoo-stock?storeId=' + encodeURIComponent(STORE_ID) + '&sku=' + encodeURIComponent(sku))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var bodyEl = document.getElementById('pn-ls-body');
+        if (!bodyEl) return;
+        if (data && data.success) {
+          bodyEl.innerHTML = buildBodyHtml(data.stock || [], sku);
+        } else {
+          bodyEl.innerHTML = '<div class="pnls-loading">No se pudo consultar el stock en este momento.</div>';
+        }
+      })
+      .catch(function() {
+        var bodyEl = document.getElementById('pn-ls-body');
+        if (bodyEl) bodyEl.innerHTML = '<div class="pnls-loading">Error de conexi�n. Intent� nuevamente.</div>';
+      });
+  }
+
+  function closeModal() {
+    var overlay = document.getElementById('pn-ls-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('is-open');
+    document.body.style.overflow = '';
+    document.removeEventListener('keydown', escListener);
+    setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 280);
+  }
+
+  function renderTrigger() {
+    if (document.getElementById('pn-ls-trigger')) return;
+    var container = findContainer();
+    if (!container) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'pn-ls-trigger';
+    btn.className = 'pnls-trigger';
+    btn.innerHTML = ICON_PIN + '<span>' + CFG.buttonText + '</span>';
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openModal();
+    });
+    if (container.nextSibling) {
+      container.parentNode.insertBefore(btn, container.nextSibling);
+    } else {
+      container.parentNode.appendChild(btn);
+    }
+  }
+
+  function init() {
+    if (!isProductPage()) return;
+    injectFont();
+    injectStyles();
+    renderTrigger();
+
+    // Re-render trigger si cambia la variante (no rompe nada porque guard contra duplicado)
+    document.addEventListener('change', function(ev) {
+      if (ev.target && (ev.target.matches('select[name="variation"]') || ev.target.closest('.js-product-variants'))) {
+        // El bot�n sigue siendo el mismo, el SKU se detecta al click
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+`;
+
+    res.send(script);
+  } catch (error) {
+    console.error("Error generando local-stock-widget:", error);
+    res.send("// Error: " + error.message);
+  }
+});
+// POST /api/local-stock/install?storeId=X - Instala el script en TiendaNube
+app.post("/api/local-stock/install", async (req, res) => {
+  const { storeId } = req.body;
+  if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+  if (!isLocalStockAllowed(storeId)) return res.status(403).json({ success: false, message: "No autorizado" });
+
+  try {
+    const storeDoc = await db.collection("promonube_stores").doc(String(storeId)).get();
+    if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Store no encontrada" });
+
+    const accessToken = storeDoc.data().accessToken;
+    const scriptUrl = `${HOSTING_URL}/api/local-stock-widget.js?store=${storeId}`;
+
+    // Ver si ya est� instalado
+    const listRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
+      headers: {
+        'Authentication': `bearer ${accessToken}`,
+        'User-Agent': 'GlowLab (info@techdi.com.ar)'
+      }
+    });
+    const list = await listRes.json();
+    const scripts = Array.isArray(list) ? list : (list.result || []);
+    const existing = scripts.find(s => s.src && s.src.includes('local-stock-widget'));
+
+    if (existing) {
+      return res.json({ success: true, message: "Ya estaba instalado", scriptId: existing.id });
+    }
+
+    const installRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
+      method: 'POST',
+      headers: {
+        'Authentication': `bearer ${accessToken}`,
+        'User-Agent': 'GlowLab (info@techdi.com.ar)',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        script_id: Date.now(),
+        event: 'onload',
+        src: scriptUrl,
+        where: 'store'
+      })
+    });
+
+    if (!installRes.ok) {
+      const t = await installRes.text();
+      return res.status(500).json({ success: false, message: "Error TN: " + t });
+    }
+
+    const installed = await installRes.json();
+    res.json({ success: true, message: "Script instalado", scriptId: installed.id });
+  } catch (error) {
+    console.error('[LocalStock install]', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// M�DULO CHECKOUT NOTICE - EXCLUSIVO ALTORANCHO
+// Mostrar mensaje en el checkout con bot�n a WhatsApp
+// ============================================
+
+const CHECKOUT_NOTICE_DEFAULT = {
+  enabled: true,
+  title: '�Necesit�s Factura A?',
+  message: 'Las facturas se emiten como B por defecto. Si necesit�s Factura A, escribinos a WhatsApp con el mensaje "Factura A" y te coordinamos los datos de facturaci�n.',
+  buttonText: 'Pedir Factura A por WhatsApp',
+  whatsappPhone: '5491100000000',
+  whatsappMessage: 'Hola! Hice una compra y necesito Factura A. Mis datos son:',
+  bgColor: '#fff7ed',
+  borderColor: '#fb923c',
+  textColor: '#7c2d12',
+  buttonBgColor: '#25d366',
+  buttonTextColor: '#ffffff',
+  iconEmoji: '??',
+  borderRadius: 12,
+  shape: 'rounded', // rounded | square | pill
+  position: 'top'   // top | bottom
+};
+
+// GET /api/checkout-notice-config?storeId=X
+app.get("/api/checkout-notice-config", async (req, res) => {
+  const { storeId } = req.query;
+  if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+  if (!isLocalStockAllowed(storeId)) return res.status(403).json({ success: false, message: "No autorizado" });
+  // Verificación extra: solo Altorancho puede recibir config activa
+  if (String(storeId) !== '2547699') return res.json({ success: true, config: { ...CHECKOUT_NOTICE_DEFAULT, enabled: false } });
+  try {
+    const doc = await db.collection("promonube_checkout_notice_config").doc(String(storeId)).get();
+    const data = doc.exists ? { ...CHECKOUT_NOTICE_DEFAULT, ...doc.data() } : CHECKOUT_NOTICE_DEFAULT;
+    res.json({ success: true, config: data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/checkout-notice-config
+app.post("/api/checkout-notice-config", async (req, res) => {
+  const { storeId, config } = req.body || {};
+  if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+  if (!isLocalStockAllowed(storeId)) return res.status(403).json({ success: false, message: "No autorizado" });
+  try {
+    await db.collection("promonube_checkout_notice_config").doc(String(storeId)).set({
+      ...config,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/checkout-notice-widget.js?store=X
+app.get("/api/checkout-notice-widget.js", async (req, res) => {
+  const { store } = req.query;
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400');
+
+  if (!store || !isLocalStockAllowed(store)) {
+    return res.send('// Checkout notice no disponible para esta tienda');
+  }
+
+  try {
+    const doc = await getCachedDoc("promonube_checkout_notice_config", String(store));
+    const cfg = doc.exists ? { ...CHECKOUT_NOTICE_DEFAULT, ...doc.data() } : CHECKOUT_NOTICE_DEFAULT;
+
+    if (!cfg.enabled) {
+      return res.send('// Checkout notice deshabilitado');
+    }
+
+    const cleanPhone = String(cfg.whatsappPhone || '').replace(/\D/g, '');
+    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(cfg.whatsappMessage || '')}`;
+
+    const radiusMap = { rounded: cfg.borderRadius || 12, square: 0, pill: 999 };
+    const radius = radiusMap[cfg.shape] !== undefined ? radiusMap[cfg.shape] : (cfg.borderRadius || 12);
+
+    const cfgJson = JSON.stringify({
+      title: cfg.title || '',
+      message: cfg.message || '',
+      buttonText: cfg.buttonText || '',
+      iconEmoji: cfg.iconEmoji || '',
+      bgColor: cfg.bgColor,
+      borderColor: cfg.borderColor,
+      textColor: cfg.textColor,
+      buttonBgColor: cfg.buttonBgColor,
+      buttonTextColor: cfg.buttonTextColor,
+      radius,
+      position: cfg.position || 'top',
+      waUrl
+    });
+
+    const js = `(function(){
+  if (window.__promonubeCheckoutNotice) return;
+  window.__promonubeCheckoutNotice = true;
+  var CFG = ${cfgJson};
+
+  function loadFont(){
+    if (document.querySelector('link[data-pn-poppins]')) return;
+    var l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap';
+    l.setAttribute('data-pn-poppins','1');
+    document.head.appendChild(l);
+  }
+
+  function injectStyles(){
+    if (document.getElementById('pn-checkout-notice-styles')) return;
+    var s = document.createElement('style');
+    s.id = 'pn-checkout-notice-styles';
+    s.textContent = ''
+      + '.pn-checkout-notice{font-family:"Poppins",-apple-system,BlinkMacSystemFont,sans-serif;background:'+CFG.bgColor+';color:'+CFG.textColor+';border:1.5px solid '+CFG.borderColor+';border-radius:'+CFG.radius+'px;padding:16px 18px;margin:16px 0;display:flex;flex-direction:column;gap:10px;box-shadow:0 4px 14px rgba(0,0,0,0.06);box-sizing:border-box}'
+      + '.pn-checkout-notice__head{display:flex;align-items:center;gap:10px}'
+      + '.pn-checkout-notice__icon{font-size:22px;line-height:1;flex-shrink:0}'
+      + '.pn-checkout-notice__title{font-weight:600;font-size:15px;color:'+CFG.textColor+';margin:0;letter-spacing:-0.01em}'
+      + '.pn-checkout-notice__msg{font-weight:400;font-size:13.5px;line-height:1.55;color:'+CFG.textColor+';margin:0;opacity:0.92}'
+      + '.pn-checkout-notice__btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:'+CFG.buttonBgColor+';color:'+CFG.buttonTextColor+';font-family:"Poppins",sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:'+(CFG.radius>0?CFG.radius:8)+'px;text-decoration:none;border:none;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease;align-self:flex-start;line-height:1}'
+      + '.pn-checkout-notice__btn:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(0,0,0,0.15);text-decoration:none}'
+      + '.pn-checkout-notice__btn svg{width:18px;height:18px;fill:currentColor}'
+      + '@media (max-width:600px){.pn-checkout-notice{padding:14px;margin:12px 0}.pn-checkout-notice__title{font-size:14px}.pn-checkout-notice__msg{font-size:13px}.pn-checkout-notice__btn{width:100%;align-self:stretch}}';
+    document.head.appendChild(s);
+  }
+
+  function buildHtml(){
+    var waSvg = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 14.4c-.3-.1-1.7-.8-2-.9-.3-.1-.5-.1-.7.1-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1-1.7-.8-2.8-1.5-3.9-3.5-.3-.5.3-.5.8-1.5.1-.2 0-.3 0-.5-.1-.1-.6-1.5-.9-2-.2-.5-.5-.4-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 2-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3M12 2C6.5 2 2 6.5 2 12c0 1.8.5 3.5 1.3 4.9L2 22l5.3-1.4C8.7 21.5 10.3 22 12 22c5.5 0 10-4.5 10-10S17.5 2 12 2"/></svg>';
+    var head = '';
+    if (CFG.iconEmoji || CFG.title) {
+      head += '<div class="pn-checkout-notice__head">';
+      if (CFG.iconEmoji) head += '<span class="pn-checkout-notice__icon">'+CFG.iconEmoji+'</span>';
+      if (CFG.title) head += '<h3 class="pn-checkout-notice__title">'+CFG.title+'</h3>';
+      head += '</div>';
+    }
+    var msg = CFG.message ? '<p class="pn-checkout-notice__msg">'+CFG.message+'</p>' : '';
+    var btn = CFG.buttonText ? '<a class="pn-checkout-notice__btn" href="'+CFG.waUrl+'" target="_blank" rel="noopener">'+waSvg+'<span>'+CFG.buttonText+'</span></a>' : '';
+    return head + msg + btn;
+  }
+
+  function findAnchor(){
+    // Checkout v3 (Next.js / React) usa selectores como [data-store-id], #__next, main
+    // Buscamos el contenedor mas especifico al "step" del checkout
+    var candidates = [
+      'form[action*="checkout"]',
+      'main form',
+      '[data-testid*="checkout"]',
+      '[data-testid*="payment"]',
+      '[class*="CheckoutLayout"]',
+      '[class*="checkout-layout"]',
+      '[class*="StepContainer"]',
+      'main',
+      '#__next > div',
+      '#checkout',
+      '.checkout',
+      '#root',
+      'body'
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+      var el = document.querySelector(candidates[i]);
+      if (el) return el;
+    }
+    return document.body;
+  }
+
+  function render(){
+    if (document.querySelector('.pn-checkout-notice')) return true;
+    var anchor = findAnchor();
+    if (!anchor) return false;
+
+    var box = document.createElement('div');
+    box.className = 'pn-checkout-notice';
+    box.innerHTML = buildHtml();
+
+    if (CFG.position === 'bottom') {
+      anchor.appendChild(box);
+    } else {
+      anchor.insertBefore(box, anchor.firstChild);
+    }
+    return true;
+  }
+
+  function init(){
+    loadFont();
+    injectStyles();
+    render();
+
+    // Re-render si TN re-renderiza (SPA Next.js / React) � MutationObserver
+    if (window.MutationObserver) {
+      var obs = new MutationObserver(function(){
+        if (!document.querySelector('.pn-checkout-notice')) {
+          render();
+        }
+      });
+      try {
+        obs.observe(document.body, { childList: true, subtree: true });
+        // Auto-disconnect tras 60s para no consumir recursos
+        setTimeout(function(){ try { obs.disconnect(); } catch(e){} }, 60000);
+      } catch(e){}
+    }
+
+    // Fallback adicional: chequeo peri�dico durante 30s
+    var attempts = 0;
+    var t = setInterval(function(){
+      attempts++;
+      if (!document.querySelector('.pn-checkout-notice')) render();
+      if (attempts > 30) clearInterval(t);
+    }, 1000);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();`;
+
+    res.send(js);
+  } catch (error) {
+    console.error("Error generando checkout-notice-widget:", error);
+    res.status(500).send('// Error');
+  }
+});
+
+// GET /api/checkout-notice/list-scripts?storeId=X - Debug: lista scripts en TN
+app.get("/api/checkout-notice/list-scripts", async (req, res) => {
+  const storeId = req.query.storeId;
+  if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+  if (!isLocalStockAllowed(storeId)) return res.status(403).json({ success: false, message: "No autorizado" });
+  try {
+    const storeDoc = await db.collection("promonube_stores").doc(String(storeId)).get();
+    if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Store no encontrada" });
+    const accessToken = storeDoc.data().accessToken;
+    const r = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
+      headers: { 'Authentication': `bearer ${accessToken}`, 'User-Agent': 'GlowLab (info@techdi.com.ar)' }
+    });
+    const text = await r.text();
+    res.json({ success: true, status: r.status, body: text });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// POST /api/checkout-notice/install - Instala el script en TN (where: checkout)
+app.post("/api/checkout-notice/install", async (req, res) => {
+  const { storeId } = req.body || {};
+  if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+  if (!isLocalStockAllowed(storeId)) return res.status(403).json({ success: false, message: "No autorizado" });
+
+  try {
+    const storeDoc = await db.collection("promonube_stores").doc(String(storeId)).get();
+    if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Store no encontrada" });
+
+    const accessToken = storeDoc.data().accessToken;
+    const scriptUrl = `${HOSTING_URL}/api/checkout-notice-widget.js?store=${storeId}`;
+
+    const listRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
+      headers: {
+        'Authentication': `bearer ${accessToken}`,
+        'User-Agent': 'GlowLab (info@techdi.com.ar)'
+      }
+    });
+    const list = await listRes.json();
+    const scripts = Array.isArray(list) ? list : (list.result || []);
+    const existing = scripts.find(s => s.src && s.src.includes('checkout-notice-widget'));
+
+    if (existing) {
+      return res.json({ success: true, message: "Ya estaba instalado", scriptId: existing.id });
+    }
+
+    const installRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
+      method: 'POST',
+      headers: {
+        'Authentication': `bearer ${accessToken}`,
+        'User-Agent': 'GlowLab (info@techdi.com.ar)',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        script_id: Date.now(),
+        event: 'onload',
+        src: scriptUrl,
+        where: 'checkout'
+      })
+    });
+
+    const installText = await installRes.text();
+    if (!installRes.ok) {
+      console.error('[CheckoutNotice install] TN error', installRes.status, installText);
+      return res.status(500).json({ success: false, status: installRes.status, message: "Error TN: " + installText });
+    }
+
+    const installed = JSON.parse(installText);
+    res.json({ success: true, message: "Script instalado", scriptId: installed.id });
+  } catch (error) {
+    console.error('[CheckoutNotice install]', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
 // EXPORTAR CLOUD FUNCTION
 // ============================================
 exports.apipromonube = functions.https.onRequest({
   region: "us-central1",
-  timeoutSeconds: 60,
+  timeoutSeconds: 120,
   memory: "256MiB",
-  maxInstances: 3,
+  maxInstances: 5,
   concurrency: 80
 }, app);
 
@@ -17079,11 +18732,119 @@ app.get("/api/test/product-fields/:storeId/:productId", async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// GET /api/admin/check-script/:storeId/:scriptId
+app.get('/api/admin/check-script/:storeId/:scriptId', requireAdminKey, async (req, res) => {
+  const { storeId, scriptId } = req.params;
+  const storeDoc = await db.collection('promonube_stores').doc(storeId).get();
+  if (!storeDoc.exists) return res.status(404).json({ error: 'store not found' });
+  const { accessToken } = storeDoc.data();
+  if (!accessToken) return res.status(400).json({ error: 'no access token' });
+  const r = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts/${scriptId}`, {
+    headers: { 'Authentication': `bearer ${accessToken}`, 'User-Agent': 'GlowLab (info@techdi.com.ar)' }
+  });
+  const body = await r.text();
+  res.status(r.status).send(body);
+});
+
 // =====================================================
-// ?? CLEANUP - Limpieza automática de cupones expirados
+// MIGRACIÓN: actualiza scripts existentes a URL CDN
+// POST /api/admin/migrate-widget-urls
+// Body: { adminKey, dryRun: true/false }
+// =====================================================
+app.post('/api/admin/migrate-widget-urls', requireAdminKey, async (req, res) => {
+  const { dryRun = true } = req.body;
+  const OLD_PATTERNS = [
+    'apipromonube-jlfopowzaq-uc.a.run.app',
+    'us-central1-pedidos-lett-2.cloudfunctions.net'
+  ];
+  // Mapeo old path → new CDN URL
+  const URL_MAP = {
+    'style-widget.js':              `${HOSTING_URL}/api/style-widget.js`,
+    'spin-wheel-widget.js':         `${HOSTING_URL}/api/spin-wheel-widget.js`,
+    'countdown-widget.js':          `${HOSTING_URL}/api/countdown-widget.js`,
+    'badges-script.js':             `${HOSTING_URL}/api/badges-script.js`,
+    'new-badge-script.js':          `${HOSTING_URL}/api/new-badge-script.js`,
+    'popup-widget.js':              `${HOSTING_URL}/api/popup-widget.js`,
+    'local-stock-widget.js':        `${HOSTING_URL}/api/local-stock-widget.js`,
+    'checkout-notice-widget.js':    `${HOSTING_URL}/api/checkout-notice-widget.js`,
+    'enhanced-search-widget.js':    `${HOSTING_URL}/api/enhanced-search-widget.js`,
+  };
+
+  try {
+    const storesSnap = await db.collection('promonube_stores').get();
+    const results = [];
+    const diagnostics = [];
+    let updated = 0, skipped = 0, noToken = 0, apiError = 0, errors = 0;
+
+    for (const storeDoc of storesSnap.docs) {
+      const storeId = storeDoc.id;
+      const { accessToken } = storeDoc.data() || {};
+      if (!accessToken) { skipped++; noToken++; diagnostics.push({ storeId, reason: 'no_token' }); continue; }
+
+      try {
+        const resp = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
+          headers: { 'Authentication': `bearer ${accessToken}`, 'User-Agent': 'GlowLab (info@techdi.com.ar)' }
+        });
+        if (!resp.ok) {
+          skipped++; apiError++;
+          diagnostics.push({ storeId, reason: 'api_error', status: resp.status });
+          continue;
+        }
+        const scripts = await resp.json();
+        const list = Array.isArray(scripts) ? scripts : (scripts.result || []);
+
+        // Log all scripts found for diagnosis
+        if (list.length > 0) {
+          diagnostics.push({ storeId, reason: 'ok', scripts: list.map(s => ({ id: s.id, src: s.src })) });
+        } else {
+          diagnostics.push({ storeId, reason: 'ok_no_scripts' });
+        }
+
+        for (const script of list) {
+          const src = script.src || '';
+          const isOld = OLD_PATTERNS.some(p => src.includes(p));
+          if (!isOld) continue;
+
+          // Encontrar la nueva URL manteniendo los query params
+          const srcUrl = new URL(src);
+          const filename = srcUrl.pathname.split('/').pop();
+          const newBase = URL_MAP[filename];
+          if (!newBase) continue;
+
+          const newSrc = newBase + srcUrl.search;
+          results.push({ storeId, scriptId: script.id, oldSrc: src, newSrc });
+
+          if (!dryRun) {
+            const patchResp = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts/${script.id}`, {
+              method: 'PUT',
+              headers: {
+                'Authentication': `bearer ${accessToken}`,
+                'User-Agent': 'GlowLab (info@techdi.com.ar)',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ src: newSrc })
+            });
+            if (patchResp.ok) updated++;
+            else errors++;
+          }
+        }
+      } catch (e) {
+        errors++;
+        diagnostics.push({ storeId, reason: 'exception', error: e.message });
+      }
+    }
+
+    res.json({ success: true, dryRun, found: results.length, updated, skipped, noToken, apiError, errors, results, diagnostics });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+// =====================================================
+// ?? CLEANUP - Limpieza autom�tica de cupones expirados
 // =====================================================
 
-// Función programada que se ejecuta cada hora
+// Funci�n programada que se ejecuta cada hora
 exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 24 hours', async (event) => {
   console.log('?? Iniciando limpieza de cupones EXPIRADOS DE RULETA...');
   
@@ -17117,9 +18878,9 @@ exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 24 hours',
                   'User-Agent': 'PromoNube (tinyjoys.com.ar)'
                 }
               });
-              console.log(`? Cupón ruleta ${coupon.code} eliminado de TiendaNube`);
+              console.log(`? Cup�n ruleta ${coupon.code} eliminado de TiendaNube`);
             } catch (tnError) {
-              console.error(`?? Error eliminando de TiendaNube (cupón: ${coupon.code}):`, tnError.message);
+              console.error(`?? Error eliminando de TiendaNube (cup�n: ${coupon.code}):`, tnError.message);
               // Continuar aunque falle en TiendaNube
             }
           }
@@ -17128,11 +18889,11 @@ exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 24 hours',
         // 2. Eliminar de Firestore
         await doc.ref.delete();
         deletedCount++;
-        console.log(`??? Cupón ruleta ${coupon.code} eliminado de Firestore`);
+        console.log(`??? Cup�n ruleta ${coupon.code} eliminado de Firestore`);
         
       } catch (error) {
         errorCount++;
-        console.error(`? Error eliminando cupón ${coupon.code}:`, error);
+        console.error(`? Error eliminando cup�n ${coupon.code}:`, error);
       }
     }
     
@@ -17146,3 +18907,408 @@ exports.cleanupExpiredCoupons = functions.scheduler.onSchedule('every 24 hours',
   }
 });
 
+// =====================================================
+// ?? RECOMPUTE STATS - Incremental cada 24h
+// Las stats base (totalSpins, couponsGenerated) ya se mantienen
+// con FieldValue.increment al registrar cada giro/uso.
+// Esta funci?n solo recalcula revenue/discount usando
+// coupon_usage NUEVOS desde la ?ltima corrida.
+// =====================================================
+exports.recomputeWheelStats = functions.scheduler.onSchedule({
+  schedule: 'every 24 hours',
+  timeoutSeconds: 540,
+  memory: '256MiB'
+}, async (event) => {
+  try {
+    const wheelsSnap = await db.collection('promonube_spin_wheels')
+      .where('active', '==', true)
+      .get();
+
+    let processed = 0;
+    let errors = 0;
+
+    // Agrupar wheels por storeId para una sola query de coupon_usage por tienda
+    const wheelsByStore = new Map();
+    wheelsSnap.docs.forEach(d => {
+      const sid = d.data().storeId;
+      if (!sid) return;
+      if (!wheelsByStore.has(sid)) wheelsByStore.set(sid, []);
+      wheelsByStore.get(sid).push(d);
+    });
+
+    for (const [storeId, wheelDocs] of wheelsByStore) {
+      try {
+        // ?ltimo timestamp procesado (m?nimo entre todas las wheels de la tienda)
+        let minLastProcessed = null;
+        for (const wd of wheelDocs) {
+          const lp = wd.data()?.stats?.lastProcessedUsageAt;
+          if (!lp) { minLastProcessed = null; break; }
+          if (!minLastProcessed || lp.toMillis() < minLastProcessed.toMillis()) {
+            minLastProcessed = lp;
+          }
+        }
+
+        // Solo coupon_usage con source spin_wheel y desde el ?ltimo proceso
+        let q = db.collection('coupon_usage')
+          .where('storeId', '==', storeId)
+          .where('source', '==', 'spin_wheel');
+        if (minLastProcessed) q = q.where('usedAt', '>', minLastProcessed);
+        const usageSnap = await q.limit(5000).get();
+
+        // Indexar por wheelId
+        const deltaByWheel = new Map();
+        usageSnap.forEach(d => {
+          const u = d.data();
+          const wid = u.wheelId;
+          if (!wid) return;
+          const cur = deltaByWheel.get(wid) || { used: 0, revenue: 0, discount: 0 };
+          cur.used += 1;
+          cur.revenue += parseFloat(u.total || u.orderTotal || 0) || 0;
+          cur.discount += parseFloat(u.discountValue || u.discountAmount || 0) || 0;
+          deltaByWheel.set(wid, cur);
+        });
+
+        const now = FieldValue.serverTimestamp();
+        for (const wd of wheelDocs) {
+          const delta = deltaByWheel.get(wd.id) || { used: 0, revenue: 0, discount: 0 };
+          await wd.ref.update({
+            'stats.couponsUsed': FieldValue.increment(delta.used),
+            'stats.totalRevenue': FieldValue.increment(parseFloat(delta.revenue.toFixed(2))),
+            'stats.totalDiscount': FieldValue.increment(parseFloat(delta.discount.toFixed(2))),
+            'stats.lastUpdatedAt': now,
+            'stats.lastProcessedUsageAt': now
+          });
+          processed++;
+        }
+      } catch (e) {
+        errors++;
+        console.error(`? Error en store ${storeId}:`, e.message);
+      }
+    }
+
+    return { success: true, processed, errors };
+  } catch (error) {
+    console.error('? Error en recomputeWheelStats:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+
+
+// -----------------------------------------------------------------
+// BANNER HOME
+// -----------------------------------------------------------------
+
+// GET /api/banners?storeId=X - Obtener banner de la tienda (1 por store)
+app.get("/api/banners", async (req, res) => {
+  try {
+    const { storeId } = req.query;
+    if (!storeId) return res.json({ success: false, message: "storeId requerido" });
+
+    const docId = `banner_${storeId}`;
+    const doc = await db.collection("promonube_banners").doc(docId).get();
+    if (!doc.exists) return res.json({ success: true, banner: null });
+    res.json({ success: true, banner: { id: doc.id, ...doc.data() } });
+  } catch (error) {
+    console.error("Error obteniendo banner:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/banners/create - Crear o reemplazar banner
+app.post("/api/banners/create", async (req, res) => {
+  try {
+    const { storeId, ...rest } = req.body;
+    if (!storeId) return res.json({ success: false, message: "storeId requerido" });
+
+    const docId = `banner_${storeId}`;
+    const data = {
+      storeId,
+      ...rest,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    await db.collection("promonube_banners").doc(docId).set(data);
+    _configCache.delete(`promonube_banners/${docId}`);
+    res.json({ success: true, id: docId });
+  } catch (error) {
+    console.error("Error creando banner:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// PUT /api/banners/:id - Actualizar banner
+app.put("/api/banners/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { storeId, ...rest } = req.body;
+    if (!storeId) return res.json({ success: false, message: "storeId requerido" });
+
+    const doc = await db.collection("promonube_banners").doc(id).get();
+    if (!doc.exists) return res.json({ success: false, message: "Banner no encontrado" });
+    if (doc.data().storeId !== storeId) return res.json({ success: false, message: "No autorizado" });
+
+    await doc.ref.update({ ...rest, updatedAt: FieldValue.serverTimestamp() });
+    _configCache.delete(`promonube_banners/${id}`);
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error("Error actualizando banner:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /api/banners/:id - Eliminar banner
+app.delete("/api/banners/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { storeId } = req.query;
+    if (!storeId) return res.json({ success: false, message: "storeId requerido" });
+
+    const doc = await db.collection("promonube_banners").doc(id).get();
+    if (!doc.exists) return res.json({ success: false, message: "Banner no encontrado" });
+    if (doc.data().storeId !== storeId) return res.json({ success: false, message: "No autorizado" });
+
+    await doc.ref.delete();
+    _configCache.delete(`promonube_banners/${id}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error eliminando banner:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/banners/:id/toggle - Activar / desactivar banner
+app.post("/api/banners/:id/toggle", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { storeId } = req.body;
+    if (!storeId) return res.json({ success: false, message: "storeId requerido" });
+
+    const doc = await db.collection("promonube_banners").doc(id).get();
+    if (!doc.exists) return res.json({ success: false, message: "Banner no encontrado" });
+    if (doc.data().storeId !== storeId) return res.json({ success: false, message: "No autorizado" });
+
+    const newEnabled = !doc.data().enabled;
+    await doc.ref.update({ enabled: newEnabled, updatedAt: FieldValue.serverTimestamp() });
+    _configCache.delete(`promonube_banners/${id}`);
+    res.json({ success: true, enabled: newEnabled });
+  } catch (error) {
+    console.error("Error toggleando banner:", error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/banner-widget.js?store=X - Widget embebible para tiendas
+app.get("/api/banner-widget.js", async (req, res) => {
+  const store = req.query.store;
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400");
+
+  if (!store) {
+    res.send("// banner-widget.js: store param missing");
+    return;
+  }
+
+  try {
+    if (!(await checkStoreActive(store))) {
+      res.send("// banner-widget.js: store inactive");
+      return;
+    }
+
+    const docId = `banner_${store}`;
+    const doc = await getCachedDoc("promonube_banners", docId);
+
+    if (!doc.exists) {
+      res.send("// banner-widget.js: no banner configured");
+      return;
+    }
+
+    const b = doc.data();
+
+    const bannerEnabled = b.enabled && b.imageUrl;
+    const barCfg = b.announcementBar || {};
+    const barEnabled = !!barCfg.enabled && !!(barCfg.text || "").trim();
+
+    if (!bannerEnabled && !barEnabled) {
+      res.send("// banner-widget.js: nothing enabled");
+      return;
+    }
+
+    let bannerScript = "";
+    if (bannerEnabled) {
+      const alignMap = { left: "flex-start", center: "center", right: "flex-end" };
+      const justifyMap = { top: "flex-start", middle: "center", bottom: "flex-end" };
+      const alignItems = alignMap[b.contentAlign] || "center";
+      const justifyContent = justifyMap[b.contentValign] || "center";
+      const maxWidth = b.width === "contained" ? "1200px" : "100%";
+      const padding = Number(b.contentPadding) || 48;
+      const overlayOpacity = Number(b.overlayOpacity) || 0;
+      const overlayColor = b.overlayColor || "#000000";
+
+      const elements = Array.isArray(b.elements) ? b.elements : [];
+      let elementsHtml = "";
+      for (const el of elements) {
+        if (el.type === "text") {
+          const s = [
+            `font-size:${el.fontSize || 24}px`,
+            `font-weight:${el.fontWeight || "700"}`,
+            `color:${el.color || "#ffffff"}`,
+            `text-align:${el.textAlign || "center"}`,
+            "margin:0 0 12px",
+            "line-height:1.25",
+          ].join(";");
+          elementsHtml += `<p style="${s}">${(el.text || "").replace(/</g, "&lt;")}</p>`;
+        } else if (el.type === "button") {
+          const s = [
+            "display:inline-block",
+            `background:${el.backgroundColor || "#ffffff"}`,
+            `color:${el.textColor || "#111111"}`,
+            `border-radius:${el.borderRadius || 6}px`,
+            `padding:${el.paddingV || 14}px ${el.paddingH || 28}px`,
+            `font-size:${el.fontSize || 15}px`,
+            `font-weight:${el.fontWeight || "600"}`,
+            "text-decoration:none",
+            "margin:0 0 12px",
+            "cursor:pointer",
+            "border:none",
+          ].join(";");
+          const href = (el.url || "#").replace(/"/g, "&quot;");
+          elementsHtml += `<a href="${href}" style="${s}" target="_blank" rel="noopener noreferrer">${(el.text || "").replace(/</g, "&lt;")}</a>`;
+        }
+      }
+
+      const overlayHtml = overlayOpacity > 0
+        ? `<div style="position:absolute;inset:0;background:${overlayColor};opacity:${overlayOpacity};pointer-events:none;"></div>`
+        : "";
+
+      const imgInner = b.imageMobileUrl
+        ? `<picture><source media="(max-width:767px)" srcset="${b.imageMobileUrl.replace(/"/g, "&quot;")}"><img src="${b.imageUrl.replace(/"/g, "&quot;")}" alt="${(b.imageAlt || "").replace(/"/g, "&quot;")}" style="display:block;width:100%;height:auto;" loading="lazy"></picture>`
+        : `<img src="${b.imageUrl.replace(/"/g, "&quot;")}" alt="${(b.imageAlt || "").replace(/"/g, "&quot;")}" style="display:block;width:100%;height:auto;" loading="lazy">`;
+
+      const linkUrl = (b.linkUrl || "").trim();
+      const pictureHtml = linkUrl
+        ? `<a href="${linkUrl.replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer" style="display:block;line-height:0;">${imgInner}</a>`
+        : imgInner;
+
+      const bannerHtml = `<div class="pn-banner-home" style="position:relative;width:${maxWidth};margin:0 auto;overflow:hidden;">${pictureHtml}${overlayHtml}<div class="pn-banner-content" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};padding:${padding}px;">${elementsHtml}</div></div>`;
+
+      const sel = (b.injectSelector || "").trim();
+      const pos = b.injectPosition || "after";
+      let injectCode;
+      if (sel) {
+        injectCode = `var sel=${JSON.stringify(sel)};var pos=${JSON.stringify(pos)};var target=document.querySelector(sel);if(!target){document.body.appendChild(wrapper);return;}if(pos==='before'){target.parentNode.insertBefore(wrapper,target);}else if(pos==='prepend'){target.insertBefore(wrapper,target.firstChild);}else if(pos==='append'){target.appendChild(wrapper);}else{target.parentNode.insertBefore(wrapper,target.nextSibling);}`;
+      } else {
+        injectCode = `document.body.appendChild(wrapper);`;
+      }
+      bannerScript = `(function(){function insertBanner(){if(document.getElementById('pn-banner-home')){return;}var wrapper=document.createElement('div');wrapper.id='pn-banner-home';wrapper.style.width='100%';wrapper.innerHTML=${JSON.stringify(bannerHtml)};${injectCode}}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',insertBanner);}else{insertBanner();}})();`;
+    }
+
+    let barScript = "";
+    if (barEnabled) {
+      const bg = barCfg.bgColor || "#FFE600";
+      const tc = barCfg.textColor || "#333333";
+      const fs = Number(barCfg.fontSize) || 14;
+      const fw = barCfg.fontWeight || "600";
+      const pv = Number(barCfg.paddingV) || 10;
+
+      const logoUrl = (barCfg.logoUrl || "").trim();
+      const mlIconHtml = logoUrl
+        ? `<img src="${logoUrl}" alt="" style="height:28px;width:auto;flex-shrink:0;display:block;margin-right:8px;" />`
+        : "";
+
+      const btnText = (barCfg.buttonText || "").trim();
+      const btnUrl = (barCfg.buttonUrl || "").trim();
+      let btnHtml = "";
+      if (btnText && btnUrl) {
+        const btnStyle = [
+          "display:inline-block",
+          `background:${barCfg.buttonBgColor || "#3483FA"}`,
+          `color:${barCfg.buttonTextColor || "#ffffff"}`,
+          `border-radius:${barCfg.buttonBorderRadius || 4}px`,
+          "padding:5px 14px",
+          "font-size:13px",
+          "font-weight:600",
+          "text-decoration:none",
+          "margin-left:12px",
+          "white-space:nowrap",
+        ].join(";");
+        btnHtml = `<a href="${btnUrl.replace(/"/g, "&quot;")}" style="${btnStyle}" target="_blank" rel="noopener noreferrer" data-pn-bar-track="button">${btnText.replace(/</g, "&lt;")}</a>`;
+      }
+
+      const wrapStyle = [
+        `background:${bg}`,
+        `color:${tc}`,
+        `font-size:${fs}px`,
+        `font-weight:${fw}`,
+        `padding:${pv}px 20px`,
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        "width:100%",
+        "box-sizing:border-box",
+        "flex-wrap:wrap",
+        "gap:4px",
+      ].join(";");
+
+      const barHtml = `<div style="${wrapStyle}">${mlIconHtml}<span>${(barCfg.text || "").replace(/</g, "&lt;")}</span>${btnHtml}</div>`;
+
+      const barSel = (barCfg.injectSelector || "").trim();
+      const barPos = barCfg.injectPosition || "before";
+      let barInjectCode;
+      if (barSel) {
+        barInjectCode = `var bsel=${JSON.stringify(barSel)};var bpos=${JSON.stringify(barPos)};var btarget=document.querySelector(bsel);if(!btarget){document.body.prepend(bwrapper);return;}if(bpos==='before'){btarget.parentNode.insertBefore(bwrapper,btarget);}else if(bpos==='prepend'){btarget.insertBefore(bwrapper,btarget.firstChild);}else if(bpos==='append'){btarget.appendChild(bwrapper);}else{btarget.parentNode.insertBefore(bwrapper,btarget.nextSibling);}`;
+      } else {
+        barInjectCode = `document.body.prepend(bwrapper);`;
+      }
+      const trackUrl = JSON.stringify(`${_SRV_BASE}/api/bar-click?store=${store}`);
+      barScript = `(function(){function insertBar(){if(document.getElementById('pn-announcement-bar')){return;}var bwrapper=document.createElement('div');bwrapper.id='pn-announcement-bar';bwrapper.innerHTML=${JSON.stringify(barHtml)};${barInjectCode}var btn=bwrapper.querySelector('[data-pn-bar-track]');if(btn){btn.addEventListener('click',function(){try{navigator.sendBeacon(${trackUrl});}catch(e){}});}}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',insertBar);}else{insertBar();}})();`;
+    }
+
+    res.send([bannerScript, barScript].filter(Boolean).join("\n"));
+  } catch (error) {
+    console.error("Error en banner-widget.js:", error);
+    res.send("// banner-widget.js: error - " + error.message);
+  }
+});
+
+// POST /api/bar-click?store=X  — tracking de clicks del botón ML bar
+app.post("/api/bar-click", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  const store = req.query.store || req.body?.storeId;
+  if (!store) return res.json({ ok: false });
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    await db.collection("promonube_banners").doc(`banner_${store}`).update({
+      "announcementBarStats.clicks": FieldValue.increment(1),
+      "announcementBarStats.lastClick": new Date().toISOString(),
+      [`announcementBarStats.daily.${today}`]: FieldValue.increment(1),
+    });
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
+  }
+});
+
+// GET /api/bar-click?store=X  — sendBeacon usa GET como fallback en algunos browsers
+app.get("/api/bar-click", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  const store = req.query.store;
+  if (!store) return res.json({ ok: false });
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    await db.collection("promonube_banners").doc(`banner_${store}`).update({
+      "announcementBarStats.clicks": FieldValue.increment(1),
+      "announcementBarStats.lastClick": new Date().toISOString(),
+      [`announcementBarStats.daily.${today}`]: FieldValue.increment(1),
+    });
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
+  }
+});
+
+// Standalone server for Railway
+if (require.main === module) {
+  const PORT = process.env.PORT || 8080;
+  app.listen(PORT, () => console.warn(`PromoNube API running on port ${PORT}`));
+}
