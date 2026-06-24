@@ -14621,8 +14621,13 @@ app.get("/api/top-header-widget.js", async (req, res) => {
     \`;
     document.head.appendChild(responsiveStyles);
 
-    // Insertar ANTES del header de TiendaNube (arriba de todo)
-    tiendanubeHeader.parentNode.insertBefore(header, tiendanubeHeader);
+    // Insertar después de la barra nativa de TiendaNube si existe, sino antes del header
+    const tnAdBar = document.querySelector('.js-adbar, .section-adbar, .section-adbar-animated');
+    if (tnAdBar) {
+      tnAdBar.parentNode.insertBefore(header, tnAdBar.nextSibling);
+    } else {
+      tiendanubeHeader.parentNode.insertBefore(header, tiendanubeHeader);
+    }
 
     console.log('[PromoNube] Top Header creado ?');
   }
