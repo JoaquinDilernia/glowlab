@@ -14065,14 +14065,14 @@ app.get("/api/style-widget.js", async (req, res) => {
       + '.pn-stl-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 999999; display: flex; align-items: center; justify-content: center; padding: 16px; animation: pnStlFade 0.25s ease; box-sizing: border-box; }'
       + '@keyframes pnStlFade { from { opacity: 0; } to { opacity: 1; } }'
       + '.pn-stl-modal { background: #fff; border-radius: 18px; max-width: 420px; width: 100%; overflow: hidden; position: relative; box-shadow: 0 30px 80px rgba(0,0,0,0.4); max-height: 90vh; overflow-y: auto; }'
-      + '.pn-stl-modal img { width: 100%; height: 280px; object-fit: cover; display: block !important; background: #f5f5f5; }'
+      + '.pn-stl-modal img { width: 100%; height: auto; display: block !important; background: #f5f5f5; }'
       + '.pn-stl-modal-body { padding: 20px 22px 22px; font-family: inherit; color: #111; }'
       + '.pn-stl-modal-name { font-size: 17px; font-weight: 600; margin: 0 0 8px; line-height: 1.3; }'
       + '.pn-stl-modal-price { font-size: 22px; font-weight: 700; margin: 0 0 16px; }'
       + '.pn-stl-modal-btn { display: block; width: 100%; padding: 14px 20px; background: #111; color: #fff; text-align: center; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 15px; letter-spacing: 0.01em; transition: opacity 0.2s; box-sizing: border-box; }'
       + '.pn-stl-modal-btn:hover { opacity: 0.85; color: #fff; }'
       + '.pn-stl-modal-close { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.95); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #111; z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }'
-      + '@media (max-width: 640px) { .pn-stl-title { font-size: 22px; } .pn-stl-card { width: 200px; } .pn-stl-card-img { height: 120px; } .pn-stl-modal img { height: 220px; } }';
+      + '@media (max-width: 640px) { .pn-stl-title { font-size: 22px; } .pn-stl-card { width: 200px; } .pn-stl-card-img { height: 120px; } }';
 
     var styleEl = document.createElement('style');
     styleEl.id = 'pn-stl-styles';
