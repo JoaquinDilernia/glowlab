@@ -10284,6 +10284,67 @@ app.get("/api/tiendanube/categories", async (req, res) => {
   }
 });
 
+// GET /api/tiendanube/category-products - Obtener productos de una categoría para Flash Sale
+app.get("/api/tiendanube/category-products", async (req, res) => {
+  const { storeId, categoryId } = req.query;
+
+  if (!storeId || !categoryId) {
+    return res.status(400).json({ error: "storeId y categoryId requeridos" });
+  }
+
+  try {
+    const storeDoc = await db.collection("promonube_stores").doc(storeId).get();
+    if (!storeDoc.exists) {
+      return res.status(404).json({ error: "Tienda no encontrada" });
+    }
+    const accessToken = storeDoc.data().accessToken;
+    if (!accessToken) {
+      return res.status(401).json({ error: "No hay token de acceso" });
+    }
+
+    const response = await fetch(
+      `https://api.tiendanube.com/v1/${storeId}/products?category_id=${categoryId}&per_page=50&fields=id,name,canonical_url,images,variants`,
+      {
+        headers: {
+          "Authentication": `bearer ${accessToken}`,
+          "User-Agent": "PromoNube App (contacto@promonube.com)"
+        }
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Error TiendaNube products:", response.status, errorText);
+      return res.status(response.status).json({ error: "Error obteniendo productos" });
+    }
+
+    const products = await response.json();
+
+    const productIds = products.map(p => p.id);
+
+    const featuredProducts = products.slice(0, 10).map(p => {
+      const variant = p.variants && p.variants[0];
+      const rawPrice = variant ? parseFloat(variant.price) : 0;
+      const rawCompare = variant ? parseFloat(variant.compare_at_price) : null;
+      const fmt = (n) => n ? '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : null;
+      return {
+        id: p.id,
+        name: p.name && (p.name.es || p.name.pt || Object.values(p.name)[0] || ''),
+        imageUrl: p.images && p.images[0] ? p.images[0].src : '',
+        url: p.canonical_url || '',
+        price: fmt(rawPrice),
+        comparePrice: rawCompare && rawCompare > rawPrice ? fmt(rawCompare) : null,
+      };
+    });
+
+    res.json({ productIds, featuredProducts });
+
+  } catch (error) {
+    console.error("Error obteniendo productos de categoría:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============================================
 // STYLE CUSTOMIZATION ENDPOINTS
 // ============================================
