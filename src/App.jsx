@@ -15,6 +15,8 @@ import CouponAnalytics from './pages/CouponAnalytics';
 import SpinWheel from './pages/SpinWheel';
 import SpinWheelConfig from './pages/SpinWheelConfig';
 import SpinWheelAnalytics from './pages/SpinWheelAnalytics';
+import LocalStockConfig from './pages/LocalStockConfig';
+import CheckoutNoticeConfig from './pages/CheckoutNoticeConfig';
 import CountdownList from './pages/CountdownList';
 import CountdownConfig from './pages/CountdownConfig';
 import NewBadgeConfig from './pages/NewBadgeConfig';
@@ -29,6 +31,10 @@ import PaymentTest from './pages/PaymentTest';
 import AdminPanel from './pages/AdminPanel';
 import PopupsList from './pages/PopupsList';
 import PopupConfig from './pages/PopupConfig';
+import ShopTheLookConfig from './pages/ShopTheLookConfig';
+import FlashSaleConfig from './pages/FlashSaleConfig';
+import BannerConfig from './pages/BannerConfig';
+import AnnouncementBarConfig from './pages/AnnouncementBarConfig';
 import './App.css';
 
 function App() {
@@ -69,16 +75,22 @@ function App() {
           <Route path="/badges/:badgeId/config" element={<BadgeConfig />} />
           <Route path="/new-badge" element={<NewBadgeConfig />} />
           <Route path="/style" element={<StyleConfig />} />
+          <Route path="/shop-the-look" element={<ShopTheLookConfig />} />
+          <Route path="/flash-sale" element={<FlashSaleConfig />} />
+          <Route path="/banner" element={<BannerConfig />} />
+          <Route path="/ml-bar" element={<AnnouncementBarConfig />} />
           <Route path="/integrations" element={<Integrations />} />
           <Route path="/admin" element={<AdminPanel />} />
           <Route path="/popups" element={<PopupsList />} />
           <Route path="/popups/create" element={<PopupConfig />} />
           <Route path="/popups/:popupId/config" element={<PopupConfig />} />
+          <Route path="/local-stock" element={<LocalStockConfig />} />
+          <Route path="/checkout-notice" element={<CheckoutNoticeConfig />} />
         </Route>
       </Routes>
       <a
         className="whatsapp-float"
-        href="https://wa.me/5491173612561"
+        href="https://wa.me/5491164212370"
         target="_blank"
         rel="noreferrer"
         aria-label="Soporte por WhatsApp"
