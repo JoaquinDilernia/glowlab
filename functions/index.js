@@ -927,7 +927,7 @@ async function uploadGiftCardImage(imageBuffer, storeId, productId) {
 // Express app
 const app = express();
 app.use(cors({ origin: true }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // ============================================
 // CONFIGURACI�N OAUTH TIENDANUBE
