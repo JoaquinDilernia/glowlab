@@ -7,7 +7,8 @@ const crypto = require("crypto");
 const sgMail = require('@sendgrid/mail');
 const Busboy = require('busboy');
 const multer = require('multer');
-const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
+const { MercadoPagoConfig, Preference, Payment, PreApproval } = require('mercadopago');
+const { evaluateAccess, SUBSCRIPTION_PRICE_ARS } = require('./subscriptionAccess');
 
 // ============================================
 // LOG GATE - reduce costos de Cloud Logging
@@ -77,21 +78,10 @@ function invalidateConfigCache(storeId) {
 async function checkStoreActive(storeId) {
   const result = await getCachedData(`sub:${storeId}`, async () => {
     const subDoc = await db.collection('stores').doc(storeId.toString()).collection('subscription').doc('current').get();
-    if (!subDoc.exists) return { active: false };
-    const data = subDoc.data();
-    const status = data?.status;
-    if (status === 'active') return { active: true };
-    if (status === 'demo') {
-      const expires = data.demoExpiresAt ? new Date(data.demoExpiresAt) : null;
-      return { active: !expires || expires > new Date() };
-    }
-    if (status === 'trial') {
-      const expires = data.expiresAt ? new Date(data.expiresAt) : null;
-      return { active: !expires || expires > new Date() };
-    }
-    return { active: false };
+    const data = subDoc.exists ? subDoc.data() : null;
+    return evaluateAccess(data);
   });
-  return result.active;
+  return result.hasAccess;
 }
 
 // Configurar Mercado Pago
@@ -168,23 +158,9 @@ const _SRV_BASE = process.env.API_BASE_URL || 'https://apipromonube-jlfopowzaq-u
 // ==========================================
 
 // ============================================
-// PLAN �NICO PRO - Todo incluido
+// PLAN UNICO PRO - $60.000 ARS/mes
 // ============================================
 
-// Precios por pa�s (mensuales) - PLAN �NICO
-const PRICES_BY_COUNTRY = {
-  ARS: 30000,  // Argentina (configurado en Partner Panel)
-  MXN: 1500,   // M�xico
-  COP: 135000, // Colombia
-  CLP: 33000   // Chile
-};
-
-// Funci�n para obtener precio seg�n moneda de la tienda
-function getPlanPrice(currency = 'ARS') {
-  return PRICES_BY_COUNTRY[currency] || PRICES_BY_COUNTRY.ARS;
-}
-
-// M�dulos incluidos en el plan PRO (todos activos)
 const ALL_MODULES = ['coupons', 'giftcards', 'spinWheel', 'style', 'countdown', 'popups'];
 
 const MODULES = {
@@ -196,101 +172,34 @@ const MODULES = {
   popups: { name: 'Pop-ups', included: true }
 };
 
-// Plan �nico PRO con todo incluido
-const PLANS = {
-  free: { 
-    name: 'Free (Trial)', 
-    modules: ['coupons'],
-    price: 0
-  },
-  pro: { 
-    name: 'PromoNube Pro',
-    modules: ALL_MODULES,
-    getPriceFor: (currency) => getPlanPrice(currency),
-    description: 'Todas las funcionalidades incluidas'
-  }
-};
-
-// Alias para compatibilidad (todos mapean a 'pro')
-PLANS.unlimited = PLANS.pro;
-PLANS.ruleta = PLANS.pro;
-PLANS.giftcards = PLANS.pro;
-PLANS.countdown = PLANS.pro;
-PLANS.style = PLANS.pro;
-
-// Helper: Convertir array de m�dulos a objeto {moduleName: true}
-function modulesArrayToObject(modulesArray) {
-  const modulesObj = {};
-  modulesArray.forEach(mod => {
-    modulesObj[mod] = true;
-  });
-  return modulesObj;
+// Unico plan, todo o nada: devuelve el objeto de modulos completo.
+function buildFullModulesObject() {
+  const modules = {};
+  ALL_MODULES.forEach(mod => { modules[mod] = true; });
+  return modules;
 }
 
-// Verificar acceso a un m�dulo
+// Verificar acceso (plan unico, todo o nada — moduleName se ignora salvo
+// para logging; se mantiene en la firma por compatibilidad con callers existentes)
 async function checkModuleAccess(storeId, moduleName) {
   try {
-    // Cupones siempre gratis
-    if (moduleName === 'coupons') {
-      return { hasAccess: true, reason: 'free_module' };
-    }
-
-    // Consultar suscripci�n del store
     const subscriptionRef = db.collection('stores').doc(storeId.toString()).collection('subscription').doc('current');
     const subscriptionDoc = await subscriptionRef.get();
+    const data = subscriptionDoc.exists ? subscriptionDoc.data() : null;
 
-    if (!subscriptionDoc.exists) {
-      // Sin suscripci�n = solo acceso a cupones
-      return { hasAccess: false, reason: 'no_subscription' };
+    const access = evaluateAccess(data);
+
+    if (!access.hasAccess) {
+      return access;
     }
 
-    const subscription = subscriptionDoc.data();
-
-    // ? DEMO: Si es cuenta demo Y no ha expirado, dar acceso total
-    if (subscription.isDemoAccount) {
-      const expiresAt = new Date(subscription.demoExpiresAt);
-      const now = new Date();
-      
-      if (now < expiresAt) {
-        return { 
-          hasAccess: true, 
-          reason: 'demo_account',
-          expiresAt: subscription.demoExpiresAt
-        };
-      } else {
-        // Demo expirado - desactivar autom�ticamente
-        console.log(`?? Demo expirado para store ${storeId}, desactivando...`);
-        await subscriptionRef.update({
-          status: 'inactive',
-          plan: 'free',
-          modules: { coupons: true },
-          isDemoAccount: false,
-          demoExpired: true,
-          updatedAt: new Date().toISOString()
-        });
-        return { hasAccess: false, reason: 'demo_expired' };
-      }
-    }
-
-    // Verificar estado de la suscripci�n
-    if (subscription.status === 'suspended') {
-      return { hasAccess: false, reason: 'payment_suspended', message: 'Regulariza el pago en tu panel de TiendaNube' };
-    }
-
-    if (subscription.status !== 'active') {
-      return { hasAccess: false, reason: 'inactive_subscription', status: subscription.status };
-    }
-
-    // Verificar si el m�dulo est? activo
-    const hasModule = subscription.modules && subscription.modules[moduleName] === true;
-    
-    return { 
-      hasAccess: hasModule, 
-      reason: hasModule ? 'active' : 'module_not_included',
-      plan: subscription.plan 
+    return {
+      hasAccess: true,
+      reason: access.reason,
+      plan: 'pro'
     };
   } catch (error) {
-    console.error('Error verificando acceso al m�dulo:', error);
+    console.error('Error verificando acceso:', error);
     return { hasAccess: false, reason: 'error', error: error.message };
   }
 }
@@ -320,36 +229,6 @@ function requireModule(moduleName) {
     req.moduleAccess = accessCheck;
     next();
   };
-}
-
-// Inicializar suscripci�n por defecto para nuevos stores
-async function initializeStoreSubscription(storeId) {
-  try {
-    const subscriptionRef = db.collection('promonube_subscription').doc(storeId.toString());
-    const subscriptionDoc = await subscriptionRef.get();
-
-    if (!subscriptionDoc.exists) {
-      await subscriptionRef.set({
-        plan: 'free',
-        status: 'active',
-        modules: {
-          coupons: true,
-          giftcards: false,
-          spinWheel: true,
-          style: true,
-          countdown: true,
-          popups: true
-        },
-        createdAt: FieldValue.serverTimestamp(),
-        trialEndsAt: null,
-        nextBillingDate: null,
-        mpSubscriptionId: null
-      });
-      console.log('? Suscripci�n FREE inicializada para store', storeId);
-    }
-  } catch (error) {
-    console.error('Error inicializando suscripci�n:', error);
-  }
 }
 
 // ==========================================
