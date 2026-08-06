@@ -27,7 +27,7 @@ function AdminPanel() {
 
   const handleAuth = (e) => {
     e.preventDefault();
-    if (adminKey === 'PromoNube2026Admin!SecretKey') {
+    if (adminKey === 'Joacodiler1') {
       setIsAuthenticated(true);
     } else {
       toast.error('Clave incorrecta');
