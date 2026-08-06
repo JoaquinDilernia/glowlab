@@ -16,7 +16,6 @@ function AdminPanel() {
   const [activeTab, setActiveTab] = useState('stores');
   const [processingStore, setProcessingStore] = useState(null);
   const [quickStoreId, setQuickStoreId] = useState('');
-  const [quickDays, setQuickDays] = useState('36500');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -64,56 +63,75 @@ function AdminPanel() {
     }
   };
 
-  const activateDemo = async (storeId, days = 30) => {
-    if (!confirm(`¿Activar demo de ${days} días para store ${storeId}?`)) return;
+  const setFreeForever = async (storeId, freeForever) => {
+    const verb = freeForever ? 'marcar como gratis permanente' : 'quitar el estado de gratis permanente de';
+    if (!confirm(`¿Confirmás ${verb} la tienda ${storeId}?`)) return;
 
     setProcessingStore(storeId);
     try {
-      const response = await fetch('https://apipromonube-jlfopowzaq-uc.a.run.app/api/admin/activate-demo', {
+      const response = await apiRequest('/api/admin/set-free-forever', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-key': adminKey
-        },
-        body: JSON.stringify({
-          storeId,
-          expirationDays: parseInt(days)
-        })
-      }).then(r => r.json());
-
-      if (response.success) {
-        toast.success(`Demo activada hasta ${new Date(response.expiresAt).toLocaleDateString()}`);
-        loadStores();
-      } else {
-        toast.error('Error: ' + response.message);
-      }
-    } catch (error) {
-      toast.error('Error activando demo');
-    } finally {
-      setProcessingStore(null);
-    }
-  };
-
-  const deactivateDemo = async (storeId) => {
-    if (!confirm(`¿Desactivar demo para store ${storeId}?`)) return;
-
-    setProcessingStore(storeId);
-    try {
-      const response = await apiRequest('/api/admin/deactivate-plan', {
-        method: 'POST',
-        body: JSON.stringify({ storeId })
+        headers: { 'x-admin-key': adminKey },
+        body: JSON.stringify({ storeId, freeForever })
       });
 
       if (response.success) {
-        toast.success('Demo desactivada');
+        toast.success(response.message);
         loadStores();
       } else {
         toast.error('Error: ' + response.error);
       }
     } catch (error) {
-      toast.error('Error desactivando demo');
+      toast.error('Error actualizando la tienda');
     } finally {
       setProcessingStore(null);
+    }
+  };
+
+  const grantCourtesyMonth = async (storeId) => {
+    if (!confirm(`¿Dar un mes de cortesía a la tienda ${storeId}?`)) return;
+
+    setProcessingStore(storeId);
+    try {
+      const response = await apiRequest('/api/admin/grant-courtesy-month', {
+        method: 'POST',
+        headers: { 'x-admin-key': adminKey },
+        body: JSON.stringify({ storeId })
+      });
+
+      if (response.success) {
+        toast.success(`Cortesía otorgada hasta ${new Date(response.courtesyUntil).toLocaleDateString()}`);
+        loadStores();
+      } else {
+        toast.error('Error: ' + response.error);
+      }
+    } catch (error) {
+      toast.error('Error otorgando cortesía');
+    } finally {
+      setProcessingStore(null);
+    }
+  };
+
+  const resetAllTrials = async () => {
+    if (!confirm('Esto reinicia TODAS las tiendas a un trial de 7 días, incluidas las que ya pagaban. Es para usar UNA SOLA VEZ al desplegar el nuevo sistema de pagos. ¿Confirmás?')) return;
+
+    setLoading(true);
+    try {
+      const response = await apiRequest('/api/admin/reset-all-trials', {
+        method: 'POST',
+        headers: { 'x-admin-key': adminKey }
+      });
+
+      if (response.success) {
+        toast.success(`${response.processed} tiendas reiniciadas a trial de 7 días`);
+        loadStores();
+      } else {
+        toast.error('Error: ' + response.error);
+      }
+    } catch (error) {
+      toast.error('Error reiniciando trials');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -124,8 +142,8 @@ function AdminPanel() {
 
   const stats = {
     totalStores: stores.length,
-    activeStores: stores.filter(s => s.subscription?.status === 'active' || s.subscription?.status === 'demo').length,
-    demoAccounts: stores.filter(s => s.subscription?.isDemoAccount).length,
+    activeStores: stores.filter(s => s.subscription?.status === 'active').length,
+    freeForeverStores: stores.filter(s => s.subscription?.freeForever).length,
     uninstalls: uninstalls.length
   };
 
@@ -199,8 +217,8 @@ function AdminPanel() {
             <Sparkles size={28} />
           </div>
           <div className="stat-info">
-            <span className="stat-value">{stats.demoAccounts}</span>
-            <span className="stat-label">Cuentas DEMO</span>
+            <span className="stat-value">{stats.freeForeverStores}</span>
+            <span className="stat-label">Gratis Permanente</span>
           </div>
         </div>
 
@@ -215,7 +233,7 @@ function AdminPanel() {
         </div>
       </div>
 
-      {/* Quick Action - Activar Trial */}
+      {/* Quick Actions - Gratis permanente / Mes de cortesía */}
       <div style={{
         background: 'linear-gradient(135deg, rgba(102,126,234,0.15) 0%, rgba(118,75,162,0.15) 100%)',
         border: '1px solid rgba(102,126,234,0.35)',
@@ -228,7 +246,7 @@ function AdminPanel() {
         flexWrap: 'wrap'
       }}>
         <Sparkles size={18} color="#667eea" />
-        <strong style={{color:'rgba(255,255,255,0.9)', fontSize:'14px', whiteSpace:'nowrap'}}>Activar Trial Rápido:</strong>
+        <strong style={{color:'rgba(255,255,255,0.9)', fontSize:'14px', whiteSpace:'nowrap'}}>Acción rápida:</strong>
         <input
           type="text"
           placeholder="Store ID (ej: 5320806)"
@@ -236,19 +254,27 @@ function AdminPanel() {
           onChange={e => setQuickStoreId(e.target.value)}
           style={{padding:'8px 12px', borderRadius:'8px', border:'1px solid rgba(102,126,234,0.4)', background:'rgba(255,255,255,0.08)', color:'#fff', width:'180px', outline:'none'}}
         />
-        <select value={quickDays} onChange={e => setQuickDays(e.target.value)}
-          style={{padding:'8px 12px', borderRadius:'8px', border:'1px solid rgba(102,126,234,0.4)', background:'rgba(20,20,40,0.95)', color:'#fff', cursor:'pointer'}}>
-          <option value="36500">♾️ Ilimitado (100 años)</option>
-          <option value="365">365 días</option>
-          <option value="90">90 días</option>
-          <option value="30">30 días</option>
-        </select>
         <button
-          onClick={() => { if (quickStoreId) activateDemo(quickStoreId, parseInt(quickDays)); }}
+          onClick={() => { if (quickStoreId) setFreeForever(quickStoreId, true); }}
+          disabled={!quickStoreId || processingStore === quickStoreId}
+          style={{padding:'8px 20px', borderRadius:'8px', background:'linear-gradient(135deg,#10B981,#059669)', color:'#fff', border:'none', cursor:'pointer', fontWeight:'600', opacity: !quickStoreId ? 0.5 : 1}}
+        >
+          💚 Gratis permanente
+        </button>
+        <button
+          onClick={() => { if (quickStoreId) grantCourtesyMonth(quickStoreId); }}
           disabled={!quickStoreId || processingStore === quickStoreId}
           style={{padding:'8px 20px', borderRadius:'8px', background:'linear-gradient(135deg,#667eea,#764ba2)', color:'#fff', border:'none', cursor:'pointer', fontWeight:'600', opacity: !quickStoreId ? 0.5 : 1}}
         >
-          {processingStore === quickStoreId ? 'Activando...' : '✨ Activar'}
+          🎉 Mes de cortesía
+        </button>
+        <button
+          onClick={resetAllTrials}
+          disabled={loading}
+          style={{padding:'8px 20px', borderRadius:'8px', background:'rgba(239,68,68,0.15)', color:'#EF4444', border:'1px solid rgba(239,68,68,0.4)', cursor:'pointer', fontWeight:'600', marginLeft:'auto'}}
+          title="Uso único al desplegar el nuevo sistema de pagos"
+        >
+          ⚠️ Resetear todas a trial (7 días)
         </button>
       </div>
 
@@ -305,24 +331,30 @@ function AdminPanel() {
             <tbody>
               {filteredStores.map((store) => {
                 const sub = store.subscription || {};
-                const isDemo = sub.isDemoAccount;
-                const isActive = sub.status === 'active' || sub.status === 'demo';
-                const expiresAt = sub.expiresAt ? new Date(sub.expiresAt) : null;
-                const isExpired = expiresAt && expiresAt < new Date();
+                const statusLabel = {
+                  active: '⚡ Activo',
+                  trialing: '🎁 Trial',
+                  courtesy: '🎉 Cortesía',
+                  blocked: '❌ Bloqueado',
+                  past_due: '⚠️ Pago pendiente'
+                }[sub.status] || sub.status || '-';
                 const modules = sub.modules || {};
+                const untilDate = sub.status === 'trialing' ? sub.trialEndsAt
+                  : sub.status === 'courtesy' ? sub.courtesyUntil
+                  : sub.currentPeriodEnd;
 
                 return (
-                  <tr key={store.storeId} className={isDemo ? 'demo-row' : ''}>
+                  <tr key={store.storeId} className={sub.freeForever ? 'demo-row' : ''}>
                     <td className="store-name">{store.storeName}</td>
                     <td className="store-id">{store.storeId}</td>
                     <td>
-                      <span className={`plan-badge ${sub.plan || 'free'}`}>
-                        {isDemo ? '👑 DEMO' : sub.plan === 'pro' ? '⚡ PRO' : '📦 FREE'}
+                      <span className={`plan-badge ${sub.freeForever ? 'pro' : 'free'}`}>
+                        {sub.freeForever ? '💚 GRATIS' : statusLabel}
                       </span>
                     </td>
                     <td>
-                      <span className={`status-badge ${isActive && !isExpired ? 'active' : 'inactive'}`}>
-                        {isExpired ? '❌ Expirado' : isActive ? '✅ Activo' : '⏸️ Inactivo'}
+                      <span className={`status-badge ${sub.freeForever || sub.status === 'active' || sub.status === 'trialing' || sub.status === 'courtesy' ? 'active' : 'inactive'}`}>
+                        {sub.freeForever ? '✅ Gratis permanente' : statusLabel}
                       </span>
                     </td>
                     <td className="modules-cell">
@@ -337,39 +369,35 @@ function AdminPanel() {
                     <td>
                       {sub.createdAt ? new Date(sub.createdAt).toLocaleDateString('es-AR') : '-'}
                     </td>
-                    <td className={isExpired ? 'expired-date' : ''}>
-                      {expiresAt ? expiresAt.toLocaleDateString() : '-'}
+                    <td>
+                      {untilDate ? new Date(untilDate).toLocaleDateString() : '-'}
                     </td>
                     <td>
                       <div className="actions-cell">
-                        {!isDemo ? (
-                          <select
-                            onChange={(e) => {
-                              const days = parseInt(e.target.value);
-                              if (days) activateDemo(store.storeId, days);
-                              e.target.value = '';
-                            }}
+                        {!sub.freeForever ? (
+                          <button
+                            onClick={() => setFreeForever(store.storeId, true)}
                             disabled={processingStore === store.storeId}
                             className="action-select"
                           >
-                            <option value="">Activar Demo...</option>
-                            <option value="36500">♾️ Ilimitado</option>
-                            <option value="365">365 días</option>
-                            <option value="90">90 días</option>
-                            <option value="60">60 días</option>
-                            <option value="30">30 días</option>
-                            <option value="15">15 días</option>
-                            <option value="7">7 días</option>
-                          </select>
+                            💚 Marcar gratis
+                          </button>
                         ) : (
                           <button
-                            onClick={() => deactivateDemo(store.storeId)}
+                            onClick={() => setFreeForever(store.storeId, false)}
                             disabled={processingStore === store.storeId}
                             className="btn-deactivate-small"
                           >
-                            Desactivar
+                            Quitar gratis
                           </button>
                         )}
+                        <button
+                          onClick={() => grantCourtesyMonth(store.storeId)}
+                          disabled={processingStore === store.storeId}
+                          className="action-select"
+                        >
+                          🎉 Cortesía
+                        </button>
                       </div>
                     </td>
                   </tr>
