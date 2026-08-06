@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import Sidebar from './Sidebar';
+import PaymentGate from './PaymentGate';
 import './AppLayout.css';
 
 function AppLayout() {
@@ -35,7 +36,7 @@ function AppLayout() {
 
       {/* Page content */}
       <div className="app-layout-content">
-        <Outlet />
+        <PaymentGate />
       </div>
     </div>
   );
