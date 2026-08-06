@@ -14,6 +14,8 @@ export function useSubscription() {
   const loadSubscription = useCallback(async () => {
     const storeId = localStorage.getItem('promonube_store_id');
 
+    setLoading(true);
+
     if (!storeId) {
       setError('No store ID found');
       setLoading(false);
