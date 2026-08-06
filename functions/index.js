@@ -16121,6 +16121,73 @@ app.post('/api/mp/create-preference', async (req, res) => {
   }
 });
 
+// POST /api/mp/create-subscription - Crear suscripcion recurrente (PreApproval)
+app.post('/api/mp/create-subscription', async (req, res) => {
+  try {
+    const { storeId } = req.body;
+
+    if (!storeId) {
+      return res.status(400).json({ success: false, error: 'storeId es requerido' });
+    }
+
+    if (!MP_ACCESS_TOKEN || !mpClient) {
+      return res.status(500).json({
+        success: false,
+        error: 'Mercado Pago no esta configurado. Contacta al administrador.'
+      });
+    }
+
+    const storeDoc = await db.collection('promonube_stores').doc(storeId.toString()).get();
+    if (!storeDoc.exists) {
+      return res.status(404).json({ success: false, error: 'Tienda no encontrada' });
+    }
+    const storeData = storeDoc.data();
+    const payerEmail = storeData.email;
+    if (!payerEmail) {
+      return res.status(400).json({ success: false, error: 'La tienda no tiene email configurado' });
+    }
+
+    const preApproval = new PreApproval(mpClient);
+    const frontendUrl = process.env.FRONTEND_URL || 'https://pedidos-lett-2.web.app';
+
+    const result = await preApproval.create({
+      body: {
+        reason: 'PromoNube Pro - Suscripcion mensual',
+        auto_recurring: {
+          frequency: 1,
+          frequency_type: 'months',
+          transaction_amount: SUBSCRIPTION_PRICE_ARS,
+          currency_id: 'ARS'
+        },
+        back_url: `${frontendUrl}/#/payment-success`,
+        payer_email: payerEmail,
+        external_reference: JSON.stringify({ storeId: storeId.toString() })
+      }
+    });
+
+    const subscriptionRef = db.collection('stores').doc(storeId.toString()).collection('subscription').doc('current');
+    await subscriptionRef.set({
+      mpPreapprovalId: result.id,
+      mpStatus: result.status || 'pending',
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    res.json({
+      success: true,
+      preapprovalId: result.id,
+      initPoint: result.init_point
+    });
+  } catch (error) {
+    console.error('Error creando suscripcion MP:', error);
+    console.error('Response:', error.response?.data);
+    res.status(500).json({
+      success: false,
+      error: 'Error al crear la suscripcion',
+      details: error.message || 'Error desconocido'
+    });
+  }
+});
+
 // POST /api/mp/webhook - Webhook para notificaciones de MP
 app.post('/api/mp/webhook', async (req, res) => {
   try {
