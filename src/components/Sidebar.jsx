@@ -63,14 +63,16 @@ function Sidebar({ isOpen, onClose }) {
   };
 
   const getPlanClass = () => {
-    if (subscription?.isDemoAccount) return 'demo';
-    if (subscription?.plan === 'pro') return 'pro';
+    if (subscription?.status === 'active') return 'pro';
+    if (subscription?.freeForever || subscription?.status === 'courtesy') return 'demo';
     return 'free';
   };
 
   const getPlanLabel = () => {
-    if (subscription?.isDemoAccount) return '👑 DEMO';
-    if (subscription?.plan === 'pro') return '⚡ PRO';
+    if (subscription?.status === 'active') return '⚡ PRO';
+    if (subscription?.freeForever) return '💚 GRATIS';
+    if (subscription?.status === 'courtesy') return '🎉 CORTESÍA';
+    if (subscription?.status === 'trialing') return '🎁 TRIAL';
     return '📦 FREE';
   };
 
