@@ -5176,66 +5176,45 @@ app.get("/api/subscription/:storeId/charges", async (req, res) => {
 });
 
 // GET /api/subscription/:storeId/status
-// Consulta el estado completo de la suscripci�n incluyendo �ltimo cargo
+// Estado de suscripcion + resultado de la regla de acceso unica
 app.get("/api/subscription/:storeId/status", async (req, res) => {
   const { storeId } = req.params;
 
   try {
-    console.log(`?? Consultando estado completo para store ${storeId}`);
-
-    // Obtener suscripci�n actual
     const subscriptionDoc = await db.collection("stores")
       .doc(storeId)
       .collection("subscription")
       .doc("current")
       .get();
 
-    const subscription = subscriptionDoc.exists
-      ? subscriptionDoc.data()
-      : { plan: 'free', status: 'inactive', modules: { coupons: true } };
+    const data = subscriptionDoc.exists ? subscriptionDoc.data() : null;
+    const access = evaluateAccess(data);
 
-    // Para planes pro/trial, asegurar que los m�dulos nuevos est�n incluidos
-    const storedModules = subscription.modules || {};
-    if (subscription.plan === 'trial' || subscription.plan === 'pro' || subscription.isDemoAccount) {
-      for (const mod of ALL_MODULES) {
-        if (storedModules[mod] === undefined) storedModules[mod] = true;
-      }
-      subscription.modules = storedModules;
-    }
+    const toIso = (value) => {
+      if (!value) return null;
+      if (typeof value === 'string') return value;
+      return value.toDate ? value.toDate().toISOString() : null;
+    };
 
-    // Obtener �ltimo cargo
-    const chargesSnapshot = await db.collection("app_charges")
-      .where("storeId", "==", storeId)
-      .get();
+    const subscription = {
+      status: data?.status || 'trialing',
+      trialEndsAt: toIso(data?.trialEndsAt),
+      mpStatus: data?.mpStatus || null,
+      currentPeriodEnd: toIso(data?.currentPeriodEnd),
+      freeForever: data?.freeForever || false,
+      courtesyUntil: toIso(data?.courtesyUntil),
+      modules: access.hasAccess ? buildFullModulesObject() : {}
+    };
 
-    const charges = [];
-    chargesSnapshot.forEach(doc => {
-      charges.push({ id: doc.id, ...doc.data() });
-    });
-
-    // Ordenar por fecha
-    charges.sort((a, b) => {
-      const dateA = new Date(a.createdAt || 0);
-      const dateB = new Date(b.createdAt || 0);
-      return dateB - dateA;
-    });
-
-    const lastCharge = charges.length > 0 ? charges[0] : null;
-    const activeCharge = charges.find(c => c.status === 'accepted');
-
-    res.json({ 
+    res.json({
       success: true,
-      subscription: {
-        ...subscription,
-        lastCharge: lastCharge,
-        activeCharge: activeCharge,
-        hasActivePayment: !!activeCharge,
-        totalCharges: charges.length
-      }
+      subscription,
+      hasAccess: access.hasAccess,
+      accessReason: access.reason
     });
 
   } catch (error) {
-    console.error("? Error consultando estado:", error);
+    console.error("Error consultando estado:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
