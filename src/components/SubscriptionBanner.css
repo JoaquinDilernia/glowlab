@@ -35,27 +35,21 @@
   opacity: 0.9;
 }
 
-/* Banner DEMO */
-.subscription-banner.demo {
+/* Banner cortesia (antes .demo) */
+.subscription-banner.courtesy {
   background: linear-gradient(135deg, var(--gl-accent-purple), var(--gl-accent-cyan));
   color: white;
   border: 2px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Banner activo */
+/* Banner activo / gratis permanente */
 .subscription-banner.active {
   background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
   color: white;
 }
 
-/* Banner suspendido */
-.subscription-banner.suspended {
-  background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
-  color: white;
-}
-
-/* Banner free */
-.subscription-banner.free {
+/* Banner periodo de prueba (antes .free) */
+.subscription-banner.trial {
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   color: white;
 }
