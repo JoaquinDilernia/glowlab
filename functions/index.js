@@ -15355,6 +15355,10 @@ app.post('/api/mp/create-subscription', async (req, res) => {
           currency_id: 'ARS'
         },
         back_url: `${frontendUrl}/#/payment-success`,
+        // Se envia explicitamente para no depender de la URL configurada a mano
+        // en el panel de Mercado Pago: sin esto, si esa config falta o queda
+        // desactualizada el pago se autoriza pero la tienda nunca se desbloquea.
+        notification_url: `${_SRV_BASE}/api/mp/webhook`,
         payer_email: payerEmail,
         external_reference: JSON.stringify({ storeId: storeId.toString() })
       }
