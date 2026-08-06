@@ -331,16 +331,17 @@ function AdminPanel() {
             <tbody>
               {filteredStores.map((store) => {
                 const sub = store.subscription || {};
-                const statusLabel = {
+                const courtesyUntilDate = sub.courtesyUntil ? new Date(sub.courtesyUntil) : null;
+                const isCourtesyActive = !!(courtesyUntilDate && !isNaN(courtesyUntilDate) && courtesyUntilDate > new Date());
+                const statusLabel = isCourtesyActive ? '🎉 Cortesía' : ({
                   active: '⚡ Activo',
                   trialing: '🎁 Trial',
-                  courtesy: '🎉 Cortesía',
                   blocked: '❌ Bloqueado',
                   past_due: '⚠️ Pago pendiente'
-                }[sub.status] || sub.status || '-';
+                }[sub.status] || sub.status || '-');
                 const modules = sub.modules || {};
-                const untilDate = sub.status === 'trialing' ? sub.trialEndsAt
-                  : sub.status === 'courtesy' ? sub.courtesyUntil
+                const untilDate = isCourtesyActive ? sub.courtesyUntil
+                  : sub.status === 'trialing' ? sub.trialEndsAt
                   : sub.currentPeriodEnd;
 
                 return (
@@ -353,7 +354,7 @@ function AdminPanel() {
                       </span>
                     </td>
                     <td>
-                      <span className={`status-badge ${sub.freeForever || sub.status === 'active' || sub.status === 'trialing' || sub.status === 'courtesy' ? 'active' : 'inactive'}`}>
+                      <span className={`status-badge ${sub.freeForever || isCourtesyActive || sub.status === 'active' || sub.status === 'trialing' ? 'active' : 'inactive'}`}>
                         {sub.freeForever ? '✅ Gratis permanente' : statusLabel}
                       </span>
                     </td>
