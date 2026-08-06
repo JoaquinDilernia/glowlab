@@ -912,77 +912,32 @@ app.get("/auth/callback", async (req, res) => {
     // Instalar templates predeterminados para nueva tienda
     await installDefaultTemplates(storeId);
 
-    // Siempre actualizar suscripci�n a plan PRO ilimitado (enterprise)
-    const farFuture = new Date('2099-12-31T00:00:00.000Z');
-    const allModules = {
-      coupons: true, giftCards: true, spinWheel: true, countdown: true,
-      badges: true, style: true, integrations: true, popups: true,
-      announcementBar: true, topHeader: true, menu: true, banners: true
-    };
+    // Instalacion nueva: crear trial de 7 dias sin pedir tarjeta.
+    // Si la tienda ya tenia una suscripcion (reinstalacion), se respeta tal cual esta.
+    const subscriptionRef = db.collection("stores").doc(storeId).collection("subscription").doc("current");
+    const existingSubscription = await subscriptionRef.get();
 
-    await db.collection("subscriptions").doc(storeId).set({
-      storeId,
-      plan: "enterprise",
-      status: "active",
-      price: 0,
-      currency: "ARS",
-      startDate: FieldValue.serverTimestamp(),
-      endDate: admin.firestore.Timestamp.fromDate(farFuture),
-      trialDays: 36500,
-      isDemoAccount: true,
-      demoExpiresAt: farFuture.toISOString(),
-      features: { maxPromos: 999, analytics: true, automation: true },
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
+    if (!existingSubscription.exists) {
+      const trialEndsAt = new Date();
+      trialEndsAt.setDate(trialEndsAt.getDate() + 7);
 
-    await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
-      plan: 'pro',
-      status: "demo",
-      modules: allModules,
-      isDemoAccount: true,
-      demoExpiresAt: farFuture.toISOString(),
-      activatedBy: "install",
-      activatedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
-
-    // Intentar crear cargo con trial de 36500 d�as (no bloquea si falla)
-    try {
-      const chargeRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/recurring_application_charges`, {
-        method: 'POST',
-        headers: {
-          'Authentication': `bearer ${access_token}`,
-          'Content-Type': 'application/json',
-          'User-Agent': 'PromoNube (contacto@promonube.com)'
-        },
-        body: JSON.stringify({
-          name: 'PromoNube Pro - Todo Incluido',
-          price: '0',
-          trial_days: 36500,
-          return_url: `${process.env.FRONTEND_URL || 'https://pedidos-lett-2.web.app'}/#/dashboard`
-        })
+      await subscriptionRef.set({
+        status: 'trialing',
+        trialEndsAt: trialEndsAt.toISOString(),
+        mpPreapprovalId: null,
+        mpStatus: null,
+        currentPeriodEnd: null,
+        freeForever: false,
+        courtesyUntil: null,
+        modules: buildFullModulesObject(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       });
-      const chargeData = await chargeRes.json();
-      if (chargeData.id) {
-        console.log(`? Cargo gratuito creado para ${storeId}: ID ${chargeData.id}`);
-        // Si tiene confirmation_url, activarlo
-        if (chargeData.confirmation_url) {
-          await fetch(`https://api.tiendanube.com/v1/${storeId}/recurring_application_charges/${chargeData.id}/activate`, {
-            method: 'POST',
-            headers: {
-              'Authentication': `bearer ${access_token}`,
-              'User-Agent': 'PromoNube (contacto@promonube.com)'
-            }
-          });
-        }
-      } else {
-        console.log(`??  No se pudo crear cargo para ${storeId}:`, chargeRes.status, JSON.stringify(chargeData).substring(0,100));
-      }
-    } catch (chargeErr) {
-      console.log(`??  Error creando cargo (no cr�tico): ${chargeErr.message}`);
-    }
 
-    console.log(`? Suscripci�n PRO ilimitada activada para: ${storeId}`);
+      console.log(`Trial de 7 dias creado para: ${storeId}`);
+    } else {
+      console.log(`Store ${storeId} ya tenia suscripcion, no se modifica`);
+    }
 
     // Verificar si ya existe un usuario para esta tienda
     const usersSnapshot = await db.collection("promonube_users")
