@@ -16188,137 +16188,72 @@ app.post('/api/mp/create-subscription', async (req, res) => {
   }
 });
 
-// POST /api/mp/webhook - Webhook para notificaciones de MP
+// POST /api/mp/webhook - Notificaciones de Mercado Pago (suscripciones PreApproval)
 app.post('/api/mp/webhook', async (req, res) => {
   try {
-    console.log('?? Webhook MP recibido:', req.body);
-    console.log('?? Headers:', req.headers);
+    console.log('Webhook MP recibido:', req.body);
 
-    const { type, data } = req.body;
+    const { type } = req.body;
+    const data = req.body.data || {};
 
-    // Validaci�n opcional de firma (si quieres mayor seguridad)
-    const xSignature = req.headers['x-signature'];
-    const xRequestId = req.headers['x-request-id'];
-    
-    if (xSignature) {
-      console.log('?? Signature recibida:', xSignature);
-      // La validaci�n de firma es opcional pero recomendada para producci�n
-      // Por ahora logueamos para debugging
-    }
-
-    // Responder r�pido a MP (200 dentro de 10 segundos)
+    // Responder rapido a MP (200 dentro de 10 segundos)
     res.status(200).send('OK');
 
-    // Procesar en background
-    if (type === 'payment') {
-      const paymentId = data.id;
-      
-      console.log('?? Procesando pago:', paymentId);
+    // MP nombra el topic distinto segun el tipo de integracion de webhooks
+    // (IPN clasico vs Webhooks v2); se manejan ambos de forma defensiva.
+    // NOTA: verificar el valor real de `type` en los logs de Railway la
+    // primera vez que se dispare un webhook real y ajustar esta lista si hace falta.
+    const PREAPPROVAL_TYPES = ['preapproval', 'subscription_preapproval'];
 
-      // Obtener informaci�n del pago desde MP
-      const payment = new Payment(mpClient);
-      const paymentData = await payment.get({ id: paymentId });
-
-      console.log('?? Estado del pago:', paymentData.status);
-      console.log('?? Metadata:', paymentData.metadata);
-
-      // Si el pago est? aprobado, activar el plan
-      if (paymentData.status === 'approved') {
-        const storeId = paymentData.metadata?.store_id;
-        const planId = paymentData.metadata?.plan_id;
-
-        if (!storeId || !planId) {
-          console.error('? Faltan datos en metadata:', paymentData.metadata);
-          return;
-        }
-
-        console.log(`? Pago aprobado - Activando plan ${planId} para store ${storeId}`);
-
-        // Actualizar documento de pago
-        const paymentRef = db.collection('promonube_payments').doc(paymentData.id.toString());
-        await paymentRef.update({
-          status: 'approved',
-          paymentData: {
-            id: paymentData.id,
-            status: paymentData.status,
-            statusDetail: paymentData.status_detail,
-            transactionAmount: paymentData.transaction_amount,
-            payer: paymentData.payer,
-            paymentMethodId: paymentData.payment_method_id,
-            dateApproved: paymentData.date_approved
-          },
-          approvedAt: FieldValue.serverTimestamp()
-        });
-
-        // Activar plan en la suscripci�n
-        const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
-        const subscriptionDoc = await subscriptionRef.get();
-
-        const plan = PLANS[planId];
-        if (!plan) {
-          console.error('? Plan no encontrado:', planId);
-          return;
-        }
-
-        // Calcular fecha de expiraci�n (30 d�as)
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 30);
-
-        if (subscriptionDoc.exists) {
-          // Actualizar suscripci�n existente
-          await subscriptionRef.update({
-            plan: planId,
-            modules: modulesArrayToObject(plan.modules),
-            status: 'active',
-            activatedAt: FieldValue.serverTimestamp(),
-            expiresAt: expiresAt,
-            lastPaymentId: paymentData.id.toString(),
-            lastPaymentAmount: paymentData.transaction_amount
-          });
-        } else {
-          // Crear nueva suscripci�n
-          await subscriptionRef.set({
-            storeId: storeId,
-            plan: planId,
-            modules: modulesArrayToObject(plan.modules),
-            status: 'active',
-            activatedAt: FieldValue.serverTimestamp(),
-            expiresAt: expiresAt,
-            lastPaymentId: paymentData.id.toString(),
-            lastPaymentAmount: paymentData.transaction_amount,
-            createdAt: FieldValue.serverTimestamp()
-          });
-        }
-
-        console.log(`?? Plan ${planId} activado exitosamente para store ${storeId}`);
-        console.log(`?? Expira el: ${expiresAt.toISOString()}`);
-
-      } else if (payment.status === 'rejected') {
-        console.log('? Pago rechazado:', payment.status_detail);
-        
-        // Actualizar estado del pago
-        const paymentRef = db.collection('promonube_payments').doc(payment.id.toString());
-        await paymentRef.update({
-          status: 'rejected',
-          statusDetail: payment.status_detail,
-          rejectedAt: FieldValue.serverTimestamp()
-        });
-
-      } else if (payment.status === 'pending' || payment.status === 'in_process') {
-        console.log('? Pago pendiente:', payment.status_detail);
-        
-        // Actualizar estado del pago
-        const paymentRef = db.collection('promonube_payments').doc(payment.id.toString());
-        await paymentRef.update({
-          status: payment.status,
-          statusDetail: payment.status_detail
-        });
-      }
-
+    if (!PREAPPROVAL_TYPES.includes(type) || !data.id) {
+      return;
     }
 
+    const preApproval = new PreApproval(mpClient);
+    const preapprovalData = await preApproval.get({ id: data.id });
+
+    let storeId = null;
+    try {
+      const parsedRef = JSON.parse(preapprovalData.external_reference || '{}');
+      storeId = parsedRef.storeId;
+    } catch (parseErr) {
+      console.error('No se pudo parsear external_reference:', preapprovalData.external_reference);
+    }
+
+    if (!storeId) {
+      console.error('Webhook de preapproval sin storeId identificable:', preapprovalData.id);
+      return;
+    }
+
+    const subscriptionRef = db.collection('stores').doc(storeId).collection('subscription').doc('current');
+
+    if (preapprovalData.status === 'authorized') {
+      await subscriptionRef.set({
+        status: 'active',
+        mpPreapprovalId: preapprovalData.id,
+        mpStatus: 'authorized',
+        currentPeriodEnd: preapprovalData.next_payment_date || null,
+        modules: buildFullModulesObject(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      invalidateConfigCache(storeId);
+      console.log(`Suscripcion autorizada para store ${storeId}`);
+    } else if (preapprovalData.status === 'paused' || preapprovalData.status === 'cancelled') {
+      await subscriptionRef.set({
+        status: 'blocked',
+        mpStatus: preapprovalData.status,
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      invalidateConfigCache(storeId);
+      console.log(`Suscripcion ${preapprovalData.status} para store ${storeId}`);
+    } else {
+      await subscriptionRef.set({
+        mpStatus: preapprovalData.status,
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
   } catch (error) {
-    console.error('? Error en webhook MP:', error);
+    console.error('Error en webhook MP:', error);
   }
 });
 
