@@ -32,7 +32,23 @@ export const apiRequest = async (endpoint, options = {}) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ API Error:', response.status, errorText);
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+
+      // Si el backend mandó un body JSON con un mensaje concreto, ese es el
+      // que se propaga: es el único accionable para el usuario final.
+      let serverMessage = null;
+      try {
+        const errorBody = JSON.parse(errorText);
+        if (errorBody && typeof errorBody === 'object') {
+          const candidate = errorBody.error || errorBody.message;
+          if (typeof candidate === 'string' && candidate.trim()) {
+            serverMessage = candidate.trim();
+          }
+        }
+      } catch {
+        // El body no era JSON: se usa el mensaje generico con el status HTTP.
+      }
+
+      throw new Error(serverMessage || `HTTP ${response.status}: ${errorText}`);
     }
     
     // Intentar parsear JSON

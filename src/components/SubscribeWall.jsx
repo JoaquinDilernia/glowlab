@@ -36,7 +36,9 @@ function SubscribeWall({ accessReason }) {
       }
     } catch (err) {
       console.error('Error creando suscripción:', err);
-      setErrorMsg('No se pudo conectar con Mercado Pago. Intentá de nuevo.');
+      // apiRequest propaga el mensaje que manda el backend cuando lo hay
+      // (ej: "La tienda no tiene email configurado"); si no, mensaje generico.
+      setErrorMsg(err?.message || 'No se pudo conectar con Mercado Pago. Intentá de nuevo.');
       setLoadingCheckout(false);
     }
   };

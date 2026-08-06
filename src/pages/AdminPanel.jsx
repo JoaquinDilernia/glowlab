@@ -82,7 +82,7 @@ function AdminPanel() {
         toast.error('Error: ' + response.error);
       }
     } catch (error) {
-      toast.error('Error actualizando la tienda');
+      toast.error(error?.message || 'Error actualizando la tienda');
     } finally {
       setProcessingStore(null);
     }
@@ -106,7 +106,7 @@ function AdminPanel() {
         toast.error('Error: ' + response.error);
       }
     } catch (error) {
-      toast.error('Error otorgando cortesía');
+      toast.error(error?.message || 'Error otorgando cortesía');
     } finally {
       setProcessingStore(null);
     }
@@ -129,7 +129,7 @@ function AdminPanel() {
         toast.error('Error: ' + response.error);
       }
     } catch (error) {
-      toast.error('Error reiniciando trials');
+      toast.error(error?.message || 'Error reiniciando trials');
     } finally {
       setLoading(false);
     }
