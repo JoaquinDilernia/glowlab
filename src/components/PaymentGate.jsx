@@ -6,7 +6,7 @@ const GATE_EXEMPT_PATHS = ['/admin'];
 
 function PaymentGate() {
   const location = useLocation();
-  const { subscription, hasAccess, loading } = useSubscription();
+  const { accessReason, hasAccess, loading } = useSubscription();
 
   if (GATE_EXEMPT_PATHS.some(path => location.pathname.startsWith(path))) {
     return <Outlet />;
@@ -21,7 +21,7 @@ function PaymentGate() {
   }
 
   if (!hasAccess) {
-    return <SubscribeWall subscription={subscription} />;
+    return <SubscribeWall accessReason={accessReason} />;
   }
 
   return <Outlet />;

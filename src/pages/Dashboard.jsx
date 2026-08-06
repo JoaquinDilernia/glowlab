@@ -8,12 +8,25 @@ import AdminPanel from '../components/AdminPanel';
 import OnboardingWizard from '../components/OnboardingWizard';
 import './Dashboard.css';
 
+// Solo valores reales de subscription.status. 'courtesy' y 'free_forever' no
+// viven aca: se derivan de courtesyUntil / freeForever (ver getStatusBadgeLabel).
 const STATUS_BADGE_LABEL = {
   trialing: '🎁 TRIAL',
-  active: '⚡ PRO',
-  courtesy: '🎉 CORTESÍA',
-  free_forever: '💚 GRATIS'
+  active: '⚡ PRO'
 };
+
+function getStatusBadgeLabel(subscription) {
+  if (!subscription) return '📦 FREE';
+  if (subscription.freeForever) return '💚 GRATIS';
+
+  const courtesyUntilDate = subscription.courtesyUntil ? new Date(subscription.courtesyUntil) : null;
+  if (courtesyUntilDate && !isNaN(courtesyUntilDate) && courtesyUntilDate > new Date()) {
+    return '🎉 CORTESÍA';
+  }
+
+  // Default neutro: un status desconocido o bloqueado no debe mostrarse como PRO.
+  return STATUS_BADGE_LABEL[subscription.status] || '📦 FREE';
+}
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -156,7 +169,7 @@ function Dashboard() {
     );
   }
 
-  const statusBadgeLabel = STATUS_BADGE_LABEL[subscription?.status] || '⚡ PRO';
+  const statusBadgeLabel = getStatusBadgeLabel(subscription);
 
   return (
     <div className="dashboard-container">

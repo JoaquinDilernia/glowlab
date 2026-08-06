@@ -62,16 +62,21 @@ function Sidebar({ isOpen, onClose }) {
     return location.pathname.startsWith(path);
   };
 
+  // 'courtesy' no es un valor de subscription.status: la cortesia se deriva de
+  // courtesyUntil estando en el futuro, igual que en evaluateAccess (backend).
+  const courtesyUntilDate = subscription?.courtesyUntil ? new Date(subscription.courtesyUntil) : null;
+  const isCourtesyActive = !!(courtesyUntilDate && !isNaN(courtesyUntilDate) && courtesyUntilDate > new Date());
+
   const getPlanClass = () => {
     if (subscription?.status === 'active') return 'pro';
-    if (subscription?.freeForever || subscription?.status === 'courtesy') return 'demo';
+    if (subscription?.freeForever || isCourtesyActive) return 'demo';
     return 'free';
   };
 
   const getPlanLabel = () => {
     if (subscription?.status === 'active') return '⚡ PRO';
     if (subscription?.freeForever) return '💚 GRATIS';
-    if (subscription?.status === 'courtesy') return '🎉 CORTESÍA';
+    if (isCourtesyActive) return '🎉 CORTESÍA';
     if (subscription?.status === 'trialing') return '🎁 TRIAL';
     return '📦 FREE';
   };

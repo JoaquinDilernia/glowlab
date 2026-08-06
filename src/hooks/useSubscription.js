@@ -4,6 +4,10 @@ import { apiRequest } from '../config';
 export function useSubscription() {
   const [subscription, setSubscription] = useState(null);
   const [hasAccess, setHasAccess] = useState(null); // null = still loading
+  // Motivo de acceso calculado por el backend (evaluateAccess): 'free_forever',
+  // 'courtesy', 'trialing', 'active', 'trial_expired', 'blocked', 'past_due',
+  // 'no_subscription'. No confundir con subscription.status.
+  const [accessReason, setAccessReason] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -22,6 +26,7 @@ export function useSubscription() {
       if (data.success) {
         setSubscription(data.subscription);
         setHasAccess(data.hasAccess);
+        setAccessReason(data.accessReason || null);
         setError(null);
       } else {
         setError('Failed to load subscription');
@@ -41,6 +46,7 @@ export function useSubscription() {
   return {
     subscription,
     hasAccess,
+    accessReason,
     loading,
     error,
     reload: loadSubscription

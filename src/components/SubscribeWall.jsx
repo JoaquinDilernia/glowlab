@@ -3,19 +3,21 @@ import { Crown, Check, Loader2 } from 'lucide-react';
 import { apiRequest } from '../config';
 import './SubscribeWall.css';
 
-const STATUS_COPY = {
+// Las claves son valores de accessReason (los que devuelve evaluateAccess en el
+// backend), no de subscription.status.
+const REASON_COPY = {
   trial_expired: 'Tu período de prueba de 7 días terminó.',
   blocked: 'Tu suscripción fue pausada o cancelada en Mercado Pago.',
   past_due: 'Hubo un problema con tu último cobro.',
   no_subscription: 'Todavía no activaste tu suscripción.'
 };
 
-function SubscribeWall({ subscription }) {
+function SubscribeWall({ accessReason }) {
   const [loadingCheckout, setLoadingCheckout] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
-  const reason = subscription?.status || 'no_subscription';
-  const message = STATUS_COPY[reason] || STATUS_COPY.no_subscription;
+  const reason = accessReason || 'no_subscription';
+  const message = REASON_COPY[reason] || REASON_COPY.no_subscription;
 
   const handleSubscribe = async () => {
     const storeId = localStorage.getItem('promonube_store_id');
