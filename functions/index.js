@@ -7,7 +7,7 @@ const crypto = require("crypto");
 const sgMail = require('@sendgrid/mail');
 const Busboy = require('busboy');
 const multer = require('multer');
-const { MercadoPagoConfig, Preference, Payment, PreApproval } = require('mercadopago');
+const { MercadoPagoConfig, PreApproval } = require('mercadopago');
 const { evaluateAccess, SUBSCRIPTION_PRICE_ARS } = require('./subscriptionAccess');
 
 // ============================================
@@ -163,72 +163,11 @@ const _SRV_BASE = process.env.API_BASE_URL || 'https://apipromonube-jlfopowzaq-u
 
 const ALL_MODULES = ['coupons', 'giftcards', 'spinWheel', 'style', 'countdown', 'popups'];
 
-const MODULES = {
-  coupons: { name: 'Cupones Inteligentes', included: true },
-  giftcards: { name: 'Gift Cards', included: true },
-  spinWheel: { name: 'Ruleta de Premios', included: true },
-  style: { name: 'Style Pro', included: true },
-  countdown: { name: 'Cuenta Regresiva', included: true },
-  popups: { name: 'Pop-ups', included: true }
-};
-
 // Unico plan, todo o nada: devuelve el objeto de modulos completo.
 function buildFullModulesObject() {
   const modules = {};
   ALL_MODULES.forEach(mod => { modules[mod] = true; });
   return modules;
-}
-
-// Verificar acceso (plan unico, todo o nada — moduleName se ignora salvo
-// para logging; se mantiene en la firma por compatibilidad con callers existentes)
-async function checkModuleAccess(storeId, moduleName) {
-  try {
-    const subscriptionRef = db.collection('stores').doc(storeId.toString()).collection('subscription').doc('current');
-    const subscriptionDoc = await subscriptionRef.get();
-    const data = subscriptionDoc.exists ? subscriptionDoc.data() : null;
-
-    const access = evaluateAccess(data);
-
-    if (!access.hasAccess) {
-      return access;
-    }
-
-    return {
-      hasAccess: true,
-      reason: access.reason,
-      plan: 'pro'
-    };
-  } catch (error) {
-    console.error('Error verificando acceso:', error);
-    return { hasAccess: false, reason: 'error', error: error.message };
-  }
-}
-
-// Middleware de Express para verificar acceso
-function requireModule(moduleName) {
-  return async (req, res, next) => {
-    const storeId = req.query.store || req.body.storeId || req.params.storeId;
-
-    if (!storeId) {
-      return res.status(400).json({ error: 'Store ID requerido' });
-    }
-
-    const accessCheck = await checkModuleAccess(storeId, moduleName);
-
-    if (!accessCheck.hasAccess) {
-      return res.status(403).json({ 
-        error: 'M�dulo no disponible',
-        module: moduleName,
-        reason: accessCheck.reason,
-        message: `El m�dulo ${MODULES[moduleName]?.name || moduleName} no est? activo en tu plan.`,
-        upgrade_url: `https://pedidos-lett-2.web.app/upgrade?module=${moduleName}`
-      });
-    }
-
-    // Store tiene acceso, continuar
-    req.moduleAccess = accessCheck;
-    next();
-  };
 }
 
 // ==========================================
@@ -15307,10 +15246,6 @@ app.post("/api/upload-image", (req, res, next) => {
     });
   }
 });
-
-// ============================================
-// ENDPOINTS: GESTI??N DE SUSCRIPCIONES
-// ============================================
 
 // ============================================
 // ENDPOINTS: MERCADO PAGO INTEGRATION
