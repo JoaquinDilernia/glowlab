@@ -1,0 +1,385 @@
+/* ============================================
+   OnboardingWizard - PromoNube
+   ============================================ */
+
+.ow-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 18, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: ow-fade-in 0.25s ease;
+}
+
+@keyframes ow-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ow-modal {
+  position: relative;
+  background: linear-gradient(180deg, #1a1d2e 0%, #11131f 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 92vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6);
+  color: #fff;
+  animation: ow-slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes ow-slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.ow-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  z-index: 1;
+}
+.ow-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+/* ====== HEADER / PROGRESS ====== */
+.ow-header {
+  padding: 28px 32px 0;
+}
+
+.ow-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ow-progress-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.25s ease;
+}
+
+.ow-progress-dot.active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+}
+
+.ow-progress-dot.current {
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.25);
+  transform: scale(1.1);
+}
+
+.ow-step-label {
+  text-align: center;
+  margin: 8px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ====== BODY ====== */
+.ow-body {
+  padding: 24px 32px 32px;
+  text-align: center;
+}
+
+.ow-icon-circle {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+.ow-icon-style    { background: linear-gradient(135deg, #25D366, #128C7E); }
+.ow-icon-countdown{ background: linear-gradient(135deg, #f97316, #dc2626); }
+.ow-icon-wheel    { background: linear-gradient(135deg, #8b5cf6, #ec4899); }
+
+.ow-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  letter-spacing: -0.01em;
+}
+
+.ow-subtitle {
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0 auto 24px;
+  max-width: 480px;
+}
+.ow-subtitle strong { color: #fff; }
+
+/* ====== STEP 1: COLORS ====== */
+.ow-colors {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 0 auto 24px;
+  max-width: 480px;
+}
+
+.ow-color-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.04);
+  border: 2px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 12px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: inherit;
+}
+.ow-color-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+.ow-color-card.selected {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.ow-color-bubble {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.ow-color-name {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ow-color-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ====== FEATURE PREVIEWS ====== */
+.ow-feature-preview {
+  display: flex;
+  justify-content: center;
+  margin: 0 auto 24px;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+/* Countdown demo */
+.ow-countdown-demo {
+  text-align: center;
+}
+.ow-cd-label {
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: #f97316;
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+.ow-cd-numbers {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.ow-cd-numbers > div {
+  background: linear-gradient(135deg, #1f2937, #111827);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  border-radius: 10px;
+  padding: 10px 14px;
+  min-width: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.ow-cd-numbers span {
+  font-size: 26px;
+  font-weight: 800;
+  color: #f97316;
+  line-height: 1;
+}
+.ow-cd-numbers small {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+/* Spin wheel demo */
+.ow-wheel-demo {
+  position: relative;
+  width: 160px;
+  height: 160px;
+}
+.ow-wheel {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.3);
+  border: 4px solid #fff;
+  animation: ow-wheel-spin 8s linear infinite;
+}
+@keyframes ow-wheel-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.ow-wheel-slice {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 50%;
+  height: 50%;
+  transform-origin: 0% 100%;
+  transform: rotate(var(--rot)) skewY(-30deg);
+  background: var(--bg);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.ow-wheel-pointer {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 24px;
+  color: #f97316;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+/* ====== ACTIONS ====== */
+.ow-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.ow-btn-primary,
+.ow-btn-secondary {
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.ow-btn-primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+}
+.ow-btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.55);
+}
+.ow-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.ow-btn-primary.ow-btn-success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+}
+
+.ow-btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+}
+.ow-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.ow-success-hint {
+  margin-top: 14px;
+  font-size: 13px;
+  color: #10b981;
+  font-weight: 500;
+}
+
+.ow-spin {
+  animation: ow-rotate 0.8s linear infinite;
+}
+@keyframes ow-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* ====== RESPONSIVE ====== */
+@media (max-width: 560px) {
+  .ow-modal {
+    max-height: 96vh;
+  }
+  .ow-header { padding: 24px 20px 0; }
+  .ow-body   { padding: 18px 20px 24px; }
+  .ow-title  { font-size: 19px; }
+  .ow-colors { grid-template-columns: repeat(2, 1fr); }
+  .ow-actions { flex-direction: column-reverse; }
+  .ow-actions button { width: 100%; justify-content: center; }
+}

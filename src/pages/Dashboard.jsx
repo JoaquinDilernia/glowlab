@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Tag, CreditCard, Sparkles, Clock, Palette, Lock, Shield, BadgeCheck, Bell, Rocket, ChevronRight } from 'lucide-react';
+import { Zap, Tag, CreditCard, Sparkles, Clock, Palette, Lock, Shield, BadgeCheck, Bell, Rocket, ChevronRight, ShoppingBag, Image } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useSubscription } from '../hooks/useSubscription';
 import { useToast } from '../context/ToastContext';
 import UpgradeModal from '../components/UpgradeModal';
 import SubscriptionBanner from '../components/SubscriptionBanner';
 import AdminPanel from '../components/AdminPanel';
+import OnboardingWizard from '../components/OnboardingWizard';
 import './Dashboard.css';
 
 function Dashboard() {
@@ -16,8 +17,11 @@ function Dashboard() {
   const [storeInfo, setStoreInfo] = useState(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(
+    typeof window !== 'undefined' && !localStorage.getItem('gl_onboarding_done')
+  );
   const { subscription, modules, hasAccess, changePlan, reload } = useSubscription();
-  
+
   // Verificar acceso a cada módulo
   const isModuleBlocked = (moduleName) => {
     if (!subscription) return true;
@@ -64,7 +68,7 @@ function Dashboard() {
 
   const loadStoreInfo = async () => {
     const storeId = localStorage.getItem('promonube_store_id');
-    
+
     if (!storeId) {
       navigate('/');
       return;
@@ -72,7 +76,7 @@ function Dashboard() {
 
     try {
       const data = await apiRequest(`/store-info?storeId=${storeId}`);
-      
+
       if (data.success) {
         setStoreInfo(data);
       } else {
@@ -152,6 +156,26 @@ function Dashboard() {
       blocked: isModuleBlocked('giftcards')
     },
     {
+      icon: ShoppingBag,
+      title: 'Shop the Look',
+      description: 'Marcá productos directamente sobre una imagen y dejá que tus clientes los agreguen al carrito sin salir. Ideal para lookbooks, outfits y colecciones.',
+      path: '/shop-the-look',
+      moduleName: 'style',
+      available: hasAccess('style'),
+      blocked: isModuleBlocked('style'),
+      badge: '✨ Nuevo'
+    },
+    {
+      icon: Image,
+      title: 'Banner Home',
+      description: 'Agregá un banner personalizado en tu home con imagen de fondo, textos y botones. Controlá el ancho, la posición y el diseño para destacar tus campañas.',
+      path: '/banner',
+      moduleName: 'style',
+      available: hasAccess('style'),
+      blocked: isModuleBlocked('style'),
+      badge: '✨ Nuevo'
+    },
+    {
       icon: Bell,
       title: 'Pop-ups',
       description: 'Mostrá ofertas y capturá emails con pop-ups personalizados. Targeting por página, exit intent, delay y más triggers. Aumentá conversiones desde el primer día.',
@@ -187,7 +211,7 @@ function Dashboard() {
         setShowAdminPanel(prev => !prev);
       }
     };
-    
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
@@ -207,7 +231,7 @@ function Dashboard() {
       {showAdminPanel && (
         <div className="admin-panel-overlay">
           <AdminPanel />
-          <button 
+          <button
             className="close-admin-panel"
             onClick={() => setShowAdminPanel(false)}
           >
@@ -223,7 +247,7 @@ function Dashboard() {
             <div className="brand">
               <div className="brand-left">
                 <div className="brand-name">{storeInfo?.store?.storeName || 'Mi tienda'}</div>
-                <span 
+                <span
                   className={`plan-badge-inline ${subscription?.isDemoAccount ? 'demo' : ''}`}
                   onClick={() => setShowUpgradeModal(true)}
                   title="Click para gestionar suscripción"
@@ -239,7 +263,7 @@ function Dashboard() {
           </div>
 
           <div className="header-right">
-            <button 
+            <button
               className="btn-admin-access"
               onClick={() => setShowAdminPanel(true)}
               title="Panel Admin (Ctrl+Shift+A)"
@@ -255,23 +279,19 @@ function Dashboard() {
         {/* Subscription Status Banner */}
         <SubscriptionBanner subscription={subscription} />
 
-        {/* Welcome Banner — solo si es usuario nuevo (nunca navegó a ningún módulo) */}
-        {!localStorage.getItem('gl_onboarding_done') && (
-          <div className="welcome-banner">
+        {/* Welcome Banner — botón para reabrir el tour si ya lo cerró */}
+        {!showOnboarding && localStorage.getItem('gl_onboarding_done') && (
+          <div className="welcome-banner welcome-banner-compact">
             <div className="wb-left">
-              <Rocket size={28} className="wb-icon" />
-              <div>
-                <h3 className="wb-title">¡Bienvenido a GlowLab! Empezá en 3 pasos</h3>
-                <div className="wb-steps">
-                  <span className="wb-step"><span className="wb-step-num">1</span> Elegí un módulo abajo</span>
-                  <ChevronRight size={14} className="wb-chevron" />
-                  <span className="wb-step"><span className="wb-step-num">2</span> Configuralo en minutos</span>
-                  <ChevronRight size={14} className="wb-chevron" />
-                  <span className="wb-step"><span className="wb-step-num">3</span> Empezá a vender más</span>
-                </div>
-              </div>
+              <Rocket size={20} className="wb-icon" />
+              <span className="wb-title-compact">¿Necesitás ayuda para empezar?</span>
             </div>
-            <button className="wb-dismiss" onClick={() => { localStorage.setItem('gl_onboarding_done', '1'); window.location.reload(); }}>✕</button>
+            <button
+              className="wb-cta"
+              onClick={() => { localStorage.removeItem('gl_onboarding_done'); setShowOnboarding(true); }}
+            >
+              Ver tour rápido <ChevronRight size={14} />
+            </button>
           </div>
         )}
 
@@ -286,7 +306,7 @@ function Dashboard() {
           {mainFeatures.map((feature, index) => {
             const Icon = feature.icon;
             const isLocked = feature.blocked || !feature.available;
-            
+
             return (
               <div
                 key={index}
@@ -320,14 +340,14 @@ function Dashboard() {
                   </div>
                   <h3 className="feature-title-modern">{feature.title}</h3>
                   <p className="feature-description-modern">{feature.description}</p>
-                  
+
                   {feature.stat != null && (
                     <div className="feature-stat">
                       <span className="feature-stat-number">{feature.stat}</span>
                       <span className="feature-stat-label">{feature.statLabel}</span>
                     </div>
                   )}
-                  
+
                   <button className="btn-feature-modern">
                     {isLocked ? '🔓 Desbloquear' : `Abrir ${feature.title}`}
                   </button>
@@ -339,12 +359,20 @@ function Dashboard() {
       </main>
 
       {/* Upgrade Modal */}
-      <UpgradeModal 
+      <UpgradeModal
         isOpen={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
         currentPlan={subscription?.plan || 'free'}
         subscription={subscription}
       />
+
+      {/* Onboarding Wizard - usuario nuevo */}
+      {showOnboarding && (
+        <OnboardingWizard
+          storeId={localStorage.getItem('promonube_store_id')}
+          onClose={() => setShowOnboarding(false)}
+        />
+      )}
     </div>
   );
 }

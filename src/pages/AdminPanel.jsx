@@ -17,6 +17,7 @@ function AdminPanel() {
   const [processingStore, setProcessingStore] = useState(null);
   const [quickStoreId, setQuickStoreId] = useState('');
   const [quickDays, setQuickDays] = useState('36500');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -116,7 +117,7 @@ function AdminPanel() {
     }
   };
 
-  const filteredStores = stores.filter(store => 
+  const filteredStores = stores.filter(store =>
     store.storeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     store.storeId?.toString().includes(searchTerm)
   );
@@ -135,7 +136,7 @@ function AdminPanel() {
           <Shield size={64} className="login-icon" />
           <h1>Panel de Administración</h1>
           <p>PromoNube Control Center</p>
-          
+
           <form onSubmit={handleAuth} className="login-form">
             <input
               type="password"
@@ -253,14 +254,14 @@ function AdminPanel() {
 
       {/* Tabs */}
       <div className="admin-tabs">
-        <button 
+        <button
           className={`tab ${activeTab === 'stores' ? 'active' : ''}`}
           onClick={() => setActiveTab('stores')}
         >
           <Package size={18} />
           Tiendas ({stores.length})
         </button>
-        <button 
+        <button
           className={`tab ${activeTab === 'uninstalls' ? 'active' : ''}`}
           onClick={() => setActiveTab('uninstalls')}
         >
@@ -401,7 +402,7 @@ function AdminPanel() {
             </thead>
             <tbody>
               {uninstalls
-                .filter(u => 
+                .filter(u =>
                   u.storeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                   u.storeId?.toString().includes(searchTerm)
                 )
@@ -414,7 +415,7 @@ function AdminPanel() {
                     </td>
                     <td>{uninstall.country || '-'}</td>
                     <td>
-                      {uninstall.uninstalledAt ? 
+                      {uninstall.uninstalledAt ?
                         new Date(uninstall.uninstalledAt).toLocaleDateString('es-AR', {
                           day: '2-digit',
                           month: 'short',

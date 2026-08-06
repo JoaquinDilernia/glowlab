@@ -1,0 +1,360 @@
+/* === Local Stock Config — estilos aislados con !important para evitar bleed del tema global === */
+
+.local-stock-page,
+.local-stock-page * {
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+  box-sizing: border-box;
+}
+
+.local-stock-page {
+  padding: 28px 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+  color: #353434 !important;
+  background: #f7f7f8;
+  min-height: 100vh;
+}
+
+.ls-loading,
+.ls-restricted {
+  text-align: center;
+  padding: 60px 20px;
+  color: #6b6b6b !important;
+}
+.ls-restricted h2 {
+  margin: 16px 0 6px;
+  color: #353434 !important;
+  font-size: 20px;
+  font-weight: 600;
+}
+.ls-restricted p { color: #6b6b6b !important; margin: 0; }
+.ls-restricted button {
+  margin-top: 14px;
+  padding: 10px 20px;
+  background: #353434;
+  color: #ffffff !important;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.ls-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  background: #ffffff;
+  border: 1px solid #ececec;
+  border-radius: 14px;
+  margin-bottom: 22px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+.ls-header-icon {
+  width: 44px;
+  height: 44px;
+  background: #353434;
+  color: #ffffff !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.ls-header-icon svg { stroke: #ffffff !important; }
+.ls-header h1 {
+  margin: 0 !important;
+  font-size: 20px;
+  font-weight: 600;
+  color: #353434 !important;
+}
+.ls-header p {
+  margin: 2px 0 0 !important;
+  font-size: 13px;
+  color: #6b6b6b !important;
+  font-weight: 400;
+}
+.ls-header > div:nth-child(2) { flex: 1; }
+
+.ls-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1.5px solid;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.ls-toggle.on {
+  background: #ecfdf5 !important;
+  color: #15803d !important;
+  border-color: #86efac !important;
+}
+.ls-toggle.off {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fecaca !important;
+}
+.ls-toggle.on svg { stroke: #15803d !important; }
+.ls-toggle.off svg { stroke: #b91c1c !important; }
+.ls-toggle:disabled { opacity: 0.6; cursor: wait; }
+
+.ls-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+
+.ls-card {
+  background: #ffffff;
+  border: 1px solid #ececec;
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  color: #353434 !important;
+}
+.ls-card--wide { grid-column: 1 / -1; }
+.ls-card--info {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+.ls-card h2 {
+  margin: 0 0 6px !important;
+  font-size: 15px;
+  font-weight: 600;
+  color: #353434 !important;
+}
+.ls-help {
+  margin: 0 0 14px !important;
+  font-size: 12.5px;
+  color: #6b6b6b !important;
+  line-height: 1.5;
+  font-weight: 400;
+}
+.ls-help code {
+  background: #f3f4f6;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', Menlo, monospace;
+  font-size: 12px;
+  color: #353434 !important;
+}
+
+.ls-card label {
+  display: block;
+  margin-bottom: 12px !important;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #353434 !important;
+}
+
+/* Inputs y textareas — color y background forzados */
+.local-stock-page input[type="text"],
+.local-stock-page input[type="number"],
+.local-stock-page textarea {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 9px 12px;
+  border: 1px solid #d4d4d4 !important;
+  border-radius: 8px;
+  font-family: inherit !important;
+  font-size: 14px !important;
+  color: #353434 !important;
+  background: #ffffff !important;
+  -webkit-text-fill-color: #353434 !important;
+  box-sizing: border-box;
+  line-height: 1.4;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.local-stock-page input[type="text"]::placeholder,
+.local-stock-page input[type="number"]::placeholder,
+.local-stock-page textarea::placeholder {
+  color: #9ca3af !important;
+  -webkit-text-fill-color: #9ca3af !important;
+  opacity: 1;
+}
+.local-stock-page input:focus,
+.local-stock-page textarea:focus {
+  outline: none !important;
+  border-color: #353434 !important;
+  box-shadow: 0 0 0 3px rgba(53,52,52,0.08) !important;
+}
+.local-stock-page input:disabled,
+.local-stock-page textarea:disabled {
+  background: #f5f5f5 !important;
+  color: #6b6b6b !important;
+  -webkit-text-fill-color: #6b6b6b !important;
+}
+
+.ls-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.ls-warehouses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ls-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 14px;
+  background: #f5f5f5 !important;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #353434 !important;
+}
+.ls-chip span { color: #353434 !important; }
+.ls-chip button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #6b6b6b !important;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 50%;
+}
+.ls-chip button svg { stroke: currentColor !important; }
+.ls-chip button:hover {
+  background: #e0e0e0;
+  color: #b91c1c !important;
+}
+
+.ls-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.ls-add-row input[type="text"],
+.ls-add-row input[type="number"] {
+  flex: 1;
+  margin-top: 0 !important;
+}
+
+.ls-btn-secondary,
+.ls-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.ls-btn-secondary {
+  background: #ffffff !important;
+  border: 1px solid #d4d4d4 !important;
+  color: #353434 !important;
+}
+.ls-btn-secondary svg { stroke: #353434 !important; }
+.ls-btn-secondary:hover { background: #f5f5f5 !important; }
+.ls-btn-primary {
+  background: #353434 !important;
+  color: #ffffff !important;
+}
+.ls-btn-primary svg { stroke: #ffffff !important; }
+.ls-btn-primary:hover { background: #1f1e1e !important; }
+.ls-btn-primary:disabled,
+.ls-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ls-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+.ls-color input[type="color"] {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #d4d4d4 !important;
+  border-radius: 8px;
+  padding: 2px;
+  background: #ffffff !important;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.local-stock-page .ls-color input[type="text"] {
+  flex: 1;
+  margin-top: 0 !important;
+  font-family: 'JetBrains Mono', Menlo, monospace !important;
+  font-size: 13px !important;
+  color: #353434 !important;
+  -webkit-text-fill-color: #353434 !important;
+}
+
+.ls-test-result {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #fafafa;
+  border: 1px solid #ececec;
+  border-radius: 10px;
+  color: #353434 !important;
+}
+.ls-test-meta {
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: #6b6b6b !important;
+}
+.ls-test-meta strong { color: #353434 !important; font-weight: 600; }
+.ls-test-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: #353434 !important;
+}
+.ls-test-table th,
+.ls-test-table td {
+  padding: 8px 6px;
+  text-align: left;
+  border-bottom: 1px solid #ececec;
+  color: #353434 !important;
+}
+.ls-test-table th {
+  font-weight: 600;
+  color: #6b6b6b !important;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.ls-empty {
+  color: #6b6b6b !important;
+  font-style: italic;
+  padding: 8px 0;
+  font-size: 13px;
+}
+.ls-error { color: #b91c1c !important; font-size: 13px; }
+
+.ls-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+@media (max-width: 900px) {
+  .ls-grid { grid-template-columns: 1fr; }
+  .ls-row { grid-template-columns: 1fr; }
+  .local-stock-page { padding: 20px 16px; }
+  .ls-header { flex-wrap: wrap; }
+}
