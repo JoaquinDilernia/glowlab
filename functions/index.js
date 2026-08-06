@@ -14108,7 +14108,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       + '.pn-stl-look-inner { position: relative; width: 100%; border-radius: 16px; overflow: visible; background: #f5f5f5; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.25); }'
       + '.pn-stl-image-clip { border-radius: 16px; overflow: hidden; line-height: 0; }'
       + '.pn-stl-look + .pn-stl-look { margin-top: 24px; }'
-      + '.pn-stl-look img.pn-stl-image { display: block !important; width: 100% !important; height: auto !important; max-height: none !important; min-height: 200px; object-fit: cover; }'
+      + '.pn-stl-look img.pn-stl-image { display: block !important; width: 100% !important; height: auto !important; max-height: none !important; }'
       + '.pn-stl-dot { position: absolute; width: ' + dotWidth + '; min-width: ' + dotMinWidth + '; height: ' + hotspotSize + 'px; padding: ' + dotPadding + '; transform: translate(-50%, -50%); border-radius: ' + shapeRadius + '; background: ' + hotspotColor + '; color: ' + hotspotTextColor + '; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-weight: ' + hotspotFontWeight + '; font-size: ' + hotspotFontSize + 'px; line-height: 1; letter-spacing: 0.01em; white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,0.35), 0 0 0 3px ' + hotspotBorderColor + '; z-index: 3; border: none; transition: transform 0.2s ease, box-shadow 0.2s ease; font-family: inherit; }'
       + '.pn-stl-dot:hover { transform: translate(-50%, -50%) scale(1.12); z-index: 5; }'
       + animationCss
