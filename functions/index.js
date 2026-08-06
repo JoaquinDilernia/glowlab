@@ -4640,148 +4640,52 @@ app.post("/api/webhooks/customers/data-request", async (req, res) => {
   }
 });
 
-// POST /api/admin/activate-demo
-// Activa o EXTIENDE una tienda DEMO con plan PRO completo (sin cobro)
-app.post("/api/admin/activate-demo", async (req, res) => {
-  const { storeId, expirationDays } = req.body;
-  const adminKey = req.headers['x-admin-key'] || req.body.adminKey; // Acepta header o body
-
-  // Validar clave de admin
-  const ADMIN_KEY = process.env.ADMIN_KEY || 'demo-secret-2026';
-  
-  if (adminKey !== ADMIN_KEY) {
-    return res.status(403).json({ success: false, message: "Acceso denegado" });
-  }
-
-  if (!storeId) {
-    return res.json({ success: false, message: "storeId requerido" });
-  }
-
+// POST /api/admin/set-free-forever - Marcar/desmarcar tienda como gratis permanente
+app.post('/api/admin/set-free-forever', requireAdminKey, async (req, res) => {
   try {
-    console.log(`?? Activando/Extendiendo tienda DEMO: ${storeId}`);
-
-    // Obtener suscripci�n actual para verificar si ya existe demo
-    const currentSub = await db.collection("stores").doc(storeId).collection("subscription").doc("current").get();
-    let expirationDate;
-
-    if (expirationDays) {
-      // Modo D�AS: Calcular desde hoy O desde fecha de expiraci�n actual si est? vigente
-      const days = parseInt(expirationDays);
-      const now = new Date();
-      
-      if (currentSub.exists && currentSub.data().demoExpiresAt) {
-        const currentExpiration = new Date(currentSub.data().demoExpiresAt);
-        
-        // Si la demo actual A�N NO expir?, EXTENDER desde esa fecha
-        if (currentExpiration > now) {
-          expirationDate = new Date(currentExpiration.getTime() + days * 24 * 60 * 60 * 1000);
-          console.log(`?? Extendiendo demo vigente: ${currentExpiration.toISOString()} + ${days} d�as = ${expirationDate.toISOString()}`);
-        } else {
-          // Si ya expir?, calcular desde HOY
-          expirationDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-          console.log(`?? Demo expirada. Nueva desde HOY + ${days} d�as = ${expirationDate.toISOString()}`);
-        }
-      } else {
-        // No hay demo previa, calcular desde HOY
-        expirationDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-        console.log(`?? Nueva demo desde HOY + ${days} d�as = ${expirationDate.toISOString()}`);
-      }
-    } else {
-      // Default: 30 d�as desde hoy
-      expirationDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const { storeId, freeForever } = req.body;
+    if (!storeId || typeof freeForever !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'storeId y freeForever (boolean) son requeridos' });
     }
 
-    // Activar TODOS los m�dulos
-    const modules = {};
-    ALL_MODULES.forEach(moduleName => {
-      modules[moduleName] = true;
-    });
-
-    // Activar plan PRO DEMO
-    await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
-      plan: 'pro',
-      status: "demo",
-      modules: modules,
-      isDemoAccount: true,
-      demoExpiresAt: expirationDate.toISOString(),
-      activatedBy: "admin",
-      activatedAt: currentSub.exists && currentSub.data().activatedAt ? currentSub.data().activatedAt : new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+    const subscriptionRef = db.collection('stores').doc(storeId.toString()).collection('subscription').doc('current');
+    await subscriptionRef.set({
+      freeForever,
+      updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
 
-    // Marcar tienda como demo
-    await db.collection("promonube_stores").doc(storeId).update({
-      isDemoAccount: true,
-      demoExpiresAt: expirationDate.toISOString(),
-      updatedAt: new Date().toISOString()
-    });
+    invalidateConfigCache(storeId.toString());
 
-    console.log(`? Tienda DEMO actualizada: ${storeId} hasta ${expirationDate.toISOString()}`);
-
-    invalidateConfigCache(storeId);
-
-    res.json({ 
-      success: true, 
-      message: "Tienda DEMO activada/extendida",
-      storeId,
-      expiresAt: expirationDate.toISOString(),
-      modules
-    });
-
+    res.json({ success: true, message: freeForever ? 'Tienda marcada como gratis permanente' : 'Tienda ya no es gratis permanente' });
   } catch (error) {
-    console.error("? Error activando demo:", error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error en set-free-forever:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/admin/deactivate-demo
-// Desactiva una tienda DEMO y vuelve a FREE
-app.post("/api/admin/deactivate-demo", async (req, res) => {
-  const { storeId } = req.body;
-  const adminKey = req.headers['x-admin-key'] || req.body.adminKey; // Acepta header o body
-
-  const ADMIN_KEY = process.env.ADMIN_KEY || 'demo-secret-2026';
-  
-  if (adminKey !== ADMIN_KEY) {
-    return res.status(403).json({ success: false, message: "Acceso denegado" });
-  }
-
-  if (!storeId) {
-    return res.json({ success: false, message: "storeId requerido" });
-  }
-
+// POST /api/admin/grant-courtesy-month - Otorgar 30 dias de cortesia
+app.post('/api/admin/grant-courtesy-month', requireAdminKey, async (req, res) => {
   try {
-    console.log(`?? Desactivando tienda DEMO: ${storeId}`);
+    const { storeId } = req.body;
+    if (!storeId) {
+      return res.status(400).json({ success: false, error: 'storeId es requerido' });
+    }
 
-    // Volver a plan FREE
-    await db.collection("stores").doc(storeId).collection("subscription").doc("current").set({
-      plan: 'free',
-      status: "inactive",
-      modules: { coupons: true },
-      isDemoAccount: false,
-      demoExpiresAt: null,
-      deactivatedBy: "admin",
-      deactivatedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+    const courtesyUntil = new Date();
+    courtesyUntil.setDate(courtesyUntil.getDate() + 30);
+
+    const subscriptionRef = db.collection('stores').doc(storeId.toString()).collection('subscription').doc('current');
+    await subscriptionRef.set({
+      courtesyUntil: courtesyUntil.toISOString(),
+      updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
 
-    // Desmarcar como demo
-    await db.collection("promonube_stores").doc(storeId).update({
-      isDemoAccount: false,
-      demoExpiresAt: null,
-      updatedAt: new Date().toISOString()
-    });
+    invalidateConfigCache(storeId.toString());
 
-    console.log(`? Tienda DEMO desactivada: ${storeId}`);
-
-    res.json({ 
-      success: true, 
-      message: "Tienda DEMO desactivada, vuelto a plan FREE"
-    });
-
+    res.json({ success: true, message: 'Mes de cortesia otorgado', courtesyUntil: courtesyUntil.toISOString() });
   } catch (error) {
-    console.error("? Error desactivando demo:", error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error en grant-courtesy-month:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -15575,72 +15479,52 @@ app.get('/api/admin/stores', requireAdminKey, async (req, res) => {
       const storeId = storeDoc.id;
       const storeData = storeDoc.data();
       
-      // Obtener suscripci�n actual desde stores/{storeId}/subscription/current
+      // Obtener suscripcion actual desde stores/{storeId}/subscription/current
+      const toIso = (value) => {
+        if (!value) return null;
+        if (typeof value === 'string') return value;
+        return value.toDate ? value.toDate().toISOString() : null;
+      };
+
       let subscription = null;
       try {
         const subDoc = await db.collection('stores').doc(storeId).collection('subscription').doc('current').get();
         if (subDoc.exists) {
           const subData = subDoc.data();
-          
-          // Formatear fechas correctamente
-          let activatedAt = null;
-          if (subData.activatedAt) {
-            activatedAt = typeof subData.activatedAt === 'string' ? subData.activatedAt : subData.activatedAt.toDate?.().toISOString();
-          }
-          
-          let expiresAt = null;
-          if (subData.demoExpiresAt) {
-            expiresAt = typeof subData.demoExpiresAt === 'string' ? subData.demoExpiresAt : subData.demoExpiresAt.toDate?.().toISOString();
-          } else if (subData.expiresAt) {
-            expiresAt = typeof subData.expiresAt === 'string' ? subData.expiresAt : subData.expiresAt.toDate?.().toISOString();
-          }
-          
-          // Formatear createdAt/installedAt
-          let createdAt = null;
-          if (subData.createdAt) {
-            createdAt = typeof subData.createdAt === 'string' ? subData.createdAt : subData.createdAt.toDate?.().toISOString();
-          } else if (subData.installedAt) {
-            createdAt = typeof subData.installedAt === 'string' ? subData.installedAt : subData.installedAt.toDate?.().toISOString();
-          } else if (storeData.installedAt) {
-            createdAt = typeof storeData.installedAt === 'string' ? storeData.installedAt : storeData.installedAt.toDate?.().toISOString();
-          }
-
           subscription = {
-            plan: subData.plan || 'free',
-            status: subData.status || 'inactive',
-            modules: subData.modules || { coupons: true },
-            isDemoAccount: subData.isDemoAccount || false,
-            activatedAt: activatedAt,
-            createdAt: createdAt,
-            expiresAt: expiresAt,
-            updatedAt: subData.updatedAt
+            status: subData.status || 'trialing',
+            trialEndsAt: toIso(subData.trialEndsAt),
+            mpPreapprovalId: subData.mpPreapprovalId || null,
+            mpStatus: subData.mpStatus || null,
+            currentPeriodEnd: toIso(subData.currentPeriodEnd),
+            freeForever: subData.freeForever || false,
+            courtesyUntil: toIso(subData.courtesyUntil),
+            modules: subData.modules || {},
+            createdAt: toIso(subData.createdAt) || toIso(storeData.installedAt)
           };
         }
       } catch (err) {
-        console.log(`No se pudo obtener suscripci�n para store ${storeId}:`, err.message);
+        console.log(`No se pudo obtener suscripcion para store ${storeId}:`, err.message);
       }
-      
-      // Si no hay suscripci�n, usar datos de instalaci�n de promonube_stores
-      if (!subscription && storeData.installedAt) {
-        const installedDate = typeof storeData.installedAt === 'string' ? storeData.installedAt : storeData.installedAt.toDate?.().toISOString();
+
+      if (!subscription) {
         subscription = {
-          plan: 'free',
-          status: 'inactive',
-          modules: { coupons: true },
-          isDemoAccount: false,
-          createdAt: installedDate
+          status: 'trialing',
+          trialEndsAt: null,
+          mpPreapprovalId: null,
+          mpStatus: null,
+          currentPeriodEnd: null,
+          freeForever: false,
+          courtesyUntil: null,
+          modules: {},
+          createdAt: toIso(storeData.installedAt)
         };
       }
 
       stores.push({
         storeId: storeId,
         storeName: storeData.name || storeData.storeName || 'Sin nombre',
-        subscription: subscription || {
-          plan: 'free',
-          status: 'inactive',
-          modules: { coupons: true },
-          isDemoAccount: false
-        }
+        subscription
       });
     }
 
@@ -15713,76 +15597,52 @@ app.get('/api/admin/uninstalls', requireAdminKey, async (req, res) => {
   }
 });
 
-// POST /api/admin/activate-plan - Activar plan manualmente
-app.post('/api/admin/activate-plan', requireAdminKey, async (req, res) => {
+// POST /api/admin/reset-all-trials - Uso unico al desplegar el nuevo sistema de
+// suscripciones: reinicia todas las tiendas a un trial de 7 dias limpio.
+app.post('/api/admin/reset-all-trials', requireAdminKey, async (req, res) => {
   try {
-    const { storeId, planId } = req.body;
+    const storesSnapshot = await db.collection('promonube_stores').get();
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 7);
 
-    if (!storeId || !planId) {
-      return res.status(400).json({ success: false, error: 'Faltan par�metros' });
+    const storeIds = [];
+    const batchSize = 400;
+    let batch = db.batch();
+    let opsInBatch = 0;
+
+    for (const storeDoc of storesSnapshot.docs) {
+      const storeId = storeDoc.id;
+      const subscriptionRef = db.collection('stores').doc(storeId).collection('subscription').doc('current');
+      batch.set(subscriptionRef, {
+        status: 'trialing',
+        trialEndsAt: trialEndsAt.toISOString(),
+        mpPreapprovalId: null,
+        mpStatus: null,
+        currentPeriodEnd: null,
+        freeForever: false,
+        courtesyUntil: null,
+        modules: buildFullModulesObject(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      storeIds.push(storeId);
+      opsInBatch++;
+
+      if (opsInBatch >= batchSize) {
+        await batch.commit();
+        batch = db.batch();
+        opsInBatch = 0;
+      }
     }
 
-    const plan = PLANS[planId];
-    if (!plan) {
-      return res.status(400).json({ success: false, error: 'Plan inv�lido' });
+    if (opsInBatch > 0) {
+      await batch.commit();
     }
 
-    // Calcular fecha de expiraci�n (30 d�as)
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
+    storeIds.forEach(id => invalidateConfigCache(id));
 
-    const subscriptionRef = db.collection('promonube_subscription').doc(storeId);
-    await subscriptionRef.set({
-      storeId: storeId,
-      plan: planId,
-      modules: modulesArrayToObject(plan.modules),
-      status: 'active',
-      activatedAt: FieldValue.serverTimestamp(),
-      expiresAt: expiresAt,
-      manuallyActivated: true,
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    console.log(`????? Plan ${planId} activado manualmente para store ${storeId}`);
-
-    res.json({
-      success: true,
-      message: `Plan ${plan.name} activado hasta ${expiresAt.toLocaleDateString()}`
-    });
+    res.json({ success: true, processed: storeIds.length, storeIds });
   } catch (error) {
-    console.error('Error activando plan:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// POST /api/admin/deactivate-plan - Desactivar plan
-app.post('/api/admin/deactivate-plan', requireAdminKey, async (req, res) => {
-  try {
-    const { storeId } = req.body;
-
-    if (!storeId) {
-      return res.status(400).json({ success: false, error: 'Falta storeId' });
-    }
-
-    const subscriptionRef = db.collection('stores').doc(storeId).collection('subscription').doc('current');
-    const subDoc = await subscriptionRef.get();
-    if (!subDoc.exists) {
-      return res.status(404).json({ success: false, error: 'No se encontro suscripcion' });
-    }
-    await subscriptionRef.update({
-      status: 'inactive',
-      deactivatedAt: FieldValue.serverTimestamp()
-    });
-
-    invalidateConfigCache(storeId);
-
-    // Eliminar todos los scripts de PromoNube de la tienda
-    const removeResult = await removeAllStoreScripts(storeId);
-
-
-    res.json({ success: true, message: 'Plan desactivado exitosamente', scriptsRemoved: removeResult.removed || 0 });
-  } catch (error) {
-    console.error('Error desactivando plan:', error);
+    console.error('Error en reset-all-trials:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
