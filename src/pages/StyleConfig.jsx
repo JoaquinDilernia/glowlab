@@ -6,6 +6,25 @@ import './StyleConfig.css';
 import EmojiPicker from '../components/EmojiPicker';
 import { useToast } from '../context/ToastContext';
 
+const MENU_IMG_TARGET_WIDTH = 1080;
+const MENU_IMG_TARGET_HEIGHT = 1350;
+
+function getMenuImageDimensions(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new window.Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No se pudo leer la imagen'));
+    };
+    img.src = url;
+  });
+}
+
 function StyleConfig() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -16,7 +35,7 @@ function StyleConfig() {
   const [tabSearch, setTabSearch] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
   const [loadingMenus, setLoadingMenus] = useState(false);
-  const [uploadingIndex, setUploadingIndex] = useState(null);
+  const [uploadingKey, setUploadingKey] = useState(null);
   const [uploadMessages, setUploadMessages] = useState({});
   const fileInputRefs = useRef({});
   const [tiendanubeMenus, setTiendanubeMenus] = useState([]);
@@ -418,22 +437,32 @@ function StyleConfig() {
     }));
   };
 
-  const uploadMenuImage = async (index, file) => {
+  const uploadMenuImage = async (index, file, field) => {
     if (!file) return;
+    const key = `${index}-${field}`;
 
     if (!file.type.startsWith('image/')) {
-      setUploadMessages(prev => ({ ...prev, [index]: { type: 'error', text: 'Seleccioná una imagen válida (JPG, PNG, WebP)' } }));
+      setUploadMessages(prev => ({ ...prev, [key]: { type: 'error', text: 'Seleccioná una imagen válida (JPG, PNG, WebP)' } }));
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setUploadMessages(prev => ({ ...prev, [index]: { type: 'error', text: 'La imagen supera 5MB. Usá una más liviana.' } }));
+      setUploadMessages(prev => ({ ...prev, [key]: { type: 'error', text: 'La imagen supera 5MB. Usá una más liviana.' } }));
       return;
     }
 
     try {
-      setUploadingIndex(index);
-      setUploadMessages(prev => ({ ...prev, [index]: null }));
+      const { width, height } = await getMenuImageDimensions(file);
+      if (width !== MENU_IMG_TARGET_WIDTH || height !== MENU_IMG_TARGET_HEIGHT) {
+        toast.info(`Esta imagen mide ${width}×${height}px. Se recomienda ${MENU_IMG_TARGET_WIDTH}×${MENU_IMG_TARGET_HEIGHT}px.`);
+      }
+    } catch (e) {
+      // No se pudo leer la medida — no bloquea la subida.
+    }
+
+    try {
+      setUploadingKey(key);
+      setUploadMessages(prev => ({ ...prev, [key]: null }));
 
       const reader = new FileReader();
       const base64Data = await new Promise((resolve, reject) => {
@@ -457,19 +486,167 @@ function StyleConfig() {
         throw new Error(response.message || 'Error al subir imagen');
       }
 
-      updateMenuItem(index, 'imageUrl', response.url);
-      setUploadMessages(prev => ({ ...prev, [index]: { type: 'success', text: 'Imagen subida correctamente' } }));
+      updateMenuItem(index, field, response.url);
+      setUploadMessages(prev => ({ ...prev, [key]: { type: 'success', text: 'Imagen subida correctamente' } }));
       setTimeout(() => {
-        setUploadMessages(prev => ({ ...prev, [index]: null }));
+        setUploadMessages(prev => ({ ...prev, [key]: null }));
       }, 3000);
     } catch (error) {
       console.error('Error:', error);
-      setUploadMessages(prev => ({ ...prev, [index]: { type: 'error', text: 'Error al subir la imagen. Intentá de nuevo.' } }));
+      setUploadMessages(prev => ({ ...prev, [key]: { type: 'error', text: 'Error al subir la imagen. Intentá de nuevo.' } }));
     } finally {
-      setUploadingIndex(null);
+      setUploadingKey(null);
     }
   };
 
+  const renderMenuImageUpload = (index, item, field, label, deviceHint) => {
+    const value = item[field] || '';
+    const key = `${index}-${field}`;
+    return (
+      <div style={{ marginBottom: '14px' }}>
+        <div style={{ fontSize: '12px', fontWeight: '600', color: 'rgba(255,255,255,0.75)', marginBottom: deviceHint ? '2px' : '6px' }}>
+          {label}
+        </div>
+        {deviceHint && (
+          <p style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.45)', marginTop: 0, marginBottom: '8px' }}>
+            {deviceHint}
+          </p>
+        )}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => updateMenuItem(index, field, e.target.value)}
+            placeholder="https://mitienda.com/imagen.jpg"
+            style={{ flex: 1 }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRefs.current[key]?.click()}
+            disabled={uploadingKey === key}
+            style={{
+              cursor: uploadingKey === key ? 'not-allowed' : 'pointer',
+              padding: '10px 14px',
+              background: uploadingKey === key
+                ? 'rgba(102, 126, 234, 0.25)'
+                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: '#ffffff',
+              borderRadius: '8px',
+              border: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+              fontWeight: '600',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.2s ease',
+              minWidth: '88px',
+              justifyContent: 'center'
+            }}
+          >
+            {uploadingKey === key ? (
+              <>
+                <span style={{
+                  display: 'inline-block',
+                  width: '12px',
+                  height: '12px',
+                  border: '2px solid rgba(255,255,255,0.3)',
+                  borderTopColor: '#fff',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                  flexShrink: 0
+                }} />
+                Subiendo
+              </>
+            ) : (
+              <>
+                <Upload size={14} />
+                Subir
+              </>
+            )}
+          </button>
+          <input
+            ref={el => { fileInputRefs.current[key] = el; }}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files[0];
+              if (file) uploadMenuImage(index, file, field);
+              e.target.value = '';
+            }}
+          />
+        </div>
+
+        {uploadMessages[key] && (
+          <div style={{
+            marginTop: '10px',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: uploadMessages[key].type === 'success'
+              ? 'rgba(34, 197, 94, 0.12)'
+              : 'rgba(239, 68, 68, 0.12)',
+            color: uploadMessages[key].type === 'success' ? '#4ade80' : '#f87171',
+            border: `1px solid ${uploadMessages[key].type === 'success' ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`
+          }}>
+            <span style={{ fontWeight: '700' }}>
+              {uploadMessages[key].type === 'success' ? '✓' : '✕'}
+            </span>
+            {uploadMessages[key].text}
+          </div>
+        )}
+
+        {value && (
+          <div style={{ marginTop: '14px', position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+            <img
+              src={value}
+              alt="Preview"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '160px',
+                borderRadius: '8px',
+                border: '1px solid rgba(102, 126, 234, 0.25)',
+                display: 'block',
+                objectFit: 'cover'
+              }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => updateMenuItem(index, field, '')}
+              title="Eliminar imagen"
+              style={{
+                position: 'absolute',
+                top: '6px',
+                right: '6px',
+                background: 'rgba(0,0,0,0.65)',
+                border: 'none',
+                borderRadius: '50%',
+                width: '22px',
+                height: '22px',
+                cursor: 'pointer',
+                color: '#fff',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 1,
+                padding: 0
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const updateBanners = (field, value) => {
     setConfig(prev => ({
@@ -1213,144 +1390,15 @@ function StyleConfig() {
                               Imagen del Dropdown
                             </h4>
                           </div>
-                          <p style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.45)', marginBottom: '14px', marginTop: '4px', lineHeight: 1.4 }}>
+                          <p style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.45)', marginBottom: '4px', marginTop: '4px', lineHeight: 1.4 }}>
                             Desktop: aparece dentro del dropdown · Mobile: debajo de las subcategorías
                           </p>
+                          <p style={{ fontSize: '11px', color: '#667eea', marginTop: 0, marginBottom: '14px' }}>
+                            📐 Medida recomendada: 1080 × 1350 px
+                          </p>
 
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <input
-                              type="text"
-                              value={item.imageUrl || ''}
-                              onChange={(e) => updateMenuItem(index, 'imageUrl', e.target.value)}
-                              placeholder="https://mitienda.com/imagen.jpg"
-                              style={{ flex: 1 }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => fileInputRefs.current[index]?.click()}
-                              disabled={uploadingIndex === index}
-                              style={{
-                                cursor: uploadingIndex === index ? 'not-allowed' : 'pointer',
-                                padding: '10px 14px',
-                                background: uploadingIndex === index
-                                  ? 'rgba(102, 126, 234, 0.25)'
-                                  : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                color: '#ffffff',
-                                borderRadius: '8px',
-                                border: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                fontSize: '13px',
-                                fontWeight: '600',
-                                whiteSpace: 'nowrap',
-                                transition: 'all 0.2s ease',
-                                minWidth: '88px',
-                                justifyContent: 'center'
-                              }}
-                            >
-                              {uploadingIndex === index ? (
-                                <>
-                                  <span style={{
-                                    display: 'inline-block',
-                                    width: '12px',
-                                    height: '12px',
-                                    border: '2px solid rgba(255,255,255,0.3)',
-                                    borderTopColor: '#fff',
-                                    borderRadius: '50%',
-                                    animation: 'spin 0.8s linear infinite',
-                                    flexShrink: 0
-                                  }} />
-                                  Subiendo
-                                </>
-                              ) : (
-                                <>
-                                  <Upload size={14} />
-                                  Subir
-                                </>
-                              )}
-                            </button>
-                            <input
-                              ref={el => { fileInputRefs.current[index] = el; }}
-                              type="file"
-                              accept="image/*"
-                              style={{ display: 'none' }}
-                              onChange={(e) => {
-                                const file = e.target.files[0];
-                                if (file) uploadMenuImage(index, file);
-                                e.target.value = '';
-                              }}
-                            />
-                          </div>
-
-                          {/* Mensaje de estado inline */}
-                          {uploadMessages[index] && (
-                            <div style={{
-                              marginTop: '10px',
-                              padding: '8px 12px',
-                              borderRadius: '8px',
-                              fontSize: '12px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              background: uploadMessages[index].type === 'success'
-                                ? 'rgba(34, 197, 94, 0.12)'
-                                : 'rgba(239, 68, 68, 0.12)',
-                              color: uploadMessages[index].type === 'success' ? '#4ade80' : '#f87171',
-                              border: `1px solid ${uploadMessages[index].type === 'success' ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`
-                            }}>
-                              <span style={{ fontWeight: '700' }}>
-                                {uploadMessages[index].type === 'success' ? '✓' : '✕'}
-                              </span>
-                              {uploadMessages[index].text}
-                            </div>
-                          )}
-
-                          {/* Preview de la imagen */}
-                          {item.imageUrl && (
-                            <div style={{ marginTop: '14px', position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
-                              <img
-                                src={item.imageUrl}
-                                alt="Preview"
-                                style={{
-                                  maxWidth: '100%',
-                                  maxHeight: '160px',
-                                  borderRadius: '8px',
-                                  border: '1px solid rgba(102, 126, 234, 0.25)',
-                                  display: 'block',
-                                  objectFit: 'cover'
-                                }}
-                                onError={(e) => {
-                                  e.target.style.display = 'none';
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => updateMenuItem(index, 'imageUrl', '')}
-                                title="Eliminar imagen"
-                                style={{
-                                  position: 'absolute',
-                                  top: '6px',
-                                  right: '6px',
-                                  background: 'rgba(0,0,0,0.65)',
-                                  border: 'none',
-                                  borderRadius: '50%',
-                                  width: '22px',
-                                  height: '22px',
-                                  cursor: 'pointer',
-                                  color: '#fff',
-                                  fontSize: '13px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  lineHeight: 1,
-                                  padding: 0
-                                }}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          )}
+                          {renderMenuImageUpload(index, item, 'imageUrl', 'Imagen desktop', null)}
+                          {renderMenuImageUpload(index, item, 'imageMobileUrl', 'Imagen mobile (opcional)', 'Si no la subís, no se muestra en mobile.')}
 
                           {/* Campos extra para personalizar la imagen */}
                           {item.imageUrl && (
