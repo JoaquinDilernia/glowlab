@@ -11112,7 +11112,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         imgD.src = desktopUrl;
         imgD.alt = 'Menu Image';
         imgD.className = 'pn-menu-dropdown-img pn-menu-dropdown-img-desktop';
-        imgD.style.cssText = 'width: 100%; max-width: 400px; height: auto; border-radius: 8px; display: block; margin: 0 auto; object-fit: cover;';
+        imgD.style.cssText = 'width: 100%; max-width: 400px; height: auto; border-radius: 8px; display: block; margin: 0 auto;';
         container.appendChild(imgD);
       }
       if (mobileUrl) {
@@ -11120,7 +11120,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         imgM.src = mobileUrl;
         imgM.alt = 'Menu Image';
         imgM.className = 'pn-menu-dropdown-img pn-menu-dropdown-img-mobile';
-        imgM.style.cssText = 'width: 100%; max-width: 400px; height: auto; border-radius: 8px; display: block; margin: 0 auto; object-fit: cover;';
+        imgM.style.cssText = 'width: 100%; max-width: 400px; height: auto; border-radius: 8px; display: block; margin: 0 auto;';
         container.appendChild(imgM);
       }
       return container;
@@ -11643,20 +11643,14 @@ app.get("/api/style-widget.js", async (req, res) => {
       .pn-menu-dropdown-img {
         width: 100% !important;
         height: auto !important;
-        max-height: 220px !important;
         border-radius: 6px !important;
         display: block !important;
-        object-fit: cover !important;
       }
-      
+
       /* Mobile */
       @media (max-width: 768px) {
         .pn-menu-dropdown-has-image .pn-menu-dropdown-image {
           padding: 8px !important;
-        }
-
-        .pn-menu-dropdown-img {
-          max-height: 160px !important;
         }
       }
 
