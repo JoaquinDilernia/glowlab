@@ -18263,7 +18263,7 @@ app.get("/api/banner-widget.js", async (req, res) => {
 
     const b = doc.data();
 
-    const bannerEnabled = b.enabled && b.imageUrl;
+    const bannerEnabled = b.enabled && (b.imageUrl || b.imageMobileUrl);
     const barCfg = b.announcementBar || {};
     const barEnabled = !!barCfg.enabled && !!(barCfg.text || "").trim();
 
@@ -18319,16 +18319,21 @@ app.get("/api/banner-widget.js", async (req, res) => {
         ? `<div style="position:absolute;inset:0;background:${overlayColor};opacity:${overlayOpacity};pointer-events:none;"></div>`
         : "";
 
-      const imgInner = b.imageMobileUrl
-        ? `<picture><source media="(max-width:767px)" srcset="${b.imageMobileUrl.replace(/"/g, "&quot;")}"><img src="${b.imageUrl.replace(/"/g, "&quot;")}" alt="${(b.imageAlt || "").replace(/"/g, "&quot;")}" style="display:block;width:100%;height:auto;" loading="lazy"></picture>`
-        : `<img src="${b.imageUrl.replace(/"/g, "&quot;")}" alt="${(b.imageAlt || "").replace(/"/g, "&quot;")}" style="display:block;width:100%;height:auto;" loading="lazy">`;
+      const imageAltEsc = (b.imageAlt || "").replace(/"/g, "&quot;");
+      let imagesHtml = "";
+      if (b.imageUrl) {
+        imagesHtml += `<img class="pn-banner-desktop-img" src="${b.imageUrl.replace(/"/g, "&quot;")}" alt="${imageAltEsc}" style="display:block;width:100%;height:auto;" loading="lazy">`;
+      }
+      if (b.imageMobileUrl) {
+        imagesHtml += `<img class="pn-banner-mobile-img" src="${b.imageMobileUrl.replace(/"/g, "&quot;")}" alt="${imageAltEsc}" style="display:block;width:100%;height:auto;" loading="lazy">`;
+      }
 
       const linkUrl = (b.linkUrl || "").trim();
       const pictureHtml = linkUrl
-        ? `<a href="${linkUrl.replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer" style="display:block;line-height:0;">${imgInner}</a>`
-        : imgInner;
+        ? `<a href="${linkUrl.replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer" style="display:block;line-height:0;">${imagesHtml}</a>`
+        : imagesHtml;
 
-      const bannerHtml = `<div class="pn-banner-home" style="position:relative;width:${maxWidth};margin:0 auto;overflow:hidden;">${pictureHtml}${overlayHtml}<div class="pn-banner-content" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};padding:${padding}px;">${elementsHtml}</div></div>`;
+      const bannerHtml = `<style>@media (max-width:767px){#pn-banner-home .pn-banner-desktop-img{display:none!important}}@media (min-width:768px){#pn-banner-home .pn-banner-mobile-img{display:none!important}}</style><div class="pn-banner-home" style="position:relative;width:${maxWidth};margin:0 auto;overflow:hidden;">${pictureHtml}${overlayHtml}<div class="pn-banner-content" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};padding:${padding}px;">${elementsHtml}</div></div>`;
 
       const sel = (b.injectSelector || "").trim();
       const pos = b.injectPosition || "after";
