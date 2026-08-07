@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Palette, Clock, BadgeCheck, Tag,
-  Sparkles, Gift, Bell, Settings, LogOut, X, MapPin, MessageCircle,
+  LayoutDashboard, Palette, Clock, BadgeCheck,
+  Sparkles, Bell, Settings, LogOut, X, MapPin, MessageCircle,
   ShoppingBag, Image, Megaphone, Zap
 } from 'lucide-react';
 import { useSubscription } from '../hooks/useSubscription';
@@ -17,9 +17,7 @@ const BASE_NAV_ITEMS = [
   { path: '/ml-bar',         icon: Megaphone,     label: 'Barra Mercado Libre' },
   { path: '/countdown',      icon: Clock,         label: 'Countdowns' },
   { path: '/badges',     icon: BadgeCheck,      label: 'Badges' },
-  { path: '/coupons',    icon: Tag,             label: 'Cupones' },
   { path: '/spin-wheel', icon: Sparkles,        label: 'Ruleta' },
-  { path: '/gift-cards', icon: Gift,            label: 'Gift Cards' },
   { path: '/popups',     icon: Bell,            label: 'Popups' },
   { divider: true },
   { path: '/integrations', icon: Settings,      label: 'Integraciones' },

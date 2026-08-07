@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Tag, CreditCard, Sparkles, Clock, Palette, Shield, BadgeCheck, Bell, Rocket, ChevronRight, ShoppingBag, Image } from 'lucide-react';
+import { Sparkles, Clock, Palette, Shield, BadgeCheck, Bell, Rocket, ChevronRight, ShoppingBag, Image } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionBanner from '../components/SubscriptionBanner';
@@ -102,22 +102,10 @@ function Dashboard() {
       badge: '✨ Nuevo'
     },
     {
-      icon: Tag,
-      title: 'Cupones',
-      description: 'Creá cupones de descuento masivos en segundos. Generá múltiples cupones con distintas reglas (prefijos, descuentos, usos) sin hacerlo manualmente, ideal para juegos, campañas o influencers.',
-      path: '/coupons'
-    },
-    {
       icon: Sparkles,
       title: 'Ruleta de Descuentos',
       description: 'Sumá una ruleta personalizada para aumentar la tasa de conversión. El diferencial: cada cupón es único por usuario y se desactiva automáticamente si no se usa, brindando más seguridad al dueño de la tienda.',
       path: '/spin-wheel'
-    },
-    {
-      icon: CreditCard,
-      title: 'Gift Cards',
-      description: 'Creá gift cards con diseño personalizado e identidad propia. Diferencialas por evento, fecha o campaña. Simples, visuales y listas para vender.',
-      path: '/gift-cards'
     },
     {
       icon: ShoppingBag,
