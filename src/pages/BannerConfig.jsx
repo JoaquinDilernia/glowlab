@@ -53,6 +53,25 @@ const TABS = [
   { id: 'posicion', label: 'Posición' },
 ];
 
+const TARGET_WIDTH = 1080;
+const TARGET_HEIGHT = 1350;
+
+function getImageDimensions(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No se pudo leer la imagen'));
+    };
+    img.src = url;
+  });
+}
+
 function BannerConfig() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -112,6 +131,14 @@ function BannerConfig() {
   const uploadImage = async (file, field, setUpl) => {
     if (!file || !file.type.startsWith('image/')) return;
     if (file.size > 8 * 1024 * 1024) { toast.error('La imagen supera 8MB'); return; }
+    try {
+      const { width, height } = await getImageDimensions(file);
+      if (width !== TARGET_WIDTH || height !== TARGET_HEIGHT) {
+        toast.info(`Esta imagen mide ${width}×${height}px. Se recomienda ${TARGET_WIDTH}×${TARGET_HEIGHT}px.`);
+      }
+    } catch (e) {
+      // No se pudo leer la medida — no bloquea la subida.
+    }
     setUpl(true);
     try {
       const reader = new FileReader();
@@ -224,7 +251,7 @@ function BannerConfig() {
               <div className="config-fields">
                 <div className="info-box" style={{ background: '#f0fdf4', borderColor: '#86efac', marginBottom: 20 }}>
                   <p style={{ margin: 0, fontSize: 13, color: '#166534' }}>
-                    <strong>📐 Medidas recomendadas:</strong> 1920 × 600 px mínimo para desktop · 768 × 500 px para mobile.
+                    <strong>📐 Medida recomendada:</strong> 1080 × 1350 px, tanto para desktop como para mobile.
                     Formato JPG o WebP para mejor rendimiento.
                   </p>
                 </div>
@@ -260,7 +287,7 @@ function BannerConfig() {
                 {/* Mobile image */}
                 <div className="form-group">
                   <label>Imagen mobile (opcional)</label>
-                  <small className="field-hint">Si no la subís, se usa la imagen principal en todos los dispositivos.</small>
+                  <small className="field-hint">Si no la subís, el banner no se muestra en mobile.</small>
                   {config.imageMobileUrl ? (
                     <div className="banner-img-preview" style={{ marginTop: 8 }}>
                       <img src={config.imageMobileUrl} alt="Mobile preview" />
