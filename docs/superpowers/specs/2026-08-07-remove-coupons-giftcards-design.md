@@ -1,6 +1,14 @@
 # Sacar Cupones (manual) y Gift Cards — Spec de diseño
 **Fecha:** 2026-08-07
-**Estado:** Aprobado para implementación
+**Estado:** Superado — ver nota de pivot abajo
+
+---
+
+## Nota de pivot (2026-08-07)
+
+Después de escrito este spec (y un plan de implementación completo, con la investigación de código ya hecha y verificada — helpers exclusivos, bloques quirúrgicos dentro del webhook compartido y los webhooks de GDPR, etc.), se decidió por una versión mucho más chica y de menor riesgo: **ocultar** Cupones y Gift Cards de la navegación (Sidebar, Dashboard, rutas del frontend) **sin tocar nada del backend**. El código de `functions/index.js` descrito abajo queda intacto, por las dudas.
+
+El resto de este documento describe la investigación y el alcance de un borrado completo — queda como referencia en el historial de git si en algún momento se decide ejecutar esa versión. La implementación real de esta etapa está en `docs/superpowers/plans/2026-08-07-hide-coupons-giftcards.md`.
 
 ---
 
