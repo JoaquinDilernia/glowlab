@@ -11103,6 +11103,29 @@ app.get("/api/style-widget.js", async (req, res) => {
       return;
     }
 
+    function pnBuildMenuImageContainer(desktopUrl, mobileUrl) {
+      var container = document.createElement('div');
+      container.className = 'pn-menu-dropdown-image';
+      container.style.cssText = 'padding: 15px; margin: 10px 0; text-align: center;';
+      if (desktopUrl) {
+        var imgD = document.createElement('img');
+        imgD.src = desktopUrl;
+        imgD.alt = 'Menu Image';
+        imgD.className = 'pn-menu-dropdown-img pn-menu-dropdown-img-desktop';
+        imgD.style.cssText = 'width: 100%; max-width: 400px; height: auto; border-radius: 8px; display: block; margin: 0 auto; object-fit: cover;';
+        container.appendChild(imgD);
+      }
+      if (mobileUrl) {
+        var imgM = document.createElement('img');
+        imgM.src = mobileUrl;
+        imgM.alt = 'Menu Image';
+        imgM.className = 'pn-menu-dropdown-img pn-menu-dropdown-img-mobile';
+        imgM.style.cssText = 'width: 100%; max-width: 400px; height: auto; border-radius: 8px; display: block; margin: 0 auto; object-fit: cover;';
+        container.appendChild(imgM);
+      }
+      return container;
+    }
+
     console.log('PromoNube Menu: Iniciando...', CONFIG.menu);
 
     // Selector espec�fico para MOBILE
@@ -11346,7 +11369,9 @@ app.get("/api/style-widget.js", async (req, res) => {
         }
 
         // Agregar imagen en dropdown si est? configurada
-        if (item.imageUrl && item.imageUrl.trim() !== '') {
+        var pnHasDesktopImg = item.imageUrl && item.imageUrl.trim() !== '';
+        var pnHasMobileImg = item.imageMobileUrl && item.imageMobileUrl.trim() !== '';
+        if (pnHasDesktopImg || pnHasMobileImg) {
           console.log('PromoNube: Procesando imagen para posici�n', pos);
           
           // Solo para categor�as principales (no subcategor�as)
@@ -11358,7 +11383,8 @@ app.get("/api/style-widget.js", async (req, res) => {
               
               if (mainLi) {
                 // ====== MODO MEGA-MEN� FLOTANTE (opt-in via item.megaMenu) ======
-                if (item.megaMenu === true) {
+                // Requiere imagen desktop -- el mega-menu flotante (hover) no tiene version mobile.
+                if (item.megaMenu === true && pnHasDesktopImg) {
                   (function(li, config) {
                     var panelId = 'pn-mega-menu-pos' + config.pos;
                     if (document.getElementById(panelId)) return;
@@ -11509,33 +11535,20 @@ app.get("/api/style-widget.js", async (req, res) => {
                   // Verificar si ya existe
                   var existingImage = document.getElementById(imageId);
                   if (existingImage) {
-                    // Actualizar la imagen existente
-                    var existingImgTag = existingImage.querySelector('img');
-                    if (existingImgTag) {
-                      existingImgTag.src = item.imageUrl;
-                    }
+                    // Actualizar la imagen existente (recrear el contenido con las URLs vigentes)
+                    existingImage.innerHTML = '';
+                    existingImage.appendChild(pnBuildMenuImageContainer(item.imageUrl, item.imageMobileUrl));
                   } else {
                     // Crear wrapper para mejor control
                     var imageWrapper = document.createElement('li');
                     imageWrapper.id = imageId;
                     imageWrapper.className = 'pn-menu-dropdown-image-wrapper';
                     imageWrapper.style.cssText = 'list-style: none !important; padding: 0 !important; margin: 0 !important;';
-                    
+
                     // Crear contenedor de imagen
-                    var imageContainer = document.createElement('div');
-                    imageContainer.className = 'pn-menu-dropdown-image';
-                    imageContainer.style.cssText = 'padding: 15px; margin: 10px 0; text-align: center;';
-                    
-                    // Crear imagen
-                    var img = document.createElement('img');
-                    img.src = item.imageUrl;
-                    img.alt = 'Menu Image';
-                    img.className = 'pn-menu-dropdown-img';
-                    img.style.cssText = 'width: 100%; max-width: 400px; height: auto; border-radius: 8px; display: block; margin: 0 auto; object-fit: cover;';
-                    
-                    imageContainer.appendChild(img);
+                    var imageContainer = pnBuildMenuImageContainer(item.imageUrl, item.imageMobileUrl);
                     imageWrapper.appendChild(imageContainer);
-                    
+
                     // Insertar al FINAL del dropdown
                     // Si es UL, insertar como LI
                     if (dropdown.tagName === 'UL') {
@@ -11544,7 +11557,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                       // Si es DIV u otro, insertar directamente el contenedor
                       dropdown.appendChild(imageContainer);
                     }
-                    
+
                     console.log('PromoNube: ? Imagen insertada en dropdown de posici�n', pos, '(tipo:', dropdown.tagName, ')');
                   }
                 } else {
@@ -11558,14 +11571,7 @@ app.get("/api/style-widget.js", async (req, res) => {
                   var imageId = 'pn-menu-img-' + currentMenu.name + '-pos' + pos;
                   var imageContainer = document.createElement('div');
                   imageContainer.id = imageId;
-                  imageContainer.className = 'pn-menu-dropdown-image';
-                  
-                  var img = document.createElement('img');
-                  img.src = item.imageUrl;
-                  img.alt = 'Menu Image';
-                  img.style.cssText = 'width: 100%; max-width: 300px; height: auto; border-radius: 8px; display: block; margin: 0 auto;';
-                  
-                  imageContainer.appendChild(img);
+                  imageContainer.appendChild(pnBuildMenuImageContainer(item.imageUrl, item.imageMobileUrl));
                   fallbackDropdown.appendChild(imageContainer);
                   mainLi.style.position = 'relative';
                   mainLi.appendChild(fallbackDropdown);
@@ -11653,7 +11659,15 @@ app.get("/api/style-widget.js", async (req, res) => {
           max-height: 160px !important;
         }
       }
-      
+
+      /* Imagen desktop/mobile independientes */
+      @media (max-width: 768px) {
+        .pn-menu-dropdown-img-desktop { display: none !important; }
+      }
+      @media (min-width: 769px) {
+        .pn-menu-dropdown-img-mobile { display: none !important; }
+      }
+
       /* Fallback dropdown creado por PromoNube */
       .pn-created-dropdown {
         position: absolute !important;
