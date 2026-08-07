@@ -5,13 +5,6 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Callback from './pages/Callback';
 import Dashboard from './pages/Dashboard';
-import CreateCoupon from './pages/CreateCoupon';
-import CouponsList from './pages/CouponsList';
-import GiftCardV2 from './pages/GiftCardV2';
-import CreateGiftCard from './pages/CreateGiftCard';
-import GiftCardTemplates from './pages/GiftCardTemplates';
-import GiftCardDetail from './pages/GiftCardDetail';
-import CouponAnalytics from './pages/CouponAnalytics';
 import SpinWheel from './pages/SpinWheel';
 import SpinWheelConfig from './pages/SpinWheelConfig';
 import SpinWheelAnalytics from './pages/SpinWheelAnalytics';
@@ -55,13 +48,6 @@ function App() {
         {/* Authenticated routes — wrapped with sidebar layout */}
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/create-coupon" element={<CreateCoupon />} />
-          <Route path="/coupons" element={<CouponsList />} />
-          <Route path="/coupon-analytics/:couponId" element={<CouponAnalytics />} />
-          <Route path="/gift-cards" element={<GiftCardV2 />} />
-          <Route path="/gift-card/:giftCardId" element={<GiftCardDetail />} />
-          <Route path="/create-gift-card" element={<CreateGiftCard />} />
-          <Route path="/gift-card-templates" element={<GiftCardTemplates />} />
           <Route path="/spin-wheel" element={<SpinWheel />} />
           <Route path="/spin-wheel/create" element={<SpinWheelConfig />} />
           <Route path="/spin-wheel/:wheelId/config" element={<SpinWheelConfig />} />
