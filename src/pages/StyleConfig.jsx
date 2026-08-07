@@ -665,15 +665,6 @@ function StyleConfig() {
                 ]
               },
               {
-                title: '🎬 Animaciones y efectos',
-                items: [
-                  { id: 'scrollReveal', label: 'Scroll Reveal', icon: '🪄', enabled: config.scrollReveal?.enabled, badge: 'NUEVO' },
-                  { id: 'customCursor', label: 'Cursor custom', icon: '🖱️', enabled: config.customCursor?.enabled, badge: 'NUEVO' },
-                  { id: 'tabTitle', label: 'Título de pestaña', icon: '📑', enabled: config.tabTitle?.enabled, badge: 'NUEVO' },
-                  { id: 'backToTop', label: 'Volver arriba', icon: '⬆️', enabled: config.backToTop?.enabled, badge: 'NUEVO' },
-                ]
-              },
-              {
                 title: '⚙️ Utilidades',
                 items: [
                   { id: 'lightToggle', label: 'Cambio de vista', icon: '💡', enabled: config.lightToggle?.enabled },
