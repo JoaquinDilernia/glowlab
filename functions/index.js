@@ -11605,6 +11605,10 @@ app.get("/api/style-widget.js", async (req, res) => {
         display: block !important;
         width: 100% !important;
         box-sizing: border-box !important;
+        /* Si el <ul> del tema usa flex o grid para las subcategorias (columnas),
+           forzar a este item a ocupar toda la fila en vez de quedar en una columna */
+        flex: 1 1 100% !important;
+        grid-column: 1 / -1 !important;
       }
 
       /* El dropdown simplemente permite overflow para que la imagen se vea */
