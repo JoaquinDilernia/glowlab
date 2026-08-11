@@ -558,3 +558,32 @@
     min-width: 1000px;
   }
 }
+
+/* Theme Coverage (Temas tab) */
+.theme-stats-grid {
+  margin-bottom: 24px;
+}
+
+.theme-stat-card {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.theme-stat-card.active {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.12);
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.25);
+}
+
+.theme-stat-card-undetected {
+  opacity: 0.75;
+}
+
+.theme-custom-tag {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 10px;
+}
