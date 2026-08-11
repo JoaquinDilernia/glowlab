@@ -10782,6 +10782,29 @@ app.get("/api/style-widget.js", async (req, res) => {
     return (themeCode && PN_MENU_SELECTORS[themeCode]) || PN_MENU_SELECTORS.__default__;
   }
 
+  const STORE_ID = ${JSON.stringify(store)};
+
+  function pnReportDetectedTheme(theme) {
+    try {
+      if (!theme || !theme.code) return;
+      var THROTTLE_KEY = 'pn_theme_reported_at';
+      var last = 0;
+      try { last = parseInt(localStorage.getItem(THROTTLE_KEY) || '0', 10); } catch (e) {}
+      var now = Date.now();
+      if (now - last < 24 * 60 * 60 * 1000) return; // 1 reporte por navegador por d�a
+      var url = ${JSON.stringify(_SRV_BASE)} + '/api/report-theme?store=' + encodeURIComponent(STORE_ID)
+        + '&code=' + encodeURIComponent(theme.code)
+        + '&name=' + encodeURIComponent(theme.name || '')
+        + '&custom=' + (theme.custom ? '1' : '0');
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url);
+      } else {
+        fetch(url, { keepalive: true }).catch(function() {});
+      }
+      try { localStorage.setItem(THROTTLE_KEY, String(now)); } catch (e) {}
+    } catch (e) {}
+  }
+
   function pnResolveDesktopLink(li) {
     return (
       li.querySelector(':scope > a') ||
@@ -13908,6 +13931,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
+      pnReportDetectedTheme(pnDetectTheme());
       customizeWhatsApp();
       customizeBanners();
       setTimeout(customizeMenu, 500); // Dar tiempo al men? para renderizar
@@ -13924,6 +13948,7 @@ app.get("/api/style-widget.js", async (req, res) => {
       setTimeout(injectOrderPageNotice, 500);
     });
   } else {
+    pnReportDetectedTheme(pnDetectTheme());
     customizeWhatsApp();
     customizeBanners();
     setTimeout(customizeMenu, 500); // Dar tiempo al men? para renderizar
@@ -18497,6 +18522,30 @@ app.get("/api/bar-click", async (req, res) => {
     res.json({ ok: false });
   }
 });
+
+// GET/POST /api/report-theme?store=X&code=Y&name=Z&custom=0/1
+// Trackea qu� theme de Tiendanube detect� el widget en cada tienda instalada.
+async function handleReportTheme(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  const store = req.query.store || req.body?.storeId;
+  const code = req.query.code;
+  if (!store || !code) return res.json({ ok: false });
+  try {
+    await db.collection("promonube_stores").doc(String(store)).update({
+      detectedTheme: {
+        code: String(code),
+        name: String(req.query.name || ""),
+        custom: req.query.custom === "1",
+        lastSeen: new Date().toISOString(),
+      },
+    });
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
+  }
+}
+app.get("/api/report-theme", handleReportTheme);
+app.post("/api/report-theme", handleReportTheme);
 
 // Standalone server for Railway
 if (require.main === module) {
