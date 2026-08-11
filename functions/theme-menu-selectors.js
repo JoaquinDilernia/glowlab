@@ -7,7 +7,7 @@ const THEME_MENU_SELECTORS = {
   rio: {
     mobileLinkSelector:
       "#nav-hamburger > div > div.modal-scrollable-area > div.modal-body.nav-body > div > ul > li > a",
-    desktopContainerSelector: ".js-nav-desktop-list.nav-desktop-list",
+    desktopContainerSelector: null,
   },
   new_linkedman: {
     mobileLinkSelector: "#nav-hamburger ul.list-items > li > a",

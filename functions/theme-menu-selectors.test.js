@@ -13,7 +13,7 @@ test("resolveMenuSelectors returns the verified Rio selector set", () => {
     sel.mobileLinkSelector,
     "#nav-hamburger > div > div.modal-scrollable-area > div.modal-body.nav-body > div > ul > li > a"
   );
-  assert.equal(sel.desktopContainerSelector, ".js-nav-desktop-list.nav-desktop-list");
+  assert.equal(sel.desktopContainerSelector, null);
 });
 
 test("resolveMenuSelectors returns the verified Simple (new_linkedman) selector set", () => {

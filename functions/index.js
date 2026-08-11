@@ -10779,7 +10779,10 @@ app.get("/api/style-widget.js", async (req, res) => {
   }
 
   function pnGetMenuSelectors(themeCode) {
-    return (themeCode && PN_MENU_SELECTORS[themeCode]) || PN_MENU_SELECTORS.__default__;
+    if (themeCode && Object.prototype.hasOwnProperty.call(PN_MENU_SELECTORS, themeCode)) {
+      return PN_MENU_SELECTORS[themeCode];
+    }
+    return PN_MENU_SELECTORS.__default__;
   }
 
   const STORE_ID = ${JSON.stringify(store)};
@@ -11180,6 +11183,9 @@ app.get("/api/style-widget.js", async (req, res) => {
     // Selector espec�fico para MOBILE (theme-aware, con fallback a Rio si no hay match)
     var mobileSelector = pnSel.mobileLinkSelector || '#nav-hamburger > div > div.modal-scrollable-area > div.modal-body.nav-body > div > ul > li > a';
     var mobileLinks = document.querySelectorAll(mobileSelector);
+    if (mobileLinks.length === 0 && pnSel.mobileLinkSelector) {
+      mobileLinks = document.querySelectorAll('#nav-hamburger > div > div.modal-scrollable-area > div.modal-body.nav-body > div > ul > li > a');
+    }
 
     var desktopLinks = [];
 
@@ -18527,14 +18533,16 @@ app.get("/api/bar-click", async (req, res) => {
 // Trackea qu� theme de Tiendanube detect� el widget en cada tienda instalada.
 async function handleReportTheme(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Cache-Control", "no-store");
   const store = req.query.store || req.body?.storeId;
   const code = req.query.code;
   if (!store || !code) return res.json({ ok: false });
+  if (!/^[a-z0-9_-]{1,60}$/i.test(String(code))) return res.json({ ok: false });
   try {
     await db.collection("promonube_stores").doc(String(store)).update({
       detectedTheme: {
         code: String(code),
-        name: String(req.query.name || ""),
+        name: String(req.query.name || "").slice(0, 100),
         custom: req.query.custom === "1",
         lastSeen: new Date().toISOString(),
       },
