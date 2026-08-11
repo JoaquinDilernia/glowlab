@@ -13,6 +13,12 @@ const THEME_MENU_SELECTORS = {
     mobileLinkSelector: "#nav-hamburger ul.list-items > li > a",
     desktopContainerSelector: ".js-desktop-nav-first-level",
   },
+  ipanema: {
+    // Items con submenú usan <button class="nav-list-link"> en vez de <a> en mobile,
+    // por eso el selector no restringe el tag (a diferencia de rio/new_linkedman).
+    mobileLinkSelector: "#nav-hamburger .nav-list > .nav-item > .nav-list-link",
+    desktopContainerSelector: ".js-nav-desktop-list.nav-desktop-list",
+  },
 };
 
 // null = "no tengo selector determinístico para este theme todavía":

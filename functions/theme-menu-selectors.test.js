@@ -22,6 +22,12 @@ test("resolveMenuSelectors returns the verified Simple (new_linkedman) selector 
   assert.equal(sel.desktopContainerSelector, ".js-desktop-nav-first-level");
 });
 
+test("resolveMenuSelectors returns the verified Ipanema selector set", () => {
+  const sel = resolveMenuSelectors("ipanema");
+  assert.equal(sel.mobileLinkSelector, "#nav-hamburger .nav-list > .nav-item > .nav-list-link");
+  assert.equal(sel.desktopContainerSelector, ".js-nav-desktop-list.nav-desktop-list");
+});
+
 test("resolveMenuSelectors falls back to DEFAULT for unknown or missing theme codes", () => {
   assert.deepEqual(resolveMenuSelectors("some_unmapped_theme"), DEFAULT_MENU_SELECTORS);
   assert.deepEqual(resolveMenuSelectors(undefined), DEFAULT_MENU_SELECTORS);
@@ -38,6 +44,7 @@ test("getClientSelectorMap embeds every known theme plus a __default__ fallback 
   const map = getClientSelectorMap();
   assert.ok(map.rio);
   assert.ok(map.new_linkedman);
+  assert.ok(map.ipanema);
   assert.deepEqual(map.__default__, DEFAULT_MENU_SELECTORS);
   // must be plain-JSON-serializable (no functions/undefined) since it gets embedded via JSON.stringify
   assert.equal(JSON.stringify(map).includes("function"), false);
