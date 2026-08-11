@@ -13901,51 +13901,6 @@ app.get("/api/style-widget.js", async (req, res) => {
     console.log('PromoNube Flash Sale: activo hasta', fs.endDate);
   }
 
-  // ==================== ORDER PAGE NOTICE ====================
-  function injectOrderPageNotice() {
-    // Solo en páginas de seguimiento de pedido
-    if (!/\\/(pedidos|orders|order)\\//i.test(window.location.pathname)) return;
-    if (document.getElementById('pn-order-notice')) return;
-
-    fetch(API_BASE + '/api/checkout-notice-config?storeId=' + STORE_ID)
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var cfg = (data && data.config) || {};
-        if (cfg.enabled === false) return;
-
-        var phone = (cfg.whatsappPhone || '').replace(/\D/g, '');
-        var msg = encodeURIComponent(cfg.whatsappMessage || 'Hola, necesito Factura A para mi compra.');
-        var waUrl = 'https://wa.me/' + phone + '?text=' + msg;
-        var bgColor = cfg.bgColor || '#fff7ed';
-        var borderColor = cfg.borderColor || '#fb923c';
-        var textColor = cfg.textColor || '#7c2d12';
-        var btnBg = cfg.buttonBgColor || '#25d366';
-        var btnTextColor = cfg.buttonTextColor || '#ffffff';
-        var icon = cfg.iconEmoji || '\uD83E\uDDFE';
-        var title = cfg.title || '\u00bfNecesit\u00e1s Factura A?';
-        var message = cfg.message || 'Por defecto emitimos Factura B. Si necesit\u00e1s Factura A, contact\u00e1nos.';
-        var btnLabel = cfg.buttonText || 'Solicitar Factura A por WhatsApp';
-        var radius = (cfg.borderRadius || 12) + 'px';
-
-        var el = document.createElement('div');
-        el.id = 'pn-order-notice';
-        el.style.cssText = 'margin:16px 0;padding:16px;border-radius:' + radius + ';background:' + bgColor + ';border:2px solid ' + borderColor + ';font-family:Poppins,system-ui,sans-serif;';
-        el.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
-          + '<span style="font-size:20px">' + icon + '</span>'
-          + '<strong style="color:' + textColor + ';font-size:16px">' + title + '</strong>'
-          + '</div>'
-          + '<p style="color:' + textColor + ';font-size:14px;margin:0 0 12px;line-height:1.5">' + message + '</p>'
-          + '<a href="' + waUrl + '" target="_blank" style="display:inline-block;background:' + btnBg + ';color:' + btnTextColor + ';padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">' + btnLabel + '</a>';
-
-        var target = document.querySelector('.order-status, .js-order-status, main, .content-main') || document.body;
-        if (target && target !== document.body) {
-          target.insertBefore(el, target.firstChild);
-        } else {
-          document.body.insertBefore(el, document.body.firstChild);
-        }
-      }).catch(function() {});
-  }
-
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
       pnReportDetectedTheme(pnDetectTheme());
@@ -13962,7 +13917,6 @@ app.get("/api/style-widget.js", async (req, res) => {
       setTimeout(initCustomCursor, 200);
       setTimeout(initTabTitle, 100);
       setTimeout(initBackToTop, 300);
-      setTimeout(injectOrderPageNotice, 500);
     });
   } else {
     pnReportDetectedTheme(pnDetectTheme());
@@ -13978,7 +13932,6 @@ app.get("/api/style-widget.js", async (req, res) => {
     setTimeout(initCustomCursor, 200);
     setTimeout(initTabTitle, 100);
     setTimeout(initBackToTop, 300);
-    setTimeout(injectOrderPageNotice, 500);
   }
 
 })();
