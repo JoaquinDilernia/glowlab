@@ -9,6 +9,7 @@ const Busboy = require('busboy');
 const multer = require('multer');
 const { MercadoPagoConfig, PreApproval } = require('mercadopago');
 const { evaluateAccess, SUBSCRIPTION_PRICE_ARS } = require('./subscriptionAccess');
+const { getClientSelectorMap } = require('./theme-menu-selectors');
 
 // ============================================
 // LOG GATE - reduce costos de Cloud Logging
@@ -10767,6 +10768,27 @@ app.get("/api/style-widget.js", async (req, res) => {
   'use strict';
 
   const CONFIG = ${JSON.stringify(config)};
+  const PN_MENU_SELECTORS = ${JSON.stringify(getClientSelectorMap())};
+
+  function pnDetectTheme() {
+    try {
+      return (window.LS && window.LS.theme) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function pnGetMenuSelectors(themeCode) {
+    return (themeCode && PN_MENU_SELECTORS[themeCode]) || PN_MENU_SELECTORS.__default__;
+  }
+
+  function pnResolveDesktopLink(li) {
+    return (
+      li.querySelector(':scope > a') ||
+      li.querySelector(':scope > div.nav-item-container > a') ||
+      li.querySelector('a')
+    );
+  }
 
   if (window.promonubeStyleLoaded) return;
   window.promonubeStyleLoaded = true;
@@ -11128,12 +11150,25 @@ app.get("/api/style-widget.js", async (req, res) => {
 
     console.log('PromoNube Menu: Iniciando...', CONFIG.menu);
 
-    // Selector espec�fico para MOBILE
-    var mobileSelector = '#nav-hamburger > div > div.modal-scrollable-area > div.modal-body.nav-body > div > ul > li > a';
+    var pnTheme = pnDetectTheme();
+    var pnSel = pnGetMenuSelectors(pnTheme && pnTheme.code);
+    console.log('PromoNube: Theme detectado:', pnTheme && pnTheme.code, '- Selectores:', pnSel);
+
+    // Selector espec�fico para MOBILE (theme-aware, con fallback a Rio si no hay match)
+    var mobileSelector = pnSel.mobileLinkSelector || '#nav-hamburger > div > div.modal-scrollable-area > div.modal-body.nav-body > div > ul > li > a';
     var mobileLinks = document.querySelectorAll(mobileSelector);
 
     var desktopLinks = [];
 
+    // Camino determin�stico: si tenemos selector para este theme, usarlo directo
+    if (pnSel.desktopContainerSelector) {
+      var pnDesktopItems = document.querySelectorAll(pnSel.desktopContainerSelector + ' > li');
+      desktopLinks = Array.prototype.map.call(pnDesktopItems, pnResolveDesktopLink).filter(Boolean);
+      console.log('PromoNube: Desktop links via selector de theme (' + (pnTheme && pnTheme.code) + '):', desktopLinks.length);
+    }
+
+    // Fallback heur�stico legacy (themes sin mapear, o si el selector de arriba no encontr� nada)
+    if (desktopLinks.length === 0) {
     // Buscar DESKTOP - todas las UL en el header
     var headerUls = document.querySelectorAll('header ul');
     console.log('PromoNube: Total de UL encontrados en header:', headerUls.length);
@@ -11218,6 +11253,7 @@ app.get("/api/style-widget.js", async (req, res) => {
         }
       }
     }
+    } // cierre del fallback heur�stico (if desktopLinks.length === 0)
 
     console.log('PromoNube: Desktop links encontrados:', desktopLinks.length);
     for (var i = 0; i < desktopLinks.length; i++) {
