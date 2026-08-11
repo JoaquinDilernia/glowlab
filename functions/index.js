@@ -12576,8 +12576,19 @@ app.get("/api/style-widget.js", async (req, res) => {
     observer.observe(document.body, { childList: true, subtree: true });
 
     // Buscar el contenedor donde va el toggle (al lado de DESTACADO)
-    const filterContainer = document.querySelector('.js-controls-footer, .filters-container, .category-controls, .d-flex.justify-content-between');
-    
+    // Algunas plantillas tienen un contenedor "visible-phone" (oculto en desktop) ANTES
+    // del contenedor real en el DOM; querySelector tomaría ese primero y el toggle
+    // quedaría invisible. Recorremos todos los candidatos y usamos el primero que
+    // esté realmente visible en el viewport actual.
+    let filterContainer = null;
+    const filterCandidates = document.querySelectorAll('.js-controls-footer, .filters-container, .category-controls, .d-flex.justify-content-between');
+    for (let fc = 0; fc < filterCandidates.length; fc++) {
+      if (getComputedStyle(filterCandidates[fc]).display !== 'none') {
+        filterContainer = filterCandidates[fc];
+        break;
+      }
+    }
+
     if (!filterContainer) {
       // Fallback: insertar antes del grid/listado de productos
       const productsContainer = document.querySelector('.js-products-grid, .products-grid, .product-grid, .js-products-list, .products-list') ||
