@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, Package, TrendingUp, Search, LogOut, ArrowLeft, Sparkles, Lock, Calendar, CheckCircle, XCircle } from 'lucide-react';
+import { Shield, Users, Package, TrendingUp, Search, LogOut, ArrowLeft, Sparkles, Lock, Calendar, CheckCircle, XCircle, Palette } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
+import { computeThemeStats } from '../utils/themeStats';
 import './AdminPanel.css';
 
 function AdminPanel() {
@@ -17,6 +18,7 @@ function AdminPanel() {
   const [processingStore, setProcessingStore] = useState(null);
   const [quickStoreId, setQuickStoreId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [themeFilter, setThemeFilter] = useState(null);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -139,6 +141,18 @@ function AdminPanel() {
     store.storeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     store.storeId?.toString().includes(searchTerm)
   );
+
+  const themeStats = useMemo(() => computeThemeStats(stores), [stores]);
+
+  const themeTabStores = stores.filter((store) => {
+    const matchesSearch =
+      store.storeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      store.storeId?.toString().includes(searchTerm);
+    if (!matchesSearch) return false;
+    if (!themeFilter) return true;
+    if (themeFilter === '__undetected__') return !store.detectedTheme;
+    return store.detectedTheme?.code === themeFilter;
+  });
 
   const stats = {
     totalStores: stores.length,
@@ -293,6 +307,13 @@ function AdminPanel() {
         >
           <XCircle size={18} />
           Desinstalaciones ({uninstalls.length})
+        </button>
+        <button
+          className={`tab ${activeTab === 'temas' ? 'active' : ''}`}
+          onClick={() => setActiveTab('temas')}
+        >
+          <Palette size={18} />
+          Temas ({themeStats.knownThemes.length + (themeStats.undetectedCount > 0 ? 1 : 0)})
         </button>
       </div>
 
@@ -467,6 +488,86 @@ function AdminPanel() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Temas Tab */}
+      {activeTab === 'temas' && (
+        <>
+          <div className="stats-grid theme-stats-grid">
+            {themeStats.knownThemes.map((theme) => (
+              <button
+                key={theme.code}
+                className={`stat-card theme-stat-card ${themeFilter === theme.code ? 'active' : ''}`}
+                onClick={() => setThemeFilter(themeFilter === theme.code ? null : theme.code)}
+              >
+                <div className="stat-icon users">
+                  <Palette size={28} />
+                </div>
+                <div className="stat-info">
+                  <span className="stat-value">{theme.count}</span>
+                  <span className="stat-label">
+                    {theme.name}
+                    {theme.custom && <span className="module-tag theme-custom-tag">custom</span>}
+                  </span>
+                </div>
+              </button>
+            ))}
+            {themeStats.undetectedCount > 0 && (
+              <button
+                className={`stat-card theme-stat-card theme-stat-card-undetected ${themeFilter === '__undetected__' ? 'active' : ''}`}
+                onClick={() => setThemeFilter(themeFilter === '__undetected__' ? null : '__undetected__')}
+              >
+                <div className="stat-icon expired">
+                  <XCircle size={28} />
+                </div>
+                <div className="stat-info">
+                  <span className="stat-value">{themeStats.undetectedCount}</span>
+                  <span className="stat-label">Sin detectar</span>
+                </div>
+              </button>
+            )}
+          </div>
+
+          <div className="table-container">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>TIENDA</th>
+                  <th>STORE ID</th>
+                  <th>TEMA</th>
+                  <th>¿CUSTOM?</th>
+                  <th>ÚLTIMA VEZ VISTO</th>
+                </tr>
+              </thead>
+              <tbody>
+                {themeTabStores.map((store) => (
+                  <tr key={store.storeId}>
+                    <td className="store-name">{store.storeName}</td>
+                    <td className="store-id">{store.storeId}</td>
+                    <td>{store.detectedTheme?.name || '—'}</td>
+                    <td>{store.detectedTheme?.custom ? '✅' : '—'}</td>
+                    <td>
+                      {store.detectedTheme?.lastSeen
+                        ? new Date(store.detectedTheme.lastSeen).toLocaleDateString('es-AR', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: '2-digit',
+                          })
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {themeTabStores.length === 0 && (
+              <div className="empty-state">
+                <Palette size={48} />
+                <p>No se encontraron tiendas con ese filtro</p>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
