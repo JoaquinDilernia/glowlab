@@ -15553,7 +15553,8 @@ app.get('/api/admin/stores', requireAdminKey, async (req, res) => {
       stores.push({
         storeId: storeId,
         storeName: storeData.name || storeData.storeName || 'Sin nombre',
-        subscription
+        subscription,
+        detectedTheme: storeData.detectedTheme || null
       });
     }
 
