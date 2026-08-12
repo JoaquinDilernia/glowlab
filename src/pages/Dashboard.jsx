@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, Clock, Palette, Shield, BadgeCheck, Bell, Rocket, ChevronRight, ShoppingBag, Image } from 'lucide-react';
+import { Sparkles, Clock, Palette, BadgeCheck, Bell, Rocket, ChevronRight, ShoppingBag, Image } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionBanner from '../components/SubscriptionBanner';
@@ -192,13 +192,6 @@ function Dashboard() {
           </div>
 
           <div className="header-right">
-            <button
-              className="btn-admin-access"
-              onClick={() => setShowAdminPanel(true)}
-              title="Panel Admin (Ctrl+Shift+A)"
-            >
-              <Shield size={16} />
-            </button>
           </div>
         </div>
       </header>
