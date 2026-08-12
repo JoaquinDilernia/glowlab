@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Settings, BarChart2, Power, Trash2, Eye, Zap, Mail, MousePointer } from 'lucide-react';
 import { apiRequest } from '../config';
+import { useToast } from '../context/ToastContext';
 import './PopupsList.css';
 
 const TYPE_LABELS = {
@@ -19,6 +20,7 @@ const TRIGGER_LABELS = {
 
 function PopupsList() {
   const navigate = useNavigate();
+  const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
 
   const [popups, setPopups] = useState([]);

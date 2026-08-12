@@ -174,7 +174,7 @@ function GiftCardTemplates() {
 
       if (data.success) {
         toast.success('Diseño marcado como predeterminado');
-        loadTemplates();
+        loadCustomTemplates();
       }
     } catch (error) {
       console.error('Error setting default:', error);

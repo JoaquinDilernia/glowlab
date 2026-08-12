@@ -266,6 +266,7 @@ function CouponsView() {
 // Vista 3: Templates/Diseños
 function TemplatesView() {
   const navigate = useNavigate();
+  const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
