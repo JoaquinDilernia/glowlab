@@ -44,6 +44,7 @@ function App() {
         <Route path="/payment-failure" element={<PaymentFailure />} />
         <Route path="/payment-pending" element={<PaymentPending />} />
         <Route path="/payment-test" element={<PaymentTest />} />
+        <Route path="/admin" element={<AdminPanel />} />
 
         {/* Authenticated routes — wrapped with sidebar layout */}
         <Route element={<AppLayout />}>
@@ -66,7 +67,6 @@ function App() {
           <Route path="/banner" element={<BannerConfig />} />
           <Route path="/ml-bar" element={<AnnouncementBarConfig />} />
           <Route path="/integrations" element={<Integrations />} />
-          <Route path="/admin" element={<AdminPanel />} />
           <Route path="/popups" element={<PopupsList />} />
           <Route path="/popups/create" element={<PopupConfig />} />
           <Route path="/popups/:popupId/config" element={<PopupConfig />} />
