@@ -35,6 +35,13 @@
   margin-bottom: 40px;
 }
 
+@media (max-width: 1440px) {
+  .integrations-container {
+    max-width: 1140px;
+    padding: 24px 20px;
+  }
+}
+
 @media (max-width: 768px) {
   .integrations-grid {
     grid-template-columns: 1fr;

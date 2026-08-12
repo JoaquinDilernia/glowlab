@@ -188,6 +188,12 @@
   box-shadow: 0 12px 24px rgba(59, 130, 246, 0.3);
 }
 
+@media (max-width: 1440px) {
+  .badges-container {
+    max-width: 1140px;
+  }
+}
+
 @media (max-width: 768px) {
   .badges-grid-modern {
     grid-template-columns: 1fr;
