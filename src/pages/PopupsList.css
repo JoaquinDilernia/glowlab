@@ -567,6 +567,18 @@
   to { transform: rotate(360deg); }
 }
 
+@media (max-width: 1440px) {
+  .popups-header-inner {
+    max-width: 1140px;
+    padding: 20px 24px;
+  }
+
+  .popups-content {
+    max-width: 1140px;
+    padding: 24px;
+  }
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .popups-header-inner,

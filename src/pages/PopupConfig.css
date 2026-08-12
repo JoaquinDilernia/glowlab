@@ -727,6 +727,20 @@
   to { transform: rotate(360deg); }
 }
 
+@media (max-width: 1440px) {
+  .config-header-inner {
+    padding: 18px 24px;
+  }
+
+  .config-tabs-inner {
+    padding: 0 24px;
+  }
+
+  .config-body {
+    padding: 24px;
+  }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .config-header-inner,
