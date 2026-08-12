@@ -434,6 +434,13 @@
   opacity: 1 !important;
 }
 
+@media (max-width: 1440px) {
+  .config-content {
+    max-width: 1140px;
+    padding: 0 24px;
+  }
+}
+
 /* Responsive para tabs en pantallas pequeñas */
 @media (max-width: 1400px) {
   .config-tabs {
