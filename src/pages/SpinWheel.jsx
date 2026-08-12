@@ -122,6 +122,59 @@ function SpinWheel() {
         </div>
       ) : (
         <div className="wheels-list-modern">
+          {wheels.length >= 2 && (
+            <div className="wheels-compare">
+              <h2 className="compare-title">📊 Comparativa rápida</h2>
+              <p className="compare-sub">Métricas agregadas de todas tus ruletas (datos cacheados, se actualizan cada 6h)</p>
+              <div className="compare-table-wrap">
+                <table className="compare-table">
+                  <thead>
+                    <tr>
+                      <th>Ruleta</th>
+                      <th>Estado</th>
+                      <th>Giros</th>
+                      <th>Emails</th>
+                      <th>Cupones gen.</th>
+                      <th>Cupones usados</th>
+                      <th>Conversión</th>
+                      <th>Revenue</th>
+                      <th>Descuento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wheels.map(w => {
+                      const stats = w.stats || {};
+                      const totalSpins = stats.totalSpins || w.totalSpins || 0;
+                      const emails = stats.emailsCollected || w.emailsCollected || 0;
+                      const gen = stats.couponsGenerated || 0;
+                      const used = stats.couponsUsed || 0;
+                      const rev = stats.totalRevenue || 0;
+                      const disc = stats.totalDiscount || 0;
+                      const conv = gen > 0 ? ((used / gen) * 100).toFixed(1) : '0.0';
+                      const isActive = w.active || w.enabled;
+                      return (
+                        <tr key={w.wheelId} onClick={() => navigate(`/spin-wheel/${w.wheelId}/analytics`)} style={{ cursor: 'pointer' }}>
+                          <td><strong>{w.name || 'Sin nombre'}</strong></td>
+                          <td>
+                            <span className={`compare-badge ${isActive ? 'on' : 'off'}`}>
+                              {isActive ? 'Activa' : 'Inactiva'}
+                            </span>
+                          </td>
+                          <td>{totalSpins.toLocaleString()}</td>
+                          <td>{emails.toLocaleString()}</td>
+                          <td>{gen.toLocaleString()}</td>
+                          <td className="compare-good">{used.toLocaleString()}</td>
+                          <td><strong>{conv}%</strong></td>
+                          <td>${rev.toLocaleString()}</td>
+                          <td>${disc.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           <div className="wheels-grid-modern">
             {wheels.map(wheel => {
               const prizes = wheel.prizes || wheel.segments || [];
