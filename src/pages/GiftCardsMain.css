@@ -333,6 +333,12 @@
   font-size: 15px;
 }
 
+@media (max-width: 1440px) {
+  .main-content {
+    padding: 24px;
+  }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .main-header {

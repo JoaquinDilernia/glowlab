@@ -523,6 +523,12 @@
   font-weight: 500;
 }
 
+@media (max-width: 1440px) {
+  .admin-login-card {
+    padding: 24px 24px;
+  }
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .admin-table {
