@@ -352,6 +352,13 @@
   margin-top: 22px;
 }
 
+@media (max-width: 1440px) {
+  .local-stock-page {
+    max-width: 1140px;
+    padding: 20px 24px;
+  }
+}
+
 @media (max-width: 900px) {
   .ls-grid { grid-template-columns: 1fr; }
   .ls-row { grid-template-columns: 1fr; }

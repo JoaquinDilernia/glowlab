@@ -462,6 +462,12 @@
   margin-bottom: 6px;
 }
 
+@media (max-width: 1440px) {
+  .tab-content {
+    padding: 24px;
+  }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .type-selector,

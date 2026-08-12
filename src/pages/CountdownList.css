@@ -339,6 +339,18 @@
   border-color: #ef4444;
 }
 
+@media (max-width: 1440px) {
+  .install-banner-countdown {
+    max-width: 1140px;
+    padding: 0 24px;
+  }
+
+  .countdowns-list-modern {
+    max-width: 1140px;
+    padding: 24px;
+  }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .countdowns-grid-modern {
