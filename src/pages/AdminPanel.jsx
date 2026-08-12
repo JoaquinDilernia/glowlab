@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, Package, TrendingUp, Search, LogOut, ArrowLeft, Sparkles, Lock, Calendar, CheckCircle, XCircle, Palette } from 'lucide-react';
+import { Shield, Users, Package, TrendingUp, Search, LogOut, ArrowLeft, Sparkles, Lock, Calendar, CheckCircle, XCircle, Palette, MessageCircle } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
 import { computeThemeStats } from '../utils/themeStats';
@@ -346,6 +346,7 @@ function AdminPanel() {
                 <th>MÓDULOS</th>
                 <th>FECHA ACTIVACIÓN</th>
                 <th>EXPIRA</th>
+                <th>WHATSAPP</th>
                 <th>ACCIONES</th>
               </tr>
             </thead>
@@ -393,6 +394,21 @@ function AdminPanel() {
                     </td>
                     <td>
                       {untilDate ? new Date(untilDate).toLocaleDateString() : '-'}
+                    </td>
+                    <td>
+                      {store.phone ? (
+                        <a
+                          href={`https://wa.me/${store.phone.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="admin-whatsapp-link"
+                          title={`Escribir a ${store.storeName} por WhatsApp`}
+                        >
+                          <MessageCircle size={18} />
+                        </a>
+                      ) : (
+                        <span className="admin-whatsapp-none" title="Sin teléfono registrado">—</span>
+                      )}
                     </td>
                     <td>
                       <div className="actions-cell">
