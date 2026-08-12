@@ -608,9 +608,9 @@ function LookEditor({ look, idx, uploading, onUpload, onImageClick, onRemove, up
                       </div>
                       <div style={{ fontSize: 11, color: '#6b7280' }}>X: {h.x}% · Y: {h.y}%{h.productPrice ? ' · ' + h.productPrice : ''}</div>
                     </div>
-                    <input type="number" value={h.x} step="0.5" min="0" max="100" onChange={(e) => updateHotspot(hi, { x: parseFloat(e.target.value) || 0 })} style={{ width: 60, padding: '4px 6px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4 }} title="X%" />
-                    <input type="number" value={h.y} step="0.5" min="0" max="100" onChange={(e) => updateHotspot(hi, { y: parseFloat(e.target.value) || 0 })} style={{ width: 60, padding: '4px 6px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4 }} title="Y%" />
-                    <input type="text" value={h.label || ''} onChange={(e) => updateHotspot(hi, { label: e.target.value })} placeholder="label" style={{ width: 70, padding: '4px 6px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4 }} title="Texto del punto" />
+                    <input type="number" value={h.x} step="0.5" min="0" max="100" onChange={(e) => updateHotspot(hi, { x: parseFloat(e.target.value) || 0 })} style={{ width: 60, padding: '4px 6px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, color: '#111111', background: '#ffffff' }} title="X%" />
+                    <input type="number" value={h.y} step="0.5" min="0" max="100" onChange={(e) => updateHotspot(hi, { y: parseFloat(e.target.value) || 0 })} style={{ width: 60, padding: '4px 6px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, color: '#111111', background: '#ffffff' }} title="Y%" />
+                    <input type="text" value={h.label || ''} onChange={(e) => updateHotspot(hi, { label: e.target.value })} placeholder="label" style={{ width: 70, padding: '4px 6px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, color: '#111111', background: '#ffffff' }} title="Texto del punto" />
                     <button type="button" onClick={() => openPicker(hi)} style={{ padding: '6px 10px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                       {h.productId ? 'Cambiar' : 'Asignar'}
                     </button>

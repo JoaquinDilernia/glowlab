@@ -680,3 +680,102 @@
   }
   .ssi-label { max-width: 120px; }
 }
+
+/* ===================================
+   Shared header for standalone config pages
+   (ShopTheLookConfig, FlashSaleConfig)
+   =================================== */
+.style-config-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--gl-bg-primary) 0%, var(--gl-bg-secondary) 50%, var(--gl-bg-tertiary) 100%);
+  color: var(--gl-text-primary);
+  padding-bottom: 60px;
+}
+
+.style-config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 30px;
+  background: rgba(10, 10, 15, 0.85);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--gl-border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.style-config-header h1 {
+  color: var(--gl-text-primary);
+}
+
+.style-config-content {
+  color: var(--gl-text-primary);
+}
+
+.style-config-page .back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--gl-border);
+  border-radius: var(--gl-radius-sm);
+  color: var(--gl-text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.style-config-page .back-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--gl-border-hover);
+  color: var(--gl-accent-cyan);
+}
+
+.save-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  background: var(--gl-accent-gradient);
+  color: #fff;
+  border: none;
+  border-radius: var(--gl-radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0, 217, 255, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.save-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(0, 217, 255, 0.5);
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Light-themed sub-cards inside ShopTheLookConfig (image/hotspot editor,
+   product picker modal): these keep a white/light background by design,
+   so text must stay dark instead of inheriting the page's light text
+   color. The heading rule needs !important to beat theme-dark.css's
+   global (also !important) h1-h6 color rule. */
+.stl-light-card {
+  color: #18181b;
+}
+
+.stl-light-card h1,
+.stl-light-card h2,
+.stl-light-card h3,
+.stl-light-card h4,
+.stl-light-card h5,
+.stl-light-card h6 {
+  color: #18181b !important;
+}
