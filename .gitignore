@@ -41,3 +41,4 @@ functions/tmpclaude-*
 *.njsproj
 *.sln
 *.sw?
+functions/railway-vars.json

@@ -16,6 +16,22 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "redirects": [
+      { "source": "/api/style-widget.js",                  "destination": "https://glowlab-production.up.railway.app/api/style-widget.js",                "type": 302 },
+      { "source": "/api/spin-wheel-widget.js",             "destination": "https://glowlab-production.up.railway.app/api/spin-wheel-widget.js",             "type": 302 },
+      { "source": "/api/countdown-widget.js",              "destination": "https://glowlab-production.up.railway.app/api/countdown-widget.js",              "type": 302 },
+      { "source": "/api/badges-script.js",                 "destination": "https://glowlab-production.up.railway.app/api/badges-script.js",                 "type": 302 },
+      { "source": "/api/new-badge-script.js",              "destination": "https://glowlab-production.up.railway.app/api/new-badge-script.js",              "type": 302 },
+      { "source": "/api/popup-widget.js",                  "destination": "https://glowlab-production.up.railway.app/api/popup-widget.js",                  "type": 302 },
+      { "source": "/api/local-stock-widget.js",            "destination": "https://glowlab-production.up.railway.app/api/local-stock-widget.js",            "type": 302 },
+      { "source": "/api/checkout-notice-widget.js",        "destination": "https://glowlab-production.up.railway.app/api/checkout-notice-widget.js",        "type": 302 },
+      { "source": "/api/enhanced-search-widget.js",        "destination": "https://glowlab-production.up.railway.app/api/enhanced-search-widget.js",        "type": 302 },
+      { "source": "/api/enhanced-search-script.js",        "destination": "https://glowlab-production.up.railway.app/api/enhanced-search-script.js",        "type": 302 },
+      { "source": "/api/top-header-widget.js",             "destination": "https://glowlab-production.up.railway.app/api/top-header-widget.js",             "type": 302 },
+      { "source": "/api/top-announcement-bar-widget.js",   "destination": "https://glowlab-production.up.railway.app/api/top-announcement-bar-widget.js",   "type": 302 },
+      { "source": "/api/announcement-bar-widget.js",       "destination": "https://glowlab-production.up.railway.app/api/announcement-bar-widget.js",       "type": 302 },
+      { "source": "/api/banner-widget.js",                 "destination": "https://glowlab-production.up.railway.app/api/banner-widget.js",                 "type": 302 }
+    ],
     "rewrites": [
       {
         "source": "**",
