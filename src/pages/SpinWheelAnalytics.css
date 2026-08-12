@@ -811,6 +811,13 @@
   font-weight: 600;
 }
 
+@media (max-width: 1440px) {
+  .spin-analytics {
+    max-width: 1140px;
+    padding: 24px;
+  }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .spin-analytics {

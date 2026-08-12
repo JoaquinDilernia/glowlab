@@ -617,6 +617,18 @@
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
+@media (max-width: 1440px) {
+  .wheels-list-modern {
+    max-width: 1140px;
+    padding: 24px;
+  }
+
+  .header-content-modern {
+    max-width: 1140px;
+    padding: 20px 24px;
+  }
+}
+
 @media (max-width: 768px) {
   .wheels-grid-modern {
     grid-template-columns: 1fr;
