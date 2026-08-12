@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Zap, User, Mail, Lock, CheckCircle } from 'lucide-react';
+import { Zap, User, Mail, Phone, Lock, CheckCircle } from 'lucide-react';
 import { apiRequest } from '../config';
 import './Register.css';
 
@@ -10,6 +10,7 @@ function Register() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: ''
   });
@@ -42,6 +43,12 @@ function Register() {
     setError('');
 
     // Validaciones
+    const phoneDigits = formData.phone.replace(/\D/g, '');
+    if (phoneDigits.length < 8) {
+      setError('Ingresá un teléfono válido con código de país');
+      return;
+    }
+
     if (formData.password.length < 6) {
       setError('La contraseña debe tener al menos 6 caracteres');
       return;
@@ -60,6 +67,7 @@ function Register() {
         body: JSON.stringify({
           name: formData.name,
           email: formData.email,
+          phone: formData.phone,
           password: formData.password,
           storeId: storeId
         })
@@ -132,6 +140,22 @@ function Register() {
               onChange={handleChange}
               required
             />
+          </div>
+
+          <div className="form-group">
+            <label>
+              <Phone size={18} />
+              Teléfono / WhatsApp
+            </label>
+            <input
+              type="tel"
+              name="phone"
+              placeholder="5491123456789"
+              value={formData.phone}
+              onChange={handleChange}
+              required
+            />
+            <small>Incluí código de país, sin el 0 ni el 15 (ej: 5491123456789). Lo usamos para contactarte por WhatsApp.</small>
           </div>
 
           <div className="form-group">
