@@ -223,7 +223,12 @@
   color: var(--gl-text-primary) !important;
 }
 
-/* ---- Form Elements ---- */
+/* ---- Form Elements ----
+   input:not([type]) covers plain <input> tags with no type prop: React
+   never writes a default type="text" attribute to the DOM, so those
+   inputs don't match input[type="text"] and fall back to the browser's
+   white default unless caught here. ---- */
+input:not([type]),
 input[type="text"],
 input[type="email"],
 input[type="number"],
@@ -563,9 +568,13 @@ input[type="radio"] {
   color: var(--gl-text-primary);
 }
 
-/* ---- General text color overrides for all content ---- */
+/* ---- General text color overrides for all content ----
+   !important is required: App.css declares its own h1-h6 color rule
+   at equal specificity and loads after this file, so without it any
+   heading not covered by a more specific selector below renders
+   near-black text on the dark background. ---- */
 h1, h2, h3, h4, h5, h6 {
-  color: var(--gl-text-primary);
+  color: var(--gl-text-primary) !important;
 }
 
 p {

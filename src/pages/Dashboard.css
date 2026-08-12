@@ -318,6 +318,34 @@
   color: rgba(255,255,255,0.7);
   background: rgba(255,255,255,0.06);
 }
+.welcome-banner-compact {
+  padding: 12px 18px;
+  margin-bottom: 20px;
+}
+.wb-title-compact {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+}
+.wb-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #00D9FF, #7C7CFF);
+  border: 0;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.wb-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+}
 @media (max-width: 600px) {
   .welcome-banner { flex-direction: column; align-items: flex-start; }
   .wb-steps { flex-direction: column; align-items: flex-start; }

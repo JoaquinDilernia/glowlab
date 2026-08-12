@@ -56,12 +56,12 @@ function Section({ title, children, defaultOpen = true }) {
       <button
         className="style-section-toggle"
         onClick={() => setOpen(o => !o)}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', border: 'none', cursor: 'pointer', padding: '12px 16px', fontWeight: 600, fontSize: 14, color: '#111', borderRadius: open ? '12px 12px 0 0' : 12, background: '#f9fafb', borderBottom: open ? '1px solid #e5e7eb' : 'none' }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', border: 'none', cursor: 'pointer', padding: '12px 16px', fontWeight: 600, fontSize: 14, color: 'var(--gl-text-primary)', borderRadius: open ? '12px 12px 0 0' : 12, background: 'var(--gl-bg-card-solid)', borderBottom: open ? '1px solid var(--gl-border)' : 'none' }}
       >
         {title}
-        <span style={{ fontSize: 12, color: '#6b7280' }}>{open ? '▲' : '▼'}</span>
+        <span style={{ fontSize: 12, color: 'var(--gl-text-muted)' }}>{open ? '▲' : '▼'}</span>
       </button>
-      {open && <div style={{ padding: '16px', border: '1px solid #e5e7eb', borderTop: 'none', borderRadius: '0 0 12px 12px' }}>{children}</div>}
+      {open && <div style={{ padding: '16px', border: '1px solid var(--gl-border)', borderTop: 'none', borderRadius: '0 0 12px 12px', background: 'var(--gl-bg-card)' }}>{children}</div>}
     </div>
   );
 }
@@ -69,9 +69,9 @@ function Section({ title, children, defaultOpen = true }) {
 function Field({ label, children, hint }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--gl-text-secondary)', marginBottom: 4 }}>{label}</label>
       {children}
-      {hint && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#9ca3af' }}>{hint}</p>}
+      {hint && <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--gl-text-muted)' }}>{hint}</p>}
     </div>
   );
 }
@@ -220,13 +220,13 @@ export default function FlashSaleConfig() {
             <button
               onClick={fetchProducts}
               disabled={loadingProducts || !config.categoryId}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: '1px solid #d1d5db', borderRadius: 8, background: '#f9fafb', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: '1px solid var(--gl-border)', borderRadius: 8, background: 'var(--gl-bg-card-solid)', color: 'var(--gl-text-primary)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
             >
               <RefreshCw size={14} className={loadingProducts ? 'spin' : ''} />
               {loadingProducts ? 'Cargando…' : 'Actualizar productos'}
             </button>
             {config.productIds.length > 0 && (
-              <span style={{ fontSize: 12, color: '#6b7280' }}>
+              <span style={{ fontSize: 12, color: 'var(--gl-text-muted)' }}>
                 {config.productIds.length} productos en la categoría, mostrando {Math.min(config.sectionMaxProducts || 8, config.featuredProducts.length)} en la sección
               </span>
             )}
