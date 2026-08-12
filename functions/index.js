@@ -976,9 +976,9 @@ app.get("/store-info", async (req, res) => {
 // ============================================
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { email, password, name, storeId } = req.body;
+    const { email, password, name, storeId, phone } = req.body;
 
-    if (!email || !password || !name || !storeId) {
+    if (!email || !password || !name || !storeId || !phone) {
       return res.json({ 
         success: false, 
         message: 'Todos los campos son requeridos' 
@@ -1014,6 +1014,7 @@ app.post("/api/auth/register", async (req, res) => {
       storeId,
       email: email.toLowerCase(),
       name,
+      phone,
       passwordHash: hashPassword(password),
       createdAt: FieldValue.serverTimestamp(),
       lastLogin: FieldValue.serverTimestamp()
@@ -1021,9 +1022,10 @@ app.post("/api/auth/register", async (req, res) => {
 
     await db.collection("promonube_users").doc(userId).set(userData);
 
-    // Actualizar store con el userId
+    // Actualizar store con el userId y telefono de contacto
     await db.collection("promonube_stores").doc(storeId).update({
-      userId: userId
+      userId: userId,
+      phone: phone
     });
 
     // Obtener datos del store para la respuesta
