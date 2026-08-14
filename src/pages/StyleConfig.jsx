@@ -101,6 +101,8 @@ function StyleConfig() {
       fontWeight: 500,
       fontFamily: 'system-ui',
       padding: 11,
+      alignment: 'center', // 'left', 'center', 'right'
+      messageGap: 18,
       visibility: 'both', // 'both', 'desktop', 'mobile'
       messages: [
         { text: '🎉 Envío gratis en compras mayores a $50.000', link: '' },
@@ -126,6 +128,8 @@ function StyleConfig() {
       fontWeight: 500,
       fontFamily: 'system-ui',
       padding: 11,
+      alignment: 'center', // 'left', 'center', 'right'
+      messageGap: 18,
       visibility: 'both', // 'both', 'desktop', 'mobile'
       messages: [
         { text: '🔥 Black Friday: hasta 50% OFF', link: '' },
@@ -2374,6 +2378,44 @@ function StyleConfig() {
                   </div>
                 </div>
 
+                <div className="form-row" style={{marginBottom: '24px'}}>
+                  <div className="form-group">
+                    <label>📐 Alineación de los Mensajes</label>
+                    <select
+                      value={config.topAnnouncementBar.alignment || 'center'}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        topAnnouncementBar: { ...prev.topAnnouncementBar, alignment: e.target.value }
+                      }))}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        border: '2px solid rgba(124, 124, 255, 0.2)',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="left">⬅️ Izquierda</option>
+                      <option value="center">⬌ Centro</option>
+                      <option value="right">➡️ Derecha</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>↔️ Espaciado entre Mensajes (px)</label>
+                    <input
+                      type="number"
+                      min="4"
+                      max="60"
+                      value={config.topAnnouncementBar.messageGap ?? 18}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        topAnnouncementBar: { ...prev.topAnnouncementBar, messageGap: parseInt(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                </div>
+
                 <div className="form-group" style={{marginBottom: '24px'}}>
                   <label>📱 Visibilidad por Dispositivo</label>
                   <select
@@ -2809,6 +2851,44 @@ function StyleConfig() {
                       onChange={(e) => setConfig(prev => ({
                         ...prev,
                         announcementBar: { ...prev.announcementBar, padding: parseInt(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row" style={{marginBottom: '24px'}}>
+                  <div className="form-group">
+                    <label>📐 Alineación de los Mensajes</label>
+                    <select
+                      value={config.announcementBar.alignment || 'center'}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        announcementBar: { ...prev.announcementBar, alignment: e.target.value }
+                      }))}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        border: '2px solid rgba(124, 124, 255, 0.2)',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="left">⬅️ Izquierda</option>
+                      <option value="center">⬌ Centro</option>
+                      <option value="right">➡️ Derecha</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>↔️ Espaciado entre Mensajes (px)</label>
+                    <input
+                      type="number"
+                      min="4"
+                      max="60"
+                      value={config.announcementBar.messageGap ?? 18}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        announcementBar: { ...prev.announcementBar, messageGap: parseInt(e.target.value) }
                       }))}
                     />
                   </div>

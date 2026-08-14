@@ -14326,12 +14326,17 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
       if (CONFIG.borderLeft) borderStyles += \`border-left: \${borderWidth}px \${borderStyle} \${borderColor}; \`;
       if (CONFIG.borderRight) borderStyles += \`border-right: \${borderWidth}px \${borderStyle} \${borderColor}; \`;
     }
-    
+
+    // Alineaci�n de los mensajes (izquierda / centro / derecha)
+    const alignment = CONFIG.alignment === 'left' ? 'left' : (CONFIG.alignment === 'right' ? 'right' : 'center');
+    const justifyContent = alignment === 'left' ? 'flex-start' : (alignment === 'right' ? 'flex-end' : 'center');
+    const messageGap = Number.isFinite(CONFIG.messageGap) ? CONFIG.messageGap : 18;
+
     bar.style.cssText = \`
       background-color: \${CONFIG.backgroundColor || '#1a1a1a'};
       color: \${CONFIG.textColor || '#ffffff'};
       padding: \${CONFIG.padding || 11}px 20px;
-      text-align: center;
+      text-align: \${alignment};
       font-size: \${CONFIG.fontSize || 13}px;
       font-weight: \${CONFIG.fontWeight || 500};
       font-family: \${fontFamily};
@@ -14356,7 +14361,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
     messageContainer.style.cssText = \`
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: \${justifyContent};
       gap: 0;
       flex-wrap: wrap;
       line-height: 1.6;
@@ -14370,7 +14375,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
       let currentIndex = 0;
       const messageEl = document.createElement('div');
       messageEl.style.cssText = \`
-        text-align: center;
+        text-align: \${alignment};
         width: 100%;
         transition: opacity 0.5s ease;
       \`;
@@ -14423,7 +14428,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
           const separator = document.createElement('span');
           separator.textContent = '|';
           separator.style.cssText = \`
-            margin: 0 18px;
+            margin: 0 \${messageGap}px;
             color: \${CONFIG.textColor || '#ffffff'};
             opacity: 0.6;
             font-weight: 300;
@@ -14440,7 +14445,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
         const itemWrapper = document.createElement('div');
         itemWrapper.style.cssText = \`
           max-width: 400px;
-          text-align: center;
+          text-align: \${alignment};
         \`;
 
         // Crear elemento del mensaje
@@ -14718,12 +14723,17 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
       if (CONFIG.borderLeft) borderStyles += \`border-left: \${borderWidth}px \${borderStyle} \${borderColor}; \`;
       if (CONFIG.borderRight) borderStyles += \`border-right: \${borderWidth}px \${borderStyle} \${borderColor}; \`;
     }
-    
+
+    // Alineaci�n de los mensajes (izquierda / centro / derecha)
+    const alignment = CONFIG.alignment === 'left' ? 'left' : (CONFIG.alignment === 'right' ? 'right' : 'center');
+    const justifyContent = alignment === 'left' ? 'flex-start' : (alignment === 'right' ? 'flex-end' : 'center');
+    const messageGap = Number.isFinite(CONFIG.messageGap) ? CONFIG.messageGap : 18;
+
     bar.style.cssText = \`
       background-color: \${CONFIG.backgroundColor || '#8B0000'};
       color: \${CONFIG.textColor || '#ffffff'};
       padding: \${CONFIG.padding || 11}px 20px;
-      text-align: center;
+      text-align: \${alignment};
       font-size: \${CONFIG.fontSize || 13}px;
       font-weight: \${CONFIG.fontWeight || 500};
       font-family: \${fontFamily};
@@ -14742,7 +14752,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
     messageContainer.style.cssText = \`
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: \${justifyContent};
       gap: 0;
       flex-wrap: wrap;
       line-height: 1.6;
@@ -14756,7 +14766,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
       let currentIndex = 0;
       const messageEl = document.createElement('div');
       messageEl.style.cssText = \`
-        text-align: center;
+        text-align: \${alignment};
         width: 100%;
         transition: opacity 0.3s ease-in-out;
         opacity: 1;
@@ -14810,7 +14820,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
           const separator = document.createElement('span');
           separator.textContent = '|';
           separator.style.cssText = \`
-            margin: 0 18px;
+            margin: 0 \${messageGap}px;
             color: \${CONFIG.textColor || '#ffffff'};
             opacity: 0.6;
             font-weight: 300;
@@ -14827,7 +14837,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
         const itemWrapper = document.createElement('div');
         itemWrapper.style.cssText = \`
           max-width: 400px;
-          text-align: center;
+          text-align: \${alignment};
         \`;
 
         // Crear elemento del mensaje
