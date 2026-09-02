@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, Clock, Palette, BadgeCheck, Bell, Rocket, ChevronRight, ShoppingBag, Image } from 'lucide-react';
+import { Sparkles, Clock, Palette, BadgeCheck, Rocket, ChevronRight, ShoppingBag, Search, Percent } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionBanner from '../components/SubscriptionBanner';
@@ -89,6 +89,22 @@ function Dashboard() {
       badge: '⭐ Recomendado'
     },
     {
+      icon: Search,
+      title: 'Buscador Inteligente Pro',
+      description: 'Popup de búsqueda con tolerancia a errores de tipeo, banners con link, búsquedas recomendadas y un asistente de IA como respaldo cuando la búsqueda normal no encuentra nada.',
+      path: '/buscador-inteligente',
+      featured: true,
+      badge: '🔥 Nuevo'
+    },
+    {
+      icon: Percent,
+      title: 'Precios y Cuotas',
+      description: 'Mostrá descuento por efectivo/transferencia y planes de cuotas en el listado y la página de producto, con barra de progreso en el carrito hacia el próximo plan sin interés.',
+      path: '/precios-cuotas',
+      featured: true,
+      badge: '🔥 Nuevo'
+    },
+    {
       icon: Clock,
       title: 'Cuenta Regresiva',
       description: 'Creá temporizadores para anunciar lanzamientos, promociones o eventos. Generá urgencia (FOMO) mostrando cuándo empieza o termina una oferta, evento o flash sale.',
@@ -114,20 +130,6 @@ function Dashboard() {
       path: '/shop-the-look',
       badge: '✨ Nuevo'
     },
-    {
-      icon: Image,
-      title: 'Banner Home',
-      description: 'Agregá un banner personalizado en tu home con imagen de fondo, textos y botones. Controlá el ancho, la posición y el diseño para destacar tus campañas.',
-      path: '/banner',
-      badge: '✨ Nuevo'
-    },
-    {
-      icon: Bell,
-      title: 'Pop-ups',
-      description: 'Mostrá ofertas y capturá emails con pop-ups personalizados. Targeting por página, exit intent, delay y más triggers. Aumentá conversiones desde el primer día.',
-      path: '/popups',
-      badge: '✨ Nuevo'
-    }
   ];
 
   const handleFeatureClick = (feature) => {
