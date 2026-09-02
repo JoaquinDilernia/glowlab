@@ -31,6 +31,7 @@ import AnnouncementBarConfig from './pages/AnnouncementBarConfig';
 import StorefrontBlocksList from './pages/StorefrontBlocksList';
 import StorefrontBlockConfig from './pages/StorefrontBlockConfig';
 import PriceFinancingConfig from './pages/PriceFinancingConfig';
+import SearchConfig from './pages/SearchConfig';
 import './App.css';
 
 function App() {
@@ -78,6 +79,7 @@ function App() {
           <Route path="/storefront-blocks" element={<StorefrontBlocksList />} />
           <Route path="/storefront-blocks/:blockId/config" element={<StorefrontBlockConfig />} />
           <Route path="/precios-cuotas" element={<PriceFinancingConfig />} />
+          <Route path="/buscador-inteligente" element={<SearchConfig />} />
         </Route>
       </Routes>
       <a

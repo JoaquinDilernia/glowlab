@@ -858,8 +858,9 @@ function StyleConfig() {
                 title: '🛒 Conversión',
                 items: [
                   { id: 'whatsapp', label: 'WhatsApp', icon: '💬', enabled: config.whatsapp?.enabled },
-                  { id: 'enhancedSearch', label: 'Buscador mejorado', icon: '🔍', enabled: config.enhancedSearch?.enabled },
-                  { id: 'searchBar', label: 'Búsqueda modal', icon: '🔎', enabled: config.searchBar?.enabled },
+                  // enhancedSearch/searchBar ocultos (2026-09-02): reemplazados por el
+                  // módulo aislado "Buscador Inteligente Pro" (/buscador-inteligente).
+                  // El backend de estos dos sigue vivo para instalaciones ya activas.
                 ]
               },
               {

@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Palette, Clock, BadgeCheck,
   Sparkles, Bell, Settings, LogOut, X, MapPin, MessageCircle,
-  ShoppingBag, Image, Megaphone, Zap, LayoutGrid, Percent
+  ShoppingBag, Image, Megaphone, Zap, LayoutGrid, Percent, Search
 } from 'lucide-react';
 import { useSubscription } from '../hooks/useSubscription';
 import './Sidebar.css';
@@ -12,6 +12,7 @@ const BASE_NAV_ITEMS = [
   { divider: true },
   { path: '/storefront-blocks', icon: LayoutGrid, label: 'Vidriera Shoppable' },
   { path: '/precios-cuotas', icon: Percent, label: 'Precios y Cuotas' },
+  { path: '/buscador-inteligente', icon: Search, label: 'Buscador Inteligente Pro' },
   { path: '/style',          icon: Palette,       label: 'Style' },
   { path: '/shop-the-look',  icon: ShoppingBag,   label: 'Shop the Look' },
   { path: '/flash-sale',     icon: Zap,           label: 'Flash Sale' },

@@ -156,6 +156,10 @@ const CLOUD_FUNCTION_URL = 'https://us-central1-pedidos-lett-2.cloudfunctions.ne
 // URL base del backend — se puede sobreescribir con API_BASE_URL en Railway
 const _SRV_BASE = process.env.API_BASE_URL || 'https://apipromonube-jlfopowzaq-uc.a.run.app';
 
+// Id numérico del script "Buscador Inteligente Pro" en TiendaNube Partners
+// (GlowLab #23137 → Scripts). Se completa después de crearlo ahí.
+const SEARCH_SCRIPT_ID = 9857;
+
 // ==========================================
 // SISTEMA DE SUSCRIPCIONES Y FEATURE FLAGS
 // ==========================================
@@ -758,6 +762,11 @@ registerStorefrontBlocksRoutes(app, { db, FieldValue, getCachedDoc, invalidateCo
 // Precios y Cuotas - descuento efectivo/transferencia + cuotas en listado, PDP y carrito
 const { registerPriceFinancingRoutes } = require('./price-financing');
 registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, HOSTING_URL });
+
+// Buscador Inteligente Pro - popup de búsqueda con fuzzy matching + fallback IA
+const { registerSearchRoutes, setSearchScriptId } = require('./search');
+registerSearchRoutes(app, { db, FieldValue, checkStoreActive });
+setSearchScriptId(SEARCH_SCRIPT_ID);
 
 // ============================================
 // CONFIGURACI�N OAUTH TIENDANUBE
