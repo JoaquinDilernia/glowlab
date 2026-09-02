@@ -257,6 +257,16 @@ function buildWidgetScript(store, cfg) {
     return block;
   }
 
+  var INLINE_TAGS = { SPAN: 1, STRONG: 1, B: 1, EM: 1, I: 1, A: 1, SMALL: 1, LABEL: 1 };
+
+  function blockLevelAncestor(el) {
+    var node = el;
+    while (node.parentElement && INLINE_TAGS[node.tagName]) {
+      node = node.parentElement;
+    }
+    return node;
+  }
+
   function applyTo(scope, lsProduct) {
     if (scope.querySelector('.pn-pf-block')) return;
     var priceNode = findPriceNode(scope);
@@ -264,7 +274,7 @@ function buildWidgetScript(store, cfg) {
     if (!price) return;
     var block = buildBlock(price);
     if (!block) return;
-    var anchor = priceNode || scope;
+    var anchor = priceNode ? blockLevelAncestor(priceNode) : scope;
     anchor.parentNode ? anchor.parentNode.insertBefore(block, anchor.nextSibling) : scope.appendChild(block);
   }
 
