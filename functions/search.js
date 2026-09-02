@@ -283,6 +283,20 @@ function buildWidgetScript(store, cfg) {
       '.pn-search-result-name { font-size: 14px; color: #111; }',
       '.pn-search-result-price { font-size: 13px; color: ' + CFG.primaryColor + '; font-weight: 600; margin-top: 2px; }',
       '.pn-search-empty { color: #999; font-size: 14px; padding: 20px 4px; text-align: center; }',
+      // Plantilla "Compacto": dropdown anclado al trigger, sin fondo oscuro de pantalla completa
+      '.pn-search-overlay.pn-tpl-compact { background: transparent; backdrop-filter: none; align-items: flex-start; justify-content: flex-start; padding: 0; }',
+      '.pn-tpl-compact .pn-search-panel { position: absolute; max-width: 380px; border: 1px solid #eee; box-shadow: 0 16px 44px rgba(0,0,0,0.18); }',
+      '.pn-tpl-compact .pn-search-body { max-height: 50vh; }',
+      // Plantilla "Grid con banners": panel más ancho, banners a 3 columnas, resultados como tarjetas
+      '.pn-tpl-grid .pn-search-panel { max-width: 820px; }',
+      '.pn-tpl-grid .pn-search-banners { grid-template-columns: repeat(3, 1fr); }',
+      '.pn-tpl-grid .pn-search-banner img { aspect-ratio: 1 / 1; object-fit: cover; }',
+      '.pn-search-results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; margin-top: 4px; }',
+      '.pn-search-result-card { display: flex; flex-direction: column; text-decoration: none; color: inherit; border-radius: 12px; padding: 8px; }',
+      '.pn-search-result-card:hover { background: #f7f7f7; }',
+      '.pn-search-result-card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 10px; background: #f0f0f0; }',
+      '.pn-search-result-card .pn-search-result-name { margin-top: 8px; font-size: 13px; }',
+      '.pn-search-result-card .pn-search-result-price { margin-top: 2px; }',
     ].join('');
     document.head.appendChild(s);
   }
@@ -300,7 +314,7 @@ function buildWidgetScript(store, cfg) {
 
   function buildOverlay() {
     overlay = document.createElement('div');
-    overlay.className = 'pn-search-overlay';
+    overlay.className = 'pn-search-overlay pn-tpl-' + (CFG.template || 'minimal');
     overlay.innerHTML =
       '<div class="pn-search-panel">' +
         '<div class="pn-search-head">' +
@@ -346,6 +360,16 @@ function buildWidgetScript(store, cfg) {
       body.innerHTML = '<div class="pn-search-empty">Sin resultados</div>';
       return;
     }
+    if (CFG.template === 'grid') {
+      body.innerHTML = '<div class="pn-search-results-grid">' + products.map(function(p) {
+        return '<a class="pn-search-result-card" href="' + (p.url || '#') + '">' +
+          '<img src="' + (p.image || '') + '" alt="" onerror="this.style.visibility=\\'hidden\\'" />' +
+          '<div class="pn-search-result-name">' + p.name + '</div>' +
+          (p.price ? '<div class="pn-search-result-price">' + fmtPrice(p.price) + '</div>' : '') +
+          '</a>';
+      }).join('') + '</div>';
+      return;
+    }
     body.innerHTML = products.map(function(p) {
       return '<a class="pn-search-result" href="' + (p.url || '#') + '">' +
         '<img src="' + (p.image || '') + '" alt="" onerror="this.style.visibility=\\'hidden\\'" />' +
@@ -363,11 +387,20 @@ function buildWidgetScript(store, cfg) {
       .catch(function() { body.innerHTML = '<div class="pn-search-empty">Error al buscar</div>'; });
   }
 
-  function open() {
+  function open(triggerEl) {
     if (!overlay) buildOverlay();
     renderIdle();
     overlay.classList.add('pn-open');
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = (CFG.template === 'compact') ? '' : 'hidden';
+    if (CFG.template === 'compact' && triggerEl) {
+      var r = triggerEl.getBoundingClientRect();
+      var panel = overlay.querySelector('.pn-search-panel');
+      var panelWidth = 380;
+      var left = Math.min(r.left, window.innerWidth - panelWidth - 16);
+      left = Math.max(16, left);
+      panel.style.top = (r.bottom + 8) + 'px';
+      panel.style.left = left + 'px';
+    }
     setTimeout(function() { input && input.focus(); }, 50);
   }
 
@@ -394,7 +427,7 @@ function buildWidgetScript(store, cfg) {
         var evt = (el.tagName === 'INPUT') ? 'focus' : 'click';
         el.addEventListener(evt, function(e) {
           e.preventDefault();
-          open();
+          open(el);
         });
       });
     });

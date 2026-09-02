@@ -30,8 +30,8 @@ const FONT_OPTIONS = [
 
 const TEMPLATES = [
   { value: 'minimal', label: 'Minimal', available: true },
-  { value: 'grid', label: 'Grid con banners', available: false },
-  { value: 'compact', label: 'Compacto', available: false },
+  { value: 'grid', label: 'Grid con banners', available: true },
+  { value: 'compact', label: 'Compacto', available: true },
 ];
 
 const PREVIEW_PRODUCTS = [
@@ -264,8 +264,8 @@ function SearchConfig() {
         {/* Preview */}
         <div className="sc-preview-col">
           <div className="sc-preview-sticky">
-            <div className="sc-preview-label"><Eye size={15} /> Vista previa</div>
-            <div className="sc-preview-panel" style={{ fontFamily: config.fontFamily }}>
+            <div className="sc-preview-label"><Eye size={15} /> Vista previa {config.template === 'compact' && <span className="sc-preview-tag">dropdown anclado</span>}</div>
+            <div className={`sc-preview-panel sc-tpl-${config.template}`} style={{ fontFamily: config.fontFamily }}>
               <div className="sc-preview-head">
                 <input
                   className="sc-preview-input"
@@ -277,21 +277,33 @@ function SearchConfig() {
               </div>
               <div className="sc-preview-body">
                 {previewQuery ? (
-                  previewFiltered.length ? previewFiltered.map((p, i) => (
-                    <div key={i} className="sc-preview-result">
-                      <div className="sc-preview-thumb" />
-                      <div>
-                        <div className="sc-preview-result-name">{p.name}</div>
-                        <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
+                  previewFiltered.length ? (
+                    config.template === 'grid' ? (
+                      <div className="sc-preview-results-grid">
+                        {previewFiltered.map((p, i) => (
+                          <div key={i} className="sc-preview-result-card">
+                            <div className="sc-preview-thumb sc-preview-thumb-sq" />
+                            <div className="sc-preview-result-name">{p.name}</div>
+                            <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                  )) : <div className="sc-preview-empty">Sin resultados</div>
+                    ) : previewFiltered.map((p, i) => (
+                      <div key={i} className="sc-preview-result">
+                        <div className="sc-preview-thumb" />
+                        <div>
+                          <div className="sc-preview-result-name">{p.name}</div>
+                          <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
+                        </div>
+                      </div>
+                    ))
+                  ) : <div className="sc-preview-empty">Sin resultados</div>
                 ) : (
                   <>
                     {config.banners.filter(b => b.imageUrl).length > 0 && (
                       <>
                         <div className="sc-preview-section-title">Destacado</div>
-                        <div className="sc-preview-banners">
+                        <div className={`sc-preview-banners ${config.template === 'grid' ? 'sc-preview-banners-3col' : ''}`}>
                           {config.banners.filter(b => b.imageUrl).map((b, i) => (
                             <img key={i} src={b.imageUrl} alt="" />
                           ))}
@@ -318,6 +330,8 @@ function SearchConfig() {
 
             <div className="sc-help">
               <strong>Para activarlo:</strong> guardá los cambios. El módulo se activa solo en tu tienda y se actualiza cada vez que guardás cambios acá.
+              {config.template === 'compact' && ' En la tienda, "Compacto" aparece como un menú desplegable pegado al buscador, sin oscurecer el resto de la página.'}
+              {config.template === 'grid' && ' En la tienda, "Grid con banners" muestra un panel más ancho con banners a 3 columnas y resultados en tarjetas.'}
             </div>
           </div>
         </div>
