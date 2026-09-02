@@ -99,16 +99,22 @@ function registerSearchRoutes(app, { db, FieldValue, checkStoreActive }) {
       });
       let results = fuse.search(String(q)).slice(0, 12).map((r) => r.item);
       let usedAI = false;
+      let debug = { catalogSize: catalog.length, fuzzyCount: results.length, aiEnabled: !!cfg.aiEnabled, hasKey: !!process.env.ANTHROPIC_API_KEY };
 
       if (results.length === 0 && cfg.aiEnabled && process.env.ANTHROPIC_API_KEY) {
-        const aiResults = await searchWithAI(String(q), catalog);
-        if (aiResults.length) {
-          results = aiResults;
-          usedAI = true;
+        try {
+          const aiResults = await searchWithAI(String(q), catalog);
+          debug.aiResultCount = aiResults.length;
+          if (aiResults.length) {
+            results = aiResults;
+            usedAI = true;
+          }
+        } catch (aiError) {
+          debug.aiError = aiError.message;
         }
       }
 
-      res.json({ success: true, products: results, usedAI });
+      res.json({ success: true, products: results, usedAI, debug });
     } catch (error) {
       console.error("[Search query]", error);
       res.status(500).json({ success: false, products: [], usedAI: false, message: error.message });
@@ -222,7 +228,10 @@ async function searchWithAI(query, catalog) {
         }],
       }),
     });
-    if (!resp.ok) return [];
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(`Anthropic API ${resp.status}: ${t.slice(0, 200)}`);
+    }
     const data = await resp.json();
     const text = (data.content && data.content[0] && data.content[0].text) || "[]";
     const ids = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] || "[]");
@@ -230,7 +239,7 @@ async function searchWithAI(query, catalog) {
     return ids.map((id) => byId.get(id)).filter(Boolean);
   } catch (error) {
     console.error("[Search AI]", error);
-    return [];
+    throw error;
   }
 }
 
