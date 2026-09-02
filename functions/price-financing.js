@@ -3,14 +3,22 @@
 // Precios y Cuotas - descuento efectivo/transferencia + planes de cuotas,
 // mostrados en el listado de productos, la página de producto y (opcional)
 // una barra de progreso en el carrito hacia el próximo plan sin interés.
-// Entrega al storefront vía script legacy (Tiendanube Scripts API clásica),
-// mismo mecanismo ya probado en producción por Local Stock — no usa NubeSDK.
+// Entrega al storefront vía script legacy (bootstrap subido y registrado en
+// Tiendanube Partners como "Precios y Cuotas PromoNube" #9835), no usa NubeSDK.
+// Una vez publicada la app, los scripts ad-hoc por API ya no se pueden crear
+// dinámicamente — deben existir en el catálogo de la app en Partners primero.
+// Con "Instalación automática" apagada, cada tienda se activa vía
+// POST /2025-03/{storeId}/scripts { script_id } (ver /api/price-financing/install).
 //
 // Un doc por store en `promonube_price_financing`. GET/POST /api/price-financing-config
 // son para el admin React. GET /api/price-financing-widget.js es el script que se
 // instala en la tienda (público, gateado por suscripción activa).
 
 const COLLECTION = "promonube_price_financing";
+
+// Id numérico del script "Precios y Cuotas PromoNube" registrado en
+// TiendaNube Partners (Aplicaciones → GlowLab #23137 → Scripts).
+const PRICE_FINANCING_SCRIPT_ID = 9835;
 
 const DEFAULT_CONFIG = {
   enabled: true,
@@ -105,23 +113,11 @@ function registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, H
       if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Store no encontrada" });
 
       const accessToken = storeDoc.data().accessToken;
-      const scriptUrl = `${HOSTING_URL}/api/price-financing-widget.js?store=${storeId}`;
 
-      const listRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
-        headers: {
-          "Authentication": `bearer ${accessToken}`,
-          "User-Agent": "GlowLab (info@techdi.com.ar)",
-        },
-      });
-      const list = await listRes.json();
-      const scripts = Array.isArray(list) ? list : (list.result || []);
-      const existing = scripts.find((s) => s.src && s.src.includes("price-financing-widget"));
-
-      if (existing) {
-        return res.json({ success: true, message: "Ya estaba instalado", scriptId: existing.id });
-      }
-
-      const installRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/scripts`, {
+      // Activa (asocia) el script "Precios y Cuotas PromoNube" ya registrado en
+      // Partners (id fijo, no auto-instalado) para esta tienda puntual.
+      // Docs: https://tiendanube.github.io/api-documentation/resources/script
+      const installRes = await fetch(`https://api.tiendanube.com/2025-03/${storeId}/scripts`, {
         method: "POST",
         headers: {
           "Authentication": `bearer ${accessToken}`,
@@ -129,10 +125,7 @@ function registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, H
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          script_id: Date.now(),
-          event: "onload",
-          src: scriptUrl,
-          where: "store",
+          script_id: PRICE_FINANCING_SCRIPT_ID,
         }),
       });
 
@@ -142,7 +135,7 @@ function registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, H
       }
 
       const installed = await installRes.json();
-      res.json({ success: true, message: "Script instalado", scriptId: installed.id });
+      res.json({ success: true, message: "Script activado para la tienda", result: installed });
     } catch (error) {
       console.error("[PriceFinancing install]", error);
       res.status(500).json({ success: false, message: error.message });
