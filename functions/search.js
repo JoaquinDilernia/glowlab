@@ -94,7 +94,7 @@ function registerSearchRoutes(app, { db, FieldValue, checkStoreActive }) {
 
       const fuse = new Fuse(catalog, {
         keys: ["name", "tags"],
-        threshold: 0.4,
+        threshold: 0.5,
         ignoreLocation: true,
       });
       let results = fuse.search(String(q)).slice(0, 12).map((r) => r.item);
