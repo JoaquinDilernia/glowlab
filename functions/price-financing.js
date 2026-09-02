@@ -26,6 +26,10 @@ const DEFAULT_CONFIG = {
   showOnPDP: true,
   cashDiscountPercent: 0,
   transferDiscountPercent: 0,
+  transferLabel: "por transferencia",
+  cashLabel: "en efectivo",
+  installmentsFreeLabel: "cuotas sin interés de",
+  installmentsPaidLabel: "cuotas de",
   customMessage: "",
   installmentPlans: [],
   cartProgressBar: { enabled: false },
@@ -91,6 +95,10 @@ function registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, H
         showOnPDP: cfg.showOnPDP !== false,
         cashDiscountPercent: Number(cfg.cashDiscountPercent) || 0,
         transferDiscountPercent: Number(cfg.transferDiscountPercent) || 0,
+        transferLabel: cfg.transferLabel || DEFAULT_CONFIG.transferLabel,
+        cashLabel: cfg.cashLabel || DEFAULT_CONFIG.cashLabel,
+        installmentsFreeLabel: cfg.installmentsFreeLabel || DEFAULT_CONFIG.installmentsFreeLabel,
+        installmentsPaidLabel: cfg.installmentsPaidLabel || DEFAULT_CONFIG.installmentsPaidLabel,
         customMessage: cfg.customMessage || "",
         installmentPlans: Array.isArray(cfg.installmentPlans) ? cfg.installmentPlans : [],
         cartProgressBar: { enabled: !!(cfg.cartProgressBar && cfg.cartProgressBar.enabled) },
@@ -238,21 +246,21 @@ function buildWidgetScript(store, cfg) {
     var cashPct = CFG.cashDiscountPercent;
     if (transferPct > 0) {
       var transferPrice = price * (1 - transferPct / 100);
-      lines.push('<div class="pn-pf-line pn-pf-discount">$' + fmt(transferPrice) + ' por transferencia (' + transferPct + '% OFF)</div>');
+      lines.push('<div class="pn-pf-line pn-pf-discount">$' + fmt(transferPrice) + ' ' + CFG.transferLabel + ' (' + transferPct + '% OFF)</div>');
     }
     if (cashPct > 0) {
       var cashPrice = price * (1 - cashPct / 100);
-      lines.push('<div class="pn-pf-line pn-pf-discount">$' + fmt(cashPrice) + ' en efectivo (' + cashPct + '% OFF)</div>');
+      lines.push('<div class="pn-pf-line pn-pf-discount">$' + fmt(cashPrice) + ' ' + CFG.cashLabel + ' (' + cashPct + '% OFF)</div>');
     }
     (CFG.installmentPlans || []).forEach(function(plan) {
       if (!plan || !plan.months) return;
       var perMonth = price / plan.months;
       if (plan.interestFree) {
-        lines.push('<div class="pn-pf-line pn-pf-installments">Hasta ' + plan.months + ' cuotas sin interés de $' + fmt(perMonth) + '</div>');
+        lines.push('<div class="pn-pf-line pn-pf-installments">Hasta ' + plan.months + ' ' + CFG.installmentsFreeLabel + ' $' + fmt(perMonth) + '</div>');
       } else {
         var rate = Number(plan.interestRate) || 0;
         var withInterest = perMonth * (1 + rate / 100);
-        lines.push('<div class="pn-pf-line pn-pf-installments">' + plan.months + ' cuotas de $' + fmt(withInterest) + '</div>');
+        lines.push('<div class="pn-pf-line pn-pf-installments">' + plan.months + ' ' + CFG.installmentsPaidLabel + ' $' + fmt(withInterest) + '</div>');
       }
     });
     if (CFG.customMessage) {

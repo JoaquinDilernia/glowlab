@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Percent, Eye, Plus, Trash2, Rocket } from 'lucide-react';
+import { ArrowLeft, Save, Percent, Eye, Plus, Trash2 } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
 import './StyleConfig.css';
@@ -12,6 +12,10 @@ const DEFAULT_CONFIG = {
   showOnPDP: true,
   cashDiscountPercent: 0,
   transferDiscountPercent: 10,
+  transferLabel: 'por transferencia',
+  cashLabel: 'en efectivo',
+  installmentsFreeLabel: 'cuotas sin interés de',
+  installmentsPaidLabel: 'cuotas de',
   customMessage: '',
   installmentPlans: [
     { months: 3, interestFree: true, interestRate: 0, minAmount: 0 },
@@ -32,7 +36,6 @@ function PriceFinancingConfig() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [installing, setInstalling] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
 
   useEffect(() => {
@@ -85,22 +88,6 @@ function PriceFinancingConfig() {
     }
   }, [storeId, config, toast]);
 
-  const install = async () => {
-    setInstalling(true);
-    try {
-      const res = await apiRequest('/api/price-financing/install', {
-        method: 'POST',
-        body: JSON.stringify({ storeId }),
-      });
-      if (res?.success) toast.success(res.message || 'Script instalado');
-      else toast.error(res?.message || 'No se pudo instalar');
-    } catch (e) {
-      toast.error('Error: ' + e.message);
-    } finally {
-      setInstalling(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="page-container pf-page">
@@ -131,10 +118,6 @@ function PriceFinancingConfig() {
           <ArrowLeft size={16} /> Volver
         </button>
         <div className="pf-topbar-actions">
-          <button className="pf-btn-install" onClick={install} disabled={installing}>
-            <Rocket size={16} />
-            {installing ? 'Instalando…' : 'Instalar en TiendaNube'}
-          </button>
           <button className="pf-btn-save" onClick={save} disabled={saving}>
             <Save size={16} />
             {saving ? 'Guardando…' : 'Guardar'}
@@ -181,9 +164,34 @@ function PriceFinancingConfig() {
                 onChange={e => handle('cashDiscountPercent', Number(e.target.value))} />
             </div>
             <div className="form-group">
+              <label>Texto (efectivo)</label>
+              <input type="text" value={config.cashLabel}
+                onChange={e => handle('cashLabel', e.target.value)} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
               <label>% Descuento transferencia</label>
               <input type="number" min="0" max="100" value={config.transferDiscountPercent}
                 onChange={e => handle('transferDiscountPercent', Number(e.target.value))} />
+            </div>
+            <div className="form-group">
+              <label>Texto (transferencia)</label>
+              <input type="text" value={config.transferLabel}
+                onChange={e => handle('transferLabel', e.target.value)} />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Texto cuotas sin interés</label>
+              <input type="text" value={config.installmentsFreeLabel}
+                onChange={e => handle('installmentsFreeLabel', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Texto cuotas con interés</label>
+              <input type="text" value={config.installmentsPaidLabel}
+                onChange={e => handle('installmentsPaidLabel', e.target.value)} />
             </div>
           </div>
 
@@ -252,19 +260,19 @@ function PriceFinancingConfig() {
               <div className="pf-preview-block">
                 {transferPrice !== null && (
                   <div className="pf-preview-line pf-preview-discount">
-                    ${fmt(transferPrice)} por transferencia <span className="pf-pill">{config.transferDiscountPercent}% OFF</span>
+                    ${fmt(transferPrice)} {config.transferLabel} <span className="pf-pill">{config.transferDiscountPercent}% OFF</span>
                   </div>
                 )}
                 {cashPrice !== null && (
                   <div className="pf-preview-line pf-preview-discount">
-                    ${fmt(cashPrice)} en efectivo <span className="pf-pill">{config.cashDiscountPercent}% OFF</span>
+                    ${fmt(cashPrice)} {config.cashLabel} <span className="pf-pill">{config.cashDiscountPercent}% OFF</span>
                   </div>
                 )}
                 {config.installmentPlans.map((plan, i) => plan.months ? (
                   <div key={i} className="pf-preview-line pf-preview-installments">
                     {plan.interestFree
-                      ? `Hasta ${plan.months} cuotas sin interés de $${fmt(PREVIEW_PRICE / plan.months)}`
-                      : `${plan.months} cuotas de $${fmt((PREVIEW_PRICE / plan.months) * (1 + (plan.interestRate || 0) / 100))}`}
+                      ? `Hasta ${plan.months} ${config.installmentsFreeLabel} $${fmt(PREVIEW_PRICE / plan.months)}`
+                      : `${plan.months} ${config.installmentsPaidLabel} $${fmt((PREVIEW_PRICE / plan.months) * (1 + (plan.interestRate || 0) / 100))}`}
                   </div>
                 ) : null)}
                 {config.customMessage && (
@@ -284,7 +292,7 @@ function PriceFinancingConfig() {
             )}
 
             <div className="pf-help">
-              <strong>Para activarlo:</strong> guardá los cambios y tocá "Instalar en TiendaNube" una vez — el script queda instalado en la tienda y se actualiza solo cada vez que guardás cambios acá.
+              <strong>Para activarlo:</strong> guardá los cambios. El módulo se activa solo en tu tienda y se actualiza cada vez que guardás cambios acá.
             </div>
           </div>
         </div>

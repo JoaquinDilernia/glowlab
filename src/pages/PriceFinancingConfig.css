@@ -15,7 +15,6 @@
   gap: 10px;
 }
 
-.pf-btn-install,
 .pf-btn-save {
   display: inline-flex;
   align-items: center;
@@ -29,16 +28,6 @@
   transition: all 0.2s;
 }
 
-.pf-btn-install {
-  background: rgba(0, 217, 255, 0.1);
-  color: var(--gl-text-accent);
-  border: 1px solid rgba(0, 217, 255, 0.35);
-}
-.pf-btn-install:hover:not(:disabled) {
-  background: rgba(0, 217, 255, 0.18);
-  border-color: rgba(0, 217, 255, 0.6);
-}
-
 .pf-btn-save {
   background: var(--gl-accent-gradient);
   color: #fff;
@@ -49,7 +38,7 @@
   box-shadow: 0 6px 22px rgba(0, 217, 255, 0.45);
 }
 
-.pf-btn-install:disabled, .pf-btn-save:disabled { opacity: 0.6; cursor: wait; }
+.pf-btn-save:disabled { opacity: 0.6; cursor: wait; }
 
 .pf-hero {
   display: flex;
