@@ -197,6 +197,7 @@ function buildWidgetScript(store, cfg) {
   }
 
   var PRICE_SELECTORS = [
+    '.js-price-with-discount', '.js-price-display',
     '.js-product-price', '.product-detail-price', '.js-product-detail-price',
     '[data-store="product-price"]', '.product-price', '.price-detail', '.js-compat-price',
   ];
