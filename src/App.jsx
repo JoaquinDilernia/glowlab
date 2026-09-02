@@ -28,6 +28,9 @@ import ShopTheLookConfig from './pages/ShopTheLookConfig';
 import FlashSaleConfig from './pages/FlashSaleConfig';
 import BannerConfig from './pages/BannerConfig';
 import AnnouncementBarConfig from './pages/AnnouncementBarConfig';
+import StorefrontBlocksList from './pages/StorefrontBlocksList';
+import StorefrontBlockConfig from './pages/StorefrontBlockConfig';
+import PriceFinancingConfig from './pages/PriceFinancingConfig';
 import './App.css';
 
 function App() {
@@ -72,6 +75,9 @@ function App() {
           <Route path="/popups/:popupId/config" element={<PopupConfig />} />
           <Route path="/local-stock" element={<LocalStockConfig />} />
           <Route path="/checkout-notice" element={<CheckoutNoticeConfig />} />
+          <Route path="/storefront-blocks" element={<StorefrontBlocksList />} />
+          <Route path="/storefront-blocks/:blockId/config" element={<StorefrontBlockConfig />} />
+          <Route path="/precios-cuotas" element={<PriceFinancingConfig />} />
         </Route>
       </Routes>
       <a

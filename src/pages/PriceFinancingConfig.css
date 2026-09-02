@@ -1,0 +1,56 @@
+.pf-page .page-title-gradient { color: #fff !important; -webkit-text-fill-color: #fff !important; }
+.pf-page .page-subtitle-modern { color: rgba(255,255,255,0.85) !important; -webkit-text-fill-color: rgba(255,255,255,0.85) !important; }
+
+.pf-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.pf-plan-row {
+  display: grid;
+  grid-template-columns: 90px 90px 100px 130px 32px;
+  gap: 10px;
+  align-items: end;
+}
+
+.pf-btn-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pf-btn-add:hover { background: #f9fafb; }
+
+.pf-btn-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  width: 32px;
+  border-radius: 8px;
+  border: 1.5px solid #fecaca;
+  background: #fff;
+  color: #dc2626;
+  cursor: pointer;
+}
+.pf-btn-remove:hover { background: #fef2f2; }
+
+.pf-preview-block {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pf-preview-line { font-size: 13px; }
+.pf-preview-discount { color: #16a34a; font-weight: 600; }
+.pf-preview-installments { color: #374151; }
+.pf-preview-message { color: #9ca3af; font-size: 12px; }

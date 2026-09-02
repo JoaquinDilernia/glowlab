@@ -74,6 +74,8 @@ function invalidateConfigCache(storeId) {
   _configCache.delete(`sub:${storeId}`);
   _configCache.delete(`popups:${storeId}`);
   _configCache.delete(`promonube_checkout_notice_config/${storeId}`);
+  _configCache.delete(`promonube_storefront_blocks/${storeId}`);
+  _configCache.delete(`promonube_price_financing/${storeId}`);
 }
 
 async function checkStoreActive(storeId) {
@@ -720,6 +722,7 @@ async function uploadGiftCardImage(imageBuffer, storeId, productId) {
     await file.save(imageBuffer, {
       metadata: {
         contentType: 'image/png',
+        cacheControl: 'public, max-age=604800',
         metadata: {
           storeId,
           productId,
@@ -747,6 +750,14 @@ async function uploadGiftCardImage(imageBuffer, storeId, productId) {
 const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: '10mb' }));
+
+// Vidriera Shoppable - bloques insertables en el home (Nube SDK)
+const { registerStorefrontBlocksRoutes } = require('./storefront-blocks');
+registerStorefrontBlocksRoutes(app, { db, FieldValue, getCachedDoc, invalidateConfigCache, checkStoreActive });
+
+// Precios y Cuotas - descuento efectivo/transferencia + cuotas en listado, PDP y carrito
+const { registerPriceFinancingRoutes } = require('./price-financing');
+registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, HOSTING_URL });
 
 // ============================================
 // CONFIGURACI�N OAUTH TIENDANUBE
@@ -15192,7 +15203,10 @@ app.post("/api/upload-image-base64", async (req, res) => {
     
     await fileUpload.save(buffer, {
       metadata: {
-        contentType: mimeType
+        contentType: mimeType,
+        // Estas imagenes se sirven en storefronts de clientes en cada pageview;
+        // sin esto, trafico alto factura egress de Storage en cada carga.
+        cacheControl: 'public, max-age=604800'
       }
     });
     
@@ -15270,7 +15284,8 @@ app.post("/api/upload-image", (req, res, next) => {
     
     await fileUpload.save(req.file.buffer, {
       metadata: {
-        contentType: req.file.mimetype
+        contentType: req.file.mimetype,
+        cacheControl: 'public, max-age=604800'
       }
     });
     
