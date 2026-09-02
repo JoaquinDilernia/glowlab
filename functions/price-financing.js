@@ -202,10 +202,17 @@ function buildWidgetScript(store, cfg) {
     '[data-store="product-price"]', '.product-price', '.price-detail', '.js-compat-price',
   ];
 
+  function isVisible(el) {
+    var r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+
   function findPriceNode(scope) {
     for (var i = 0; i < PRICE_SELECTORS.length; i++) {
-      var el = scope.querySelector(PRICE_SELECTORS[i]);
-      if (el) return el;
+      var candidates = scope.querySelectorAll(PRICE_SELECTORS[i]);
+      for (var j = 0; j < candidates.length; j++) {
+        if (isVisible(candidates[j])) return candidates[j];
+      }
     }
     return null;
   }
