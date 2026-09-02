@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Percent, Eye, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Percent, Eye, Plus, Trash2, Rocket } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
-import './LocalStockConfig.css';
+import './StyleConfig.css';
 import './PriceFinancingConfig.css';
 
 const DEFAULT_CONFIG = {
@@ -102,7 +102,14 @@ function PriceFinancingConfig() {
   };
 
   if (loading) {
-    return <div className="page-container"><div className="loading-state"><div className="spinner" /><p>Cargando…</p></div></div>;
+    return (
+      <div className="page-container pf-page">
+        <div className="pf-loading">
+          <div className="pf-spinner" />
+          <p>Cargando…</p>
+        </div>
+      </div>
+    );
   }
 
   const transferPrice = config.transferDiscountPercent > 0
@@ -119,186 +126,169 @@ function PriceFinancingConfig() {
 
   return (
     <div className="page-container pf-page">
-      <header className="page-header-modern">
-        <div className="header-content-modern">
-          <div className="header-top-modern">
-            <button className="btn-back" onClick={() => navigate('/dashboard')}><ArrowLeft size={18} /> Volver</button>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn-secondary-outline" onClick={install} disabled={installing}
-                style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', cursor: installing ? 'wait' : 'pointer', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                {installing ? 'Instalando…' : 'Instalar en TiendaNube'}
-              </button>
-              <button className="btn-primary-gradient" onClick={save} disabled={saving}>
-                <Save size={18} />
-                <span>{saving ? 'Guardando…' : 'Guardar'}</span>
-              </button>
-            </div>
-          </div>
-          <div className="header-info-section">
-            <h1 className="page-title-gradient">💳 Precios y Cuotas</h1>
-            <p className="page-subtitle-modern">Mostrá descuentos por efectivo/transferencia y planes de cuotas en el listado y la página de producto</p>
-          </div>
+      <div className="pf-topbar">
+        <button className="btn-back" onClick={() => navigate('/dashboard')}>
+          <ArrowLeft size={16} /> Volver
+        </button>
+        <div className="pf-topbar-actions">
+          <button className="pf-btn-install" onClick={install} disabled={installing}>
+            <Rocket size={16} />
+            {installing ? 'Instalando…' : 'Instalar en TiendaNube'}
+          </button>
+          <button className="pf-btn-save" onClick={save} disabled={saving}>
+            <Save size={16} />
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
         </div>
-      </header>
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 480px)', gap: 24, padding: 24, maxWidth: 1280, margin: '0 auto' }}>
+      <div className="pf-hero">
+        <div className="pf-hero-icon"><Percent size={22} /></div>
+        <div>
+          <h1>Precios y Cuotas</h1>
+          <p>Descuentos por efectivo/transferencia y planes de cuotas, en el listado y la página de producto.</p>
+        </div>
+      </div>
+
+      <div className="pf-layout">
         {/* Form */}
-        <div className="pf-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Configuración</h2>
-            <label className="toggle-switch" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="config-section pf-form-section">
+          <div className="section-header pf-section-header">
+            <h2>Configuración</h2>
+            <label className="toggle-switch">
               <input type="checkbox" checked={!!config.enabled} onChange={e => handle('enabled', e.target.checked)} />
               <span className="toggle-slider"></span>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{config.enabled ? 'Activo' : 'Inactivo'}</span>
             </label>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-                <input type="checkbox" checked={!!config.showOnListing} onChange={e => handle('showOnListing', e.target.checked)} />
-                Mostrar en listado de productos
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-                <input type="checkbox" checked={!!config.showOnPDP} onChange={e => handle('showOnPDP', e.target.checked)} />
-                Mostrar en página de producto
-              </label>
+          <div className="pf-block-title">Dónde se muestra</div>
+          <div className="form-row pf-checks-row">
+            <label className="pf-check">
+              <input type="checkbox" checked={!!config.showOnListing} onChange={e => handle('showOnListing', e.target.checked)} />
+              Listado de productos
+            </label>
+            <label className="pf-check">
+              <input type="checkbox" checked={!!config.showOnPDP} onChange={e => handle('showOnPDP', e.target.checked)} />
+              Página de producto
+            </label>
+          </div>
+
+          <div className="pf-block-title">Descuentos</div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>% Descuento efectivo</label>
+              <input type="number" min="0" max="100" value={config.cashDiscountPercent}
+                onChange={e => handle('cashDiscountPercent', Number(e.target.value))} />
             </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <Field label="% Descuento efectivo">
-                <input type="number" min="0" max="100" value={config.cashDiscountPercent}
-                  onChange={e => handle('cashDiscountPercent', Number(e.target.value))} style={inp} />
-              </Field>
-              <Field label="% Descuento transferencia">
-                <input type="number" min="0" max="100" value={config.transferDiscountPercent}
-                  onChange={e => handle('transferDiscountPercent', Number(e.target.value))} style={inp} />
-              </Field>
+            <div className="form-group">
+              <label>% Descuento transferencia</label>
+              <input type="number" min="0" max="100" value={config.transferDiscountPercent}
+                onChange={e => handle('transferDiscountPercent', Number(e.target.value))} />
             </div>
+          </div>
 
-            <Field label="Mensaje personalizado (opcional)">
-              <input type="text" value={config.customMessage} placeholder="Ej: todos los precios son sin IVA"
-                onChange={e => handle('customMessage', e.target.value)} style={inp} />
-            </Field>
+          <div className="form-group">
+            <label>Mensaje personalizado (opcional)</label>
+            <input type="text" value={config.customMessage} placeholder="Ej: todos los precios son sin IVA"
+              onChange={e => handle('customMessage', e.target.value)} />
+          </div>
 
-            <hr style={{ border: 0, borderTop: '1px solid #e5e7eb', margin: '8px 0' }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: 14, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>Planes de cuotas</h3>
-              <button onClick={addPlan} className="pf-btn-add"><Plus size={14} /> Agregar plan</button>
-            </div>
+          <div className="pf-block-title pf-block-title-row">
+            Planes de cuotas
+            <button onClick={addPlan} className="pf-btn-add"><Plus size={14} /> Agregar plan</button>
+          </div>
 
+          <div className="pf-plans">
             {config.installmentPlans.map((plan, i) => (
-              <div key={i} className="pf-plan-row">
-                <Field label="Meses">
-                  <input type="number" min="1" value={plan.months}
-                    onChange={e => handlePlan(i, { months: Number(e.target.value) })} style={inp} />
-                </Field>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap' }}>
-                  <input type="checkbox" checked={!!plan.interestFree}
-                    onChange={e => handlePlan(i, { interestFree: e.target.checked })} />
-                  Sin interés
-                </label>
-                <Field label="% interés">
-                  <input type="number" min="0" value={plan.interestRate || 0} disabled={plan.interestFree}
-                    onChange={e => handlePlan(i, { interestRate: Number(e.target.value) })} style={inp} />
-                </Field>
-                <Field label="Monto mín. (carrito)">
-                  <input type="number" min="0" value={plan.minAmount || 0}
-                    onChange={e => handlePlan(i, { minAmount: Number(e.target.value) })} style={inp} />
-                </Field>
+              <div key={i} className="pf-plan-card">
+                <div className="pf-plan-fields">
+                  <div className="form-group pf-plan-field-sm">
+                    <label>Meses</label>
+                    <input type="number" min="1" value={plan.months}
+                      onChange={e => handlePlan(i, { months: Number(e.target.value) })} />
+                  </div>
+                  <label className="pf-check pf-plan-interest-free">
+                    <input type="checkbox" checked={!!plan.interestFree}
+                      onChange={e => handlePlan(i, { interestFree: e.target.checked })} />
+                    Sin interés
+                  </label>
+                  <div className="form-group pf-plan-field-sm">
+                    <label>% interés</label>
+                    <input type="number" min="0" value={plan.interestRate || 0} disabled={plan.interestFree}
+                      onChange={e => handlePlan(i, { interestRate: Number(e.target.value) })} />
+                  </div>
+                  <div className="form-group pf-plan-field-md">
+                    <label>Monto mín. carrito</label>
+                    <input type="number" min="0" value={plan.minAmount || 0}
+                      onChange={e => handlePlan(i, { minAmount: Number(e.target.value) })} />
+                  </div>
+                </div>
                 <button onClick={() => removePlan(i)} className="pf-btn-remove" title="Eliminar plan">
                   <Trash2 size={16} />
                 </button>
               </div>
             ))}
-
-            <hr style={{ border: 0, borderTop: '1px solid #e5e7eb', margin: '8px 0' }} />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-              <input type="checkbox" checked={!!config.cartProgressBar?.enabled}
-                onChange={e => handle('cartProgressBar', { enabled: e.target.checked })} />
-              Mostrar barra de progreso en el carrito hacia el próximo plan sin interés
-            </label>
-            <p style={{ fontSize: 12, color: '#9ca3af', margin: 0 }}>
-              Se activa solo si algún plan tiene un "Monto mínimo" mayor a 0.
-            </p>
           </div>
+
+          <div className="pf-block-title">Carrito</div>
+          <label className="pf-check">
+            <input type="checkbox" checked={!!config.cartProgressBar?.enabled}
+              onChange={e => handle('cartProgressBar', { enabled: e.target.checked })} />
+            Mostrar barra de progreso hacia el próximo plan sin interés
+          </label>
+          <p className="pf-hint">Se activa solo si algún plan tiene un "Monto mínimo" mayor a 0.</p>
         </div>
 
         {/* Preview */}
-        <div>
-          <div style={{ position: 'sticky', top: 24 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: '#6b7280', fontSize: 13, fontWeight: 600 }}>
-              <Eye size={16} /> Vista previa
-            </div>
-            <div style={{ background: '#f3f4f6', padding: 24, borderRadius: 14, border: '1px dashed #d1d5db' }}>
-              <div style={{ background: '#fff', padding: 20, borderRadius: 8, marginBottom: 12 }}>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>Producto de ejemplo</div>
-                <div style={{ height: 100, background: '#f3f4f6', borderRadius: 8, marginBottom: 12 }} />
-                <div style={{ fontSize: 20, fontWeight: 700 }}>${fmt(PREVIEW_PRICE)}</div>
+        <div className="pf-preview-col">
+          <div className="pf-preview-sticky">
+            <div className="pf-preview-label"><Eye size={15} /> Vista previa</div>
 
-                <div className="pf-preview-block">
-                  {transferPrice !== null && (
-                    <div className="pf-preview-line pf-preview-discount">
-                      ${fmt(transferPrice)} por transferencia ({config.transferDiscountPercent}% OFF)
-                    </div>
-                  )}
-                  {cashPrice !== null && (
-                    <div className="pf-preview-line pf-preview-discount">
-                      ${fmt(cashPrice)} en efectivo ({config.cashDiscountPercent}% OFF)
-                    </div>
-                  )}
-                  {config.installmentPlans.map((plan, i) => plan.months ? (
-                    <div key={i} className="pf-preview-line pf-preview-installments">
-                      {plan.interestFree
-                        ? `Hasta ${plan.months} cuotas sin interés de $${fmt(PREVIEW_PRICE / plan.months)}`
-                        : `${plan.months} cuotas de $${fmt((PREVIEW_PRICE / plan.months) * (1 + (plan.interestRate || 0) / 100))}`}
-                    </div>
-                  ) : null)}
-                  {config.customMessage && (
-                    <div className="pf-preview-line pf-preview-message">{config.customMessage}</div>
-                  )}
-                </div>
+            <div className="pf-preview-card">
+              <div className="pf-preview-thumb" />
+              <div className="pf-preview-name">Producto de ejemplo</div>
+              <div className="pf-preview-price">${fmt(PREVIEW_PRICE)}</div>
+
+              <div className="pf-preview-block">
+                {transferPrice !== null && (
+                  <div className="pf-preview-line pf-preview-discount">
+                    ${fmt(transferPrice)} por transferencia <span className="pf-pill">{config.transferDiscountPercent}% OFF</span>
+                  </div>
+                )}
+                {cashPrice !== null && (
+                  <div className="pf-preview-line pf-preview-discount">
+                    ${fmt(cashPrice)} en efectivo <span className="pf-pill">{config.cashDiscountPercent}% OFF</span>
+                  </div>
+                )}
+                {config.installmentPlans.map((plan, i) => plan.months ? (
+                  <div key={i} className="pf-preview-line pf-preview-installments">
+                    {plan.interestFree
+                      ? `Hasta ${plan.months} cuotas sin interés de $${fmt(PREVIEW_PRICE / plan.months)}`
+                      : `${plan.months} cuotas de $${fmt((PREVIEW_PRICE / plan.months) * (1 + (plan.interestRate || 0) / 100))}`}
+                  </div>
+                ) : null)}
+                {config.customMessage && (
+                  <div className="pf-preview-line pf-preview-message">{config.customMessage}</div>
+                )}
               </div>
-
-              {config.cartProgressBar?.enabled && nextPlan && (
-                <div style={{ background: '#fff', padding: 16, borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>Carrito</div>
-                  <div style={{ fontSize: 13, marginBottom: 6 }}>
-                    Te faltan ${fmt(nextPlan.minAmount * 0.4)} para acceder a {nextPlan.months} cuotas sin interés
-                  </div>
-                  <div style={{ height: 6, borderRadius: 999, background: '#eee', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: '60%', background: '#16a34a' }} />
-                  </div>
-                </div>
-              )}
             </div>
 
-            <div className="pf-help" style={{ marginTop: 16, fontSize: 13, color: '#6b7280' }}>
+            {config.cartProgressBar?.enabled && nextPlan && (
+              <div className="pf-preview-card pf-preview-cart">
+                <div className="pf-preview-name">Carrito</div>
+                <div className="pf-preview-line" style={{ marginTop: 6 }}>
+                  Te faltan ${fmt(nextPlan.minAmount * 0.4)} para acceder a {nextPlan.months} cuotas sin interés
+                </div>
+                <div className="pf-progress-bar"><div className="pf-progress-fill" style={{ width: '60%' }} /></div>
+              </div>
+            )}
+
+            <div className="pf-help">
               <strong>Para activarlo:</strong> guardá los cambios y tocá "Instalar en TiendaNube" una vez — el script queda instalado en la tienda y se actualiza solo cada vez que guardás cambios acá.
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-const inp = {
-  width: '100%',
-  padding: '10px 12px',
-  border: '1.5px solid #e5e7eb',
-  borderRadius: 8,
-  fontSize: 14,
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
-  background: '#fff',
-};
-
-function Field({ label, children }) {
-  return (
-    <div>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</label>
-      {children}
     </div>
   );
 }
