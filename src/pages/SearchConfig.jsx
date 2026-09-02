@@ -134,6 +134,8 @@ function SearchConfig() {
   const previewFiltered = previewQuery
     ? PREVIEW_PRODUCTS.filter(p => p.name.toLowerCase().includes(previewQuery.toLowerCase()))
     : PREVIEW_PRODUCTS;
+  const bannersWithImage = config.banners.filter(b => b.imageUrl);
+  const hasFeatured = config.featuredSearches.filter(f => f.label).length > 0;
 
   return (
     <div className="page-container sc-page">
@@ -265,73 +267,89 @@ function SearchConfig() {
         <div className="sc-preview-col">
           <div className="sc-preview-sticky">
             <div className="sc-preview-label"><Eye size={15} /> Vista previa {config.template === 'compact' && <span className="sc-preview-tag">dropdown anclado</span>}</div>
-            <div className={`sc-preview-panel sc-tpl-${config.template}`} style={{ fontFamily: config.fontFamily }}>
-              <div className="sc-preview-head">
-                <input
-                  className="sc-preview-input"
-                  style={{ fontSize: fontSizeMap[config.fontSize] }}
-                  placeholder={config.title}
-                  value={previewQuery}
-                  onChange={e => setPreviewQuery(e.target.value)}
-                />
+
+            {config.template === 'compact' && (
+              <div className="sc-preview-compact-header">
+                <span>Tu tienda</span>
+                <span className="sc-preview-compact-icon"><Search size={13} /></span>
               </div>
-              <div className="sc-preview-body">
-                {previewQuery ? (
-                  previewFiltered.length ? (
-                    config.template === 'grid' ? (
-                      <div className="sc-preview-results-grid">
-                        {previewFiltered.map((p, i) => (
-                          <div key={i} className="sc-preview-result-card">
-                            <div className="sc-preview-thumb sc-preview-thumb-sq" />
+            )}
+
+            <div className={`sc-preview-panel sc-tpl-${config.template}`} style={{ fontFamily: config.fontFamily }}>
+              {config.template === 'grid' && bannersWithImage.length > 0 && (
+                <div className="sc-preview-side">
+                  {bannersWithImage.map((b, i) => <img key={i} src={b.imageUrl} alt="" />)}
+                </div>
+              )}
+              <div className="sc-preview-main">
+                <div className="sc-preview-head">
+                  <input
+                    className="sc-preview-input"
+                    style={{ fontSize: fontSizeMap[config.fontSize] }}
+                    placeholder={config.title}
+                    value={previewQuery}
+                    onChange={e => setPreviewQuery(e.target.value)}
+                  />
+                </div>
+                <div className="sc-preview-body">
+                  {previewQuery ? (
+                    previewFiltered.length ? (
+                      config.template === 'grid' ? (
+                        <div className="sc-preview-results-grid">
+                          {previewFiltered.map((p, i) => (
+                            <div key={i} className="sc-preview-result-card">
+                              <div className="sc-preview-thumb sc-preview-thumb-sq" />
+                              <div className="sc-preview-result-name">{p.name}</div>
+                              <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : previewFiltered.map((p, i) => (
+                        <div key={i} className="sc-preview-result">
+                          <div className="sc-preview-thumb" />
+                          <div>
                             <div className="sc-preview-result-name">{p.name}</div>
                             <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
                           </div>
-                        ))}
-                      </div>
-                    ) : previewFiltered.map((p, i) => (
-                      <div key={i} className="sc-preview-result">
-                        <div className="sc-preview-thumb" />
-                        <div>
-                          <div className="sc-preview-result-name">{p.name}</div>
-                          <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
                         </div>
-                      </div>
-                    ))
-                  ) : <div className="sc-preview-empty">Sin resultados</div>
-                ) : (
-                  <>
-                    {config.banners.filter(b => b.imageUrl).length > 0 && (
-                      <>
-                        <div className="sc-preview-section-title">Destacado</div>
-                        <div className={`sc-preview-banners ${config.template === 'grid' ? 'sc-preview-banners-3col' : ''}`}>
-                          {config.banners.filter(b => b.imageUrl).map((b, i) => (
-                            <img key={i} src={b.imageUrl} alt="" />
-                          ))}
-                        </div>
-                      </>
-                    )}
-                    {config.featuredSearches.filter(f => f.label).length > 0 && (
-                      <>
-                        <div className="sc-preview-section-title">Búsquedas recomendadas</div>
-                        <div className="sc-preview-featured">
-                          {config.featuredSearches.filter(f => f.label).map((f, i) => (
-                            <span key={i}>{f.label}</span>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                    {config.banners.length === 0 && config.featuredSearches.length === 0 && (
-                      <div className="sc-preview-empty">Escribí algo arriba para ver resultados de ejemplo</div>
-                    )}
-                  </>
-                )}
+                      ))
+                    ) : <div className="sc-preview-empty">Sin resultados</div>
+                  ) : (
+                    <>
+                      {config.template === 'minimal' && bannersWithImage.length > 0 && (
+                        <>
+                          <div className="sc-preview-section-title">Destacado</div>
+                          <div className="sc-preview-banners">
+                            {bannersWithImage.map((b, i) => (
+                              <img key={i} src={b.imageUrl} alt="" />
+                            ))}
+                          </div>
+                        </>
+                      )}
+                      {hasFeatured && (
+                        <>
+                          <div className="sc-preview-section-title">Búsquedas recomendadas</div>
+                          <div className="sc-preview-featured">
+                            {config.featuredSearches.filter(f => f.label).map((f, i) => (
+                              <span key={i}>{f.label}</span>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                      {!hasFeatured && !(config.template === 'minimal' && bannersWithImage.length > 0) && !(config.template === 'grid' && bannersWithImage.length > 0) && (
+                        <div className="sc-preview-empty">Escribí algo arriba para ver resultados de ejemplo</div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="sc-help">
               <strong>Para activarlo:</strong> guardá los cambios. El módulo se activa solo en tu tienda y se actualiza cada vez que guardás cambios acá.
-              {config.template === 'compact' && ' En la tienda, "Compacto" aparece como un menú desplegable pegado al buscador, sin oscurecer el resto de la página.'}
-              {config.template === 'grid' && ' En la tienda, "Grid con banners" muestra un panel más ancho con banners a 3 columnas y resultados en tarjetas.'}
+              {config.template === 'compact' && ' "Compacto" no muestra banners: se abre como un menú chico pegado al ícono de búsqueda, sin oscurecer el resto de la página. Ideal para headers minimalistas.'}
+              {config.template === 'grid' && ' "Grid con banners" muestra los banners en una columna lateral fija (siempre visibles, incluso mientras se busca) y los resultados como tarjetas con imagen grande.'}
+              {config.template === 'minimal' && ' "Minimal" muestra los banners arriba de las búsquedas recomendadas, solo cuando el campo está vacío.'}
             </div>
           </div>
         </div>

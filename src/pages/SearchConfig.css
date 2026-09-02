@@ -215,6 +215,57 @@
   overflow: hidden;
 }
 
+/* Grid: columna lateral fija de banners */
+.sc-tpl-grid.sc-preview-panel { display: flex; align-items: stretch; }
+.sc-preview-side {
+  width: 120px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 10px;
+  background: #f6f6f6;
+  overflow-y: auto;
+  max-height: 320px;
+}
+.sc-preview-side img { width: 100%; border-radius: 8px; aspect-ratio: 3 / 4; object-fit: cover; display: block; }
+.sc-preview-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* Compacto: header simulado + panel angosto anclado a la derecha, sin banners */
+.sc-preview-compact-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #16213e;
+  border-radius: 14px 14px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+}
+.sc-preview-compact-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.sc-tpl-compact {
+  width: 280px;
+  max-width: 280px;
+  margin-left: auto;
+  margin-top: -1px;
+  border-radius: 0 0 14px 14px;
+}
+.sc-tpl-compact .sc-preview-result { padding: 6px 2px; gap: 8px; }
+.sc-tpl-compact .sc-preview-thumb { width: 34px; height: 34px; }
+.sc-tpl-compact .sc-preview-result-name { font-size: 12.5px; }
+.sc-tpl-compact .sc-preview-result-price { font-size: 11.5px; }
+.sc-tpl-compact .sc-preview-featured span { padding: 5px 10px; font-size: 11.5px; }
+
 .sc-preview-head {
   padding: 16px 18px;
   border-bottom: 1px solid #eee;
@@ -246,8 +297,6 @@
 
 .sc-preview-banners { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .sc-preview-banners img { width: 100%; height: 60px; object-fit: cover; border-radius: 8px; }
-.sc-preview-banners-3col { grid-template-columns: repeat(3, 1fr); }
-.sc-preview-banners-3col img { height: auto; aspect-ratio: 1 / 1; }
 
 .sc-preview-tag {
   font-size: 10px;
@@ -262,7 +311,6 @@
   margin-left: 6px;
 }
 
-.sc-tpl-compact { max-width: 340px; border: 1px solid #eee; }
 .sc-tpl-grid .sc-preview-result-price { font-weight: 700; }
 
 .sc-preview-results-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }

@@ -283,20 +283,34 @@ function buildWidgetScript(store, cfg) {
       '.pn-search-result-name { font-size: 14px; color: #111; }',
       '.pn-search-result-price { font-size: 13px; color: ' + CFG.primaryColor + '; font-weight: 600; margin-top: 2px; }',
       '.pn-search-empty { color: #999; font-size: 14px; padding: 20px 4px; text-align: center; }',
-      // Plantilla "Compacto": dropdown anclado al trigger, sin fondo oscuro de pantalla completa
+
+      // Plantilla "Compacto": dropdown chico anclado al trigger, sin fondo oscuro, sin banners, todo mas denso
       '.pn-search-overlay.pn-tpl-compact { background: transparent; backdrop-filter: none; align-items: flex-start; justify-content: flex-start; padding: 0; }',
-      '.pn-tpl-compact .pn-search-panel { position: absolute; max-width: 380px; border: 1px solid #eee; box-shadow: 0 16px 44px rgba(0,0,0,0.18); }',
-      '.pn-tpl-compact .pn-search-body { max-height: 50vh; }',
-      // Plantilla "Grid con banners": panel más ancho, banners a 3 columnas, resultados como tarjetas
-      '.pn-tpl-grid .pn-search-panel { max-width: 820px; }',
-      '.pn-tpl-grid .pn-search-banners { grid-template-columns: repeat(3, 1fr); }',
-      '.pn-tpl-grid .pn-search-banner img { aspect-ratio: 1 / 1; object-fit: cover; }',
+      '.pn-tpl-compact .pn-search-panel { position: absolute; width: 340px; max-width: 340px; border-radius: 14px; border: 1px solid #eee; box-shadow: 0 16px 44px rgba(0,0,0,0.18); }',
+      '.pn-tpl-compact .pn-search-head { padding: 10px 14px; gap: 8px; }',
+      '.pn-tpl-compact .pn-search-input { font-size: 14px; }',
+      '.pn-tpl-compact .pn-search-body { padding: 2px 14px 12px; max-height: 44vh; }',
+      '.pn-tpl-compact .pn-search-section-title { margin: 10px 0 6px; }',
+      '.pn-tpl-compact .pn-search-featured a { padding: 5px 11px; font-size: 12px; }',
+      '.pn-tpl-compact .pn-search-result { padding: 6px 2px; gap: 9px; }',
+      '.pn-tpl-compact .pn-search-result img { width: 34px; height: 34px; border-radius: 6px; }',
+      '.pn-tpl-compact .pn-search-result-name { font-size: 12.5px; }',
+      '.pn-tpl-compact .pn-search-result-price { font-size: 12px; }',
+
+      // Plantilla "Grid con banners": columna lateral fija con banners (siempre visible) + resultados en tarjetas
+      '.pn-tpl-grid .pn-search-panel { max-width: 860px; display: flex; align-items: stretch; }',
+      '.pn-search-side { width: 230px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 22px 16px; background: #f6f6f6; overflow-y: auto; max-height: 66vh; }',
+      '.pn-search-side-banner { display: block; border-radius: 12px; overflow: hidden; }',
+      '.pn-search-side-banner img { width: 100%; display: block; aspect-ratio: 3 / 4; object-fit: cover; }',
+      '.pn-search-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }',
+      '.pn-tpl-grid .pn-search-body { flex: 1; }',
       '.pn-search-results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; margin-top: 4px; }',
       '.pn-search-result-card { display: flex; flex-direction: column; text-decoration: none; color: inherit; border-radius: 12px; padding: 8px; }',
       '.pn-search-result-card:hover { background: #f7f7f7; }',
       '.pn-search-result-card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 10px; background: #f0f0f0; }',
       '.pn-search-result-card .pn-search-result-name { margin-top: 8px; font-size: 13px; }',
       '.pn-search-result-card .pn-search-result-price { margin-top: 2px; }',
+      '@media (max-width: 640px) { .pn-tpl-grid .pn-search-panel { flex-direction: column; } .pn-search-side { width: auto; flex-direction: row; max-height: none; } .pn-search-side-banner { flex: 1; } }',
     ].join('');
     document.head.appendChild(s);
   }
@@ -315,14 +329,27 @@ function buildWidgetScript(store, cfg) {
   function buildOverlay() {
     overlay = document.createElement('div');
     overlay.className = 'pn-search-overlay pn-tpl-' + (CFG.template || 'minimal');
-    overlay.innerHTML =
-      '<div class="pn-search-panel">' +
-        '<div class="pn-search-head">' +
-          '<input class="pn-search-input" type="text" placeholder="' + CFG.title + '" />' +
-          '<button class="pn-search-close" aria-label="Cerrar">&times;</button>' +
-        '</div>' +
-        '<div class="pn-search-body"></div>' +
-      '</div>';
+
+    var headBody =
+      '<div class="pn-search-head">' +
+        '<input class="pn-search-input" type="text" placeholder="' + CFG.title + '" />' +
+        '<button class="pn-search-close" aria-label="Cerrar">&times;</button>' +
+      '</div>' +
+      '<div class="pn-search-body"></div>';
+
+    if (CFG.template === 'grid' && CFG.banners && CFG.banners.length) {
+      overlay.innerHTML =
+        '<div class="pn-search-panel">' +
+          '<div class="pn-search-side">' +
+            CFG.banners.map(function(b) {
+              return '<a class="pn-search-side-banner" href="' + (b.url || '#') + '"><img src="' + b.imageUrl + '" alt="" /></a>';
+            }).join('') +
+          '</div>' +
+          '<div class="pn-search-main">' + headBody + '</div>' +
+        '</div>';
+    } else {
+      overlay.innerHTML = '<div class="pn-search-panel">' + headBody + '</div>';
+    }
     document.body.appendChild(overlay);
 
     input = overlay.querySelector('.pn-search-input');
@@ -340,7 +367,8 @@ function buildWidgetScript(store, cfg) {
 
   function renderIdle() {
     var html = '';
-    if (CFG.banners && CFG.banners.length) {
+    // En "grid" los banners viven en la columna lateral fija; en "compact" no se muestran (liviano).
+    if (CFG.template === 'minimal' && CFG.banners && CFG.banners.length) {
       html += '<div class="pn-search-section-title">Destacado</div><div class="pn-search-banners">' +
         CFG.banners.map(function(b) {
           return '<a class="pn-search-banner" href="' + (b.url || '#') + '"><img src="' + b.imageUrl + '" alt="" /></a>';
