@@ -18,7 +18,7 @@ const COLLECTION = "promonube_price_financing";
 
 // Id numérico del script "Precios y Cuotas PromoNube" registrado en
 // TiendaNube Partners (Aplicaciones → GlowLab #23137 → Scripts).
-const PRICE_FINANCING_SCRIPT_ID = 9835;
+const PRICE_FINANCING_SCRIPT_ID = 9837;
 
 const DEFAULT_CONFIG = {
   enabled: true,
