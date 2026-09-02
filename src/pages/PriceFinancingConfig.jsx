@@ -7,7 +7,7 @@ import './StyleConfig.css';
 import './PriceFinancingConfig.css';
 
 const DEFAULT_CONFIG = {
-  enabled: true,
+  enabled: false,
   showOnListing: true,
   showOnPDP: true,
   cashDiscountPercent: 0,

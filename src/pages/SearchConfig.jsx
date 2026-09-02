@@ -8,7 +8,7 @@ import './StyleConfig.css';
 import './SearchConfig.css';
 
 const DEFAULT_CONFIG = {
-  enabled: true,
+  enabled: false,
   template: 'minimal',
   title: 'Buscar productos',
   primaryColor: '#111111',

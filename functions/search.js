@@ -10,7 +10,7 @@ const COLLECTION = "promonube_search_config";
 const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const DEFAULT_CONFIG = {
-  enabled: true,
+  enabled: false,
   template: "minimal",
   title: "Buscar productos",
   primaryColor: "#111111",
@@ -112,7 +112,7 @@ function registerSearchRoutes(app, { db, FieldValue, checkStoreActive }) {
         }
       }
 
-      res.json({ success: true, products: results, usedAI });
+      res.json({ success: true, products: results, usedAI, _debug: { hasKey: !!process.env.ANTHROPIC_API_KEY, aiEnabled: !!cfg.aiEnabled } });
     } catch (error) {
       console.error("[Search query]", error);
       res.status(500).json({ success: false, products: [], usedAI: false, message: error.message });
