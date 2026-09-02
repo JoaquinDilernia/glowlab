@@ -158,7 +158,7 @@ const _SRV_BASE = process.env.API_BASE_URL || 'https://apipromonube-jlfopowzaq-u
 
 // Id numérico del script "Buscador Inteligente Pro" en TiendaNube Partners
 // (GlowLab #23137 → Scripts). Se completa después de crearlo ahí.
-const SEARCH_SCRIPT_ID = 9857;
+const SEARCH_SCRIPT_ID = 9840;
 
 // ==========================================
 // SISTEMA DE SUSCRIPCIONES Y FEATURE FLAGS
