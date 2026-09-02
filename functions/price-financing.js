@@ -120,7 +120,7 @@ function registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, H
       const installRes = await fetch(`https://api.tiendanube.com/2025-03/${storeId}/scripts`, {
         method: "POST",
         headers: {
-          "Authentication": `bearer ${accessToken}`,
+          "Authorization": `Bearer ${accessToken}`,
           "User-Agent": "GlowLab (info@techdi.com.ar)",
           "Content-Type": "application/json",
         },
