@@ -99,22 +99,20 @@ function registerSearchRoutes(app, { db, FieldValue, checkStoreActive }) {
       });
       let results = fuse.search(String(q)).slice(0, 12).map((r) => r.item);
       let usedAI = false;
-      let debug = { catalogSize: catalog.length, fuzzyCount: results.length, aiEnabled: !!cfg.aiEnabled, hasKey: !!process.env.ANTHROPIC_API_KEY };
 
       if (results.length === 0 && cfg.aiEnabled && process.env.ANTHROPIC_API_KEY) {
         try {
           const aiResults = await searchWithAI(String(q), catalog);
-          debug.aiResultCount = aiResults.length;
           if (aiResults.length) {
             results = aiResults;
             usedAI = true;
           }
         } catch (aiError) {
-          debug.aiError = aiError.message;
+          console.error("[Search query] AI fallback failed", aiError.message);
         }
       }
 
-      res.json({ success: true, products: results, usedAI, debug });
+      res.json({ success: true, products: results, usedAI });
     } catch (error) {
       console.error("[Search query]", error);
       res.status(500).json({ success: false, products: [], usedAI: false, message: error.message });
