@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, Clock, Palette, BadgeCheck, Rocket, ChevronRight, ShoppingBag, Search, Percent } from 'lucide-react';
+import { Palette, Rocket, ChevronRight, ShoppingBag, Search, Percent } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionBanner from '../components/SubscriptionBanner';
@@ -93,7 +93,7 @@ function Dashboard() {
       title: 'Buscador Inteligente Pro',
       description: 'Popup de búsqueda con tolerancia a errores de tipeo, banners con link, búsquedas recomendadas y un asistente de IA como respaldo cuando la búsqueda normal no encuentra nada.',
       path: '/buscador-inteligente',
-      featured: true,
+      large: true,
       badge: '🔥 Nuevo'
     },
     {
@@ -101,33 +101,15 @@ function Dashboard() {
       title: 'Precios y Cuotas',
       description: 'Mostrá descuento por efectivo/transferencia y planes de cuotas en el listado y la página de producto, con barra de progreso en el carrito hacia el próximo plan sin interés.',
       path: '/precios-cuotas',
-      featured: true,
+      large: true,
       badge: '🔥 Nuevo'
-    },
-    {
-      icon: Clock,
-      title: 'Cuenta Regresiva',
-      description: 'Creá temporizadores para anunciar lanzamientos, promociones o eventos. Generá urgencia (FOMO) mostrando cuándo empieza o termina una oferta, evento o flash sale.',
-      path: '/countdown'
-    },
-    {
-      icon: BadgeCheck,
-      title: 'Badges en Productos',
-      description: 'Destacá productos con etiquetas visuales: Nuevo, Descuento, Envío Gratis, Últimas Unidades, Novedad, etc. Ideal para comunicar información clave sin texto extra.',
-      path: '/badges',
-      badge: '✨ Nuevo'
-    },
-    {
-      icon: Sparkles,
-      title: 'Ruleta de Descuentos',
-      description: 'Sumá una ruleta personalizada para aumentar la tasa de conversión. El diferencial: cada cupón es único por usuario y se desactiva automáticamente si no se usa, brindando más seguridad al dueño de la tienda.',
-      path: '/spin-wheel'
     },
     {
       icon: ShoppingBag,
       title: 'Shop the Look',
       description: 'Marcá productos directamente sobre una imagen y dejá que tus clientes los agreguen al carrito sin salir. Ideal para lookbooks, outfits y colecciones.',
       path: '/shop-the-look',
+      large: true,
       badge: '✨ Nuevo'
     },
   ];
@@ -233,7 +215,7 @@ function Dashboard() {
             return (
               <div
                 key={index}
-                className={`feature-card-modern ${feature.featured ? 'featured' : ''}`}
+                className={`feature-card-modern ${feature.featured ? 'featured' : ''} ${feature.large ? 'large' : ''}`}
                 onClick={() => handleFeatureClick(feature)}
                 style={{ cursor: 'pointer' }}
               >

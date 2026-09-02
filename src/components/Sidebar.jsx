@@ -1,29 +1,22 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Palette, Clock, BadgeCheck,
-  Sparkles, Bell, Settings, LogOut, X, MapPin, MessageCircle,
-  ShoppingBag, Image, Megaphone, Zap, LayoutGrid, Percent, Search
+  LayoutDashboard, Palette, LogOut, X, MapPin, MessageCircle,
+  ShoppingBag, Percent, Search
 } from 'lucide-react';
 import { useSubscription } from '../hooks/useSubscription';
 import './Sidebar.css';
 
+// Simplificado a pedido del usuario (2026-09-02): solo los módulos activos hoy.
+// El resto (Vidriera Shoppable, Flash Sale, Banner Home, Barra ML, Countdowns,
+// Badges, Ruleta, Popups, Integraciones) queda oculto del nav — no se borró
+// nada, las rutas siguen andando, se van a retrabajar desde cero más adelante.
 const BASE_NAV_ITEMS = [
   { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { divider: true },
-  { path: '/storefront-blocks', icon: LayoutGrid, label: 'Vidriera Shoppable' },
-  { path: '/precios-cuotas', icon: Percent, label: 'Precios y Cuotas' },
-  { path: '/buscador-inteligente', icon: Search, label: 'Buscador Inteligente Pro' },
   { path: '/style',          icon: Palette,       label: 'Style' },
+  { path: '/buscador-inteligente', icon: Search, label: 'Buscador Inteligente Pro' },
+  { path: '/precios-cuotas', icon: Percent, label: 'Precios y Cuotas' },
   { path: '/shop-the-look',  icon: ShoppingBag,   label: 'Shop the Look' },
-  { path: '/flash-sale',     icon: Zap,           label: 'Flash Sale' },
-  { path: '/banner',         icon: Image,         label: 'Banner Home' },
-  { path: '/ml-bar',         icon: Megaphone,     label: 'Barra Mercado Libre' },
-  { path: '/countdown',      icon: Clock,         label: 'Countdowns' },
-  { path: '/badges',     icon: BadgeCheck,      label: 'Badges' },
-  { path: '/spin-wheel', icon: Sparkles,        label: 'Ruleta' },
-  { path: '/popups',     icon: Bell,            label: 'Popups' },
-  { divider: true },
-  { path: '/integrations', icon: Settings,      label: 'Integraciones' },
 ];
 
 // Módulos exclusivos por tienda

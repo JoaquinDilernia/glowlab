@@ -464,6 +464,24 @@
   transform: translateY(-4px);
 }
 
+/* Card grande (no featured): mismo tamaño que Style pero sin el halo/gradiente especial */
+.feature-card-modern.large {
+  grid-column: span 2;
+}
+
+.feature-card-modern.large .feature-icon-large {
+  width: 56px;
+  height: 56px;
+}
+
+.feature-card-modern.large .feature-title-modern {
+  font-size: 20px;
+}
+
+.feature-card-modern.large .feature-description-modern {
+  font-size: 15px;
+}
+
 .feature-card-modern.disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -649,7 +667,8 @@
   }
   
   /* En tablet, Style sigue destacado pero más pequeño */
-  .feature-card-modern.featured {
+  .feature-card-modern.featured,
+  .feature-card-modern.large {
     grid-column: span 2;
   }
 }
@@ -671,7 +690,8 @@
     grid-template-columns: 1fr;
   }
   
-  .feature-card-modern.featured {
+  .feature-card-modern.featured,
+  .feature-card-modern.large {
     grid-column: span 1;
   }
 
