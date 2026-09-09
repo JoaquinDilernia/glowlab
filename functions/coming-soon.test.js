@@ -192,3 +192,102 @@ test("shapeWidgetProducts filtra launched / fechas pasadas y no filtra datos sen
     { productId: "1", launchDate: "2026-07-01T10:00:00", message: "hola" },
   ]);
 });
+
+// Task 3: Cliente de API Tiendanube
+
+const { createTiendanubeClient, applyStockPlan } = require("./coming-soon");
+
+function fakeFetch(routes) {
+  const calls = [];
+  const fn = async (url, opts = {}) => {
+    calls.push({ url, method: opts.method || "GET", headers: opts.headers || null, body: opts.body ? JSON.parse(opts.body) : null });
+    const match = routes.find((r) => url.includes(r.match) && (r.method || "GET") === (opts.method || "GET"));
+    if (!match) return { ok: false, status: 500, text: async () => "no route" };
+    // Support conditional behavior: if match has a shouldFail function, call it to decide
+    if (match.shouldFail && match.shouldFail(calls.length)) {
+      const err = new Error(`Network error on attempt ${calls.length}`);
+      throw err;
+    }
+    return { ok: match.ok !== false, status: match.status || 200, json: async () => match.json, text: async () => JSON.stringify(match.json || "") };
+  };
+  fn.calls = calls;
+  return fn;
+}
+
+test("getProductVariants devuelve variants y manda los headers correctos", async () => {
+  const fetchImpl = fakeFetch([
+    { match: "/v1/900/products/1", json: { id: 1, variants: [{ id: 11, stock: 5, stock_management: true }] } },
+  ]);
+  const client = createTiendanubeClient({ storeId: "900", accessToken: "TOK", fetchImpl });
+  const variants = await client.getProductVariants("1");
+  assert.equal(variants.length, 1);
+  assert.match(fetchImpl.calls[0].url, /api\.tiendanube\.com\/v1\/900\/products\/1$/);
+  assert.equal(fetchImpl.calls[0].headers['Authentication'], 'bearer TOK');
+  assert.equal(fetchImpl.calls[0].headers['User-Agent'], 'GlowLab (info@techdi.com.ar)');
+});
+
+test("getProductVariants lanza Error con .status 404", async () => {
+  const fetchImpl = fakeFetch([{ match: "/v1/900/products/999", ok: false, status: 404 }]);
+  const client = createTiendanubeClient({ storeId: "900", accessToken: "TOK", fetchImpl });
+  await assert.rejects(() => client.getProductVariants("999"), (e) => e.status === 404);
+});
+
+test("applyStockPlan corre los PUT en serie y cuenta aplicados", async () => {
+  const fetchImpl = fakeFetch([{ match: "/variants/", method: "PUT", json: { ok: true } }]);
+  const client = createTiendanubeClient({ storeId: "900", accessToken: "TOK", fetchImpl });
+  const res = await applyStockPlan(client, "1", [
+    { variantId: "11", stock: 0, stockManagement: true },
+    { variantId: "12", stock: 0, stockManagement: true },
+  ]);
+  assert.equal(res.applied, 2);
+  assert.equal(res.errors.length, 0);
+  assert.deepEqual(fetchImpl.calls[0].body, { stock: 0, stock_management: true });
+});
+
+test("applyStockPlan reintenta variante que falla en primer intento pero sucede en segundo", async () => {
+  const fetchImpl = fakeFetch([
+    { match: "/variants/11", method: "PUT", shouldFail: (attempt) => attempt === 1, json: { ok: true } },
+  ]);
+  const client = createTiendanubeClient({ storeId: "900", accessToken: "TOK", fetchImpl });
+  const res = await applyStockPlan(client, "1", [
+    { variantId: "11", stock: 0, stockManagement: true },
+  ]);
+  assert.equal(res.applied, 1);
+  assert.equal(res.errors.length, 0);
+  assert.equal(fetchImpl.calls.length, 2); // dos intentos
+});
+
+test("applyStockPlan no cuenta variante que siempre falla", async () => {
+  const fetchImpl = fakeFetch([
+    { match: "/variants/11", method: "PUT", shouldFail: () => true, json: { ok: true } },
+  ]);
+  const client = createTiendanubeClient({ storeId: "900", accessToken: "TOK", fetchImpl });
+  const res = await applyStockPlan(client, "1", [
+    { variantId: "11", stock: 0, stockManagement: true },
+  ]);
+  assert.equal(res.applied, 0);
+  assert.equal(res.errors.length, 1);
+  assert.equal(res.errors[0].variantId, "11");
+  assert.ok(res.errors[0].message.includes("Network error"));
+});
+
+test("applyStockPlan no reintenta error HTTP con .status (ej. 422)", async () => {
+  let callCount = 0;
+  const customFetch = async (url, opts = {}) => {
+    callCount++;
+    if (url.includes("/variants/11")) {
+      const err = new Error("Unprocessable Entity");
+      err.status = 422;
+      throw err;
+    }
+    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+  };
+  const client = createTiendanubeClient({ storeId: "900", accessToken: "TOK", fetchImpl: customFetch });
+  const res = await applyStockPlan(client, "1", [
+    { variantId: "11", stock: 0, stockManagement: true },
+  ]);
+  assert.equal(res.applied, 0);
+  assert.equal(res.errors.length, 1);
+  assert.equal(res.errors[0].variantId, "11");
+  assert.equal(callCount, 1); // solo un intento, sin reintento
+});

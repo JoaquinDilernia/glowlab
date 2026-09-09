@@ -207,12 +207,71 @@ function shapeWidgetProducts(products, nowMs) {
     .map((p) => ({ productId: String(p.productId), launchDate: p.launchDate, message: p.message || "" }));
 }
 
+const TN_V1 = "https://api.tiendanube.com/v1";
+const TN_UA = "GlowLab (info@techdi.com.ar)";
+
+function createTiendanubeClient({ storeId, accessToken, fetchImpl }) {
+  const doFetch = fetchImpl || globalThis.fetch;
+  const headers = { "Authentication": `bearer ${accessToken}`, "User-Agent": TN_UA, "Content-Type": "application/json" };
+
+  async function getProductVariants(productId) {
+    const res = await doFetch(`${TN_V1}/${storeId}/products/${productId}`, { headers });
+    if (!res.ok) {
+      const err = new Error(`TN GET product ${productId}: ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    const data = await res.json();
+    return Array.isArray(data.variants) ? data.variants : [];
+  }
+
+  async function putVariant(productId, variantId, { stock, stockManagement }) {
+    const res = await doFetch(`${TN_V1}/${storeId}/products/${productId}/variants/${variantId}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ stock, stock_management: stockManagement }),
+    });
+    if (!res.ok) {
+      const err = new Error(`TN PUT variant ${variantId}: ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  }
+
+  return { getProductVariants, putVariant };
+}
+
+async function applyStockPlan(client, productId, plan) {
+  let applied = 0;
+  const errors = [];
+  for (const item of plan) {
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await client.putVariant(productId, item.variantId, item);
+        applied++;
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        // No reintento si es error HTTP (con .status); solo reintenta errores de transporte
+        if (e.status !== undefined) break;
+      }
+    }
+    if (lastErr) errors.push({ variantId: item.variantId, message: lastErr.message });
+  }
+  return { applied, errors };
+}
+
 module.exports = {
   COLLECTION,
   COMING_SOON_SCRIPT_ID,
   AR_OFFSET_MS,
   DEFAULT_STYLE,
   DEFAULT_CONFIG,
+  TN_V1,
+  TN_UA,
   parseLaunchDate,
   isPastLaunch,
   validateLaunchDate,
@@ -225,4 +284,6 @@ module.exports = {
   expandCategoryToProducts,
   propagateCategoryDate,
   shapeWidgetProducts,
+  createTiendanubeClient,
+  applyStockPlan,
 };
