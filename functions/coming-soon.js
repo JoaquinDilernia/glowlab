@@ -114,6 +114,99 @@ function leadsToCsv(rows) {
   return [header, ...body].join("\n") + "\n";
 }
 
+function snapshotVariants(currentVariants) {
+  return (currentVariants || []).map((v) => ({
+    variantId: String(v.id),
+    stock: Number(v.stock) || 0,
+    stockManagement: v.stock_management !== false,
+  }));
+}
+
+function buildStockPausePlan(currentVariants) {
+  return (currentVariants || []).map((v) => ({
+    variantId: String(v.id),
+    stock: 0,
+    stockManagement: true,
+  }));
+}
+
+function buildStockRestorePlan(snapshot, currentVariants) {
+  const currentById = new Map((currentVariants || []).map((v) => [String(v.id), v]));
+  const plan = [];
+  for (const snap of snapshot || []) {
+    const cur = currentById.get(String(snap.variantId));
+    if (!cur) continue; // variante borrada
+    const curStock = Number(cur.stock) || 0;
+    if (curStock !== 0) continue; // el dueño la editó a mano
+    plan.push({ variantId: String(snap.variantId), stock: snap.stock, stockManagement: snap.stockManagement });
+  }
+  return plan;
+}
+
+function diffProducts(prevProducts, nextProducts) {
+  const prevById = new Map((prevProducts || []).map((p) => [String(p.productId), p]));
+  const nextById = new Map((nextProducts || []).map((p) => [String(p.productId), p]));
+
+  const toPause = [];
+  for (const [id, np] of nextById) {
+    const pp = prevById.get(id);
+    if (!pp) { toPause.push(id); continue; }
+    if (pp.status === "launched" && np.status === "scheduled") toPause.push(id);
+  }
+
+  const toRestore = [];
+  for (const [id, pp] of prevById) {
+    if (pp.status === "scheduled" && !nextById.has(id)) toRestore.push(id);
+  }
+
+  return { toPause, toRestore };
+}
+
+function pickLocalized(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") return value.es || Object.values(value)[0] || "";
+  return String(value);
+}
+
+function expandCategoryToProducts(categoryProducts, opts) {
+  const existing = opts.existingIds || new Set();
+  const out = [];
+  for (const p of categoryProducts || []) {
+    const id = String(p.id);
+    if (existing.has(id)) continue;
+    out.push({
+      productId: id,
+      productName: pickLocalized(p.name),
+      productImage: (p.images && p.images[0] && (p.images[0].src || p.images[0])) || "",
+      launchDate: opts.launchDate,
+      message: opts.message || "",
+      source: "category",
+      sourceCategoryId: String(opts.categoryId),
+      status: "scheduled",
+      stockSnapshot: [],
+      pausedAt: null,
+      launchedAt: null,
+      lastError: null,
+    });
+  }
+  return out;
+}
+
+function propagateCategoryDate(products, categoryId, newDate) {
+  return (products || []).map((p) =>
+    p.source === "category" && String(p.sourceCategoryId) === String(categoryId) && p.status !== "launched"
+      ? { ...p, launchDate: newDate }
+      : p
+  );
+}
+
+function shapeWidgetProducts(products, nowMs) {
+  return (products || [])
+    .filter((p) => p.status === "scheduled" && !isPastLaunch(p.launchDate, nowMs))
+    .map((p) => ({ productId: String(p.productId), launchDate: p.launchDate, message: p.message || "" }));
+}
+
 module.exports = {
   COLLECTION,
   COMING_SOON_SCRIPT_ID,
@@ -125,4 +218,11 @@ module.exports = {
   validateLaunchDate,
   mergeConfig,
   leadsToCsv,
+  snapshotVariants,
+  buildStockPausePlan,
+  buildStockRestorePlan,
+  diffProducts,
+  expandCategoryToProducts,
+  propagateCategoryDate,
+  shapeWidgetProducts,
 };
