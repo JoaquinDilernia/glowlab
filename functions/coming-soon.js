@@ -282,10 +282,12 @@ async function pauseProductInConfig(config, productId, client) {
     const current = await client.getProductVariants(productId);
     next.products[idx].stockSnapshot = snapshotVariants(current);
     const plan = buildStockPausePlan(current);
-    await applyStockPlan(client, productId, plan);
+    const result = await applyStockPlan(client, productId, plan);
     next.products[idx].status = "scheduled";
     next.products[idx].pausedAt = new Date().toISOString();
-    next.products[idx].lastError = null;
+    next.products[idx].lastError = result.errors.length
+      ? `No se pudieron pausar ${result.errors.length} variante(s): ${result.errors.map((e) => e.variantId).join(", ")}`
+      : null;
   } catch (e) {
     if (e.status === 404) { next.products.splice(idx, 1); return next; }
     next.products[idx].lastError = e.message;
@@ -300,10 +302,12 @@ async function restoreProductInConfig(config, productId, client) {
   try {
     const current = await client.getProductVariants(productId);
     const plan = buildStockRestorePlan(next.products[idx].stockSnapshot || [], current);
-    await applyStockPlan(client, productId, plan);
+    const result = await applyStockPlan(client, productId, plan);
     next.products[idx].status = "launched";
     next.products[idx].launchedAt = new Date().toISOString();
-    next.products[idx].lastError = null;
+    next.products[idx].lastError = result.errors.length
+      ? `No se pudieron restaurar ${result.errors.length} variante(s): ${result.errors.map((e) => e.variantId).join(", ")}`
+      : null;
   } catch (e) {
     if (e.status === 404) { next.products.splice(idx, 1); return next; }
     next.products[idx].lastError = e.message;

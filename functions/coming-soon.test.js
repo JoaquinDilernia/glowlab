@@ -296,7 +296,7 @@ test("applyStockPlan no reintenta error HTTP con .status (ej. 422)", async () =>
 
 const { pauseProductInConfig, restoreProductInConfig, reconcileStore } = require("./coming-soon");
 
-function fakeClient(variantsByProduct, { throw404 } = {}) {
+function fakeClient(variantsByProduct, { throw404, fail422 } = {}) {
   const puts = [];
   return {
     puts,
@@ -305,6 +305,9 @@ function fakeClient(variantsByProduct, { throw404 } = {}) {
       return variantsByProduct[String(productId)] || [];
     },
     async putVariant(productId, variantId, { stock, stockManagement }) {
+      if (fail422 && fail422.includes(String(variantId))) {
+        const e = new Error("Unprocessable Entity"); e.status = 422; throw e;
+      }
       puts.push({ productId, variantId, body: { stock, stock_management: stockManagement } });
       return {};
     },
@@ -348,6 +351,33 @@ test("reconcileStore lanza solo los vencidos", async () => {
   assert.equal(changed, true);
   assert.equal(out.products.find((p) => p.productId === "1").status, "launched");
   assert.equal(out.products.find((p) => p.productId === "2").status, "scheduled");
+});
+
+test("pauseProductInConfig ante fallo parcial (422) deja lastError y sigue scheduled", async () => {
+  const config = { products: [{ productId: "1", status: "scheduled", stockSnapshot: [] }] };
+  const client = fakeClient(
+    { "1": [{ id: 11, stock: 5, stock_management: true }, { id: 12, stock: 3, stock_management: true }] },
+    { fail422: ["12"] }
+  );
+  const out = await pauseProductInConfig(config, "1", client);
+  assert.equal(out.products[0].status, "scheduled");
+  assert.equal(typeof out.products[0].lastError, "string");
+  assert.match(out.products[0].lastError, /12/);
+});
+
+test("restoreProductInConfig ante fallo parcial (422) deja lastError y sigue launched", async () => {
+  const config = { products: [{ productId: "1", status: "scheduled", stockSnapshot: [
+    { variantId: "11", stock: 5, stockManagement: true },
+    { variantId: "12", stock: 3, stockManagement: true },
+  ] }] };
+  const client = fakeClient(
+    { "1": [{ id: 11, stock: 0, stock_management: true }, { id: 12, stock: 0, stock_management: true }] },
+    { fail422: ["12"] }
+  );
+  const out = await restoreProductInConfig(config, "1", client);
+  assert.equal(out.products[0].status, "launched");
+  assert.equal(typeof out.products[0].lastError, "string");
+  assert.match(out.products[0].lastError, /12/);
 });
 
 test("reconcileStore sin vencidos no cambia nada", async () => {
