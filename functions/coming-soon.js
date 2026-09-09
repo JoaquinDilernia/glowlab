@@ -264,6 +264,66 @@ async function applyStockPlan(client, productId, plan) {
   return { applied, errors };
 }
 
+function cloneConfig(config) {
+  return {
+    ...config,
+    products: (config.products || []).map((p) => ({
+      ...p,
+      stockSnapshot: (p.stockSnapshot || []).map((s) => ({ ...s })),
+    })),
+  };
+}
+
+async function pauseProductInConfig(config, productId, client) {
+  const next = cloneConfig(config);
+  const idx = next.products.findIndex((p) => String(p.productId) === String(productId));
+  if (idx === -1) return next;
+  try {
+    const current = await client.getProductVariants(productId);
+    next.products[idx].stockSnapshot = snapshotVariants(current);
+    const plan = buildStockPausePlan(current);
+    await applyStockPlan(client, productId, plan);
+    next.products[idx].status = "scheduled";
+    next.products[idx].pausedAt = new Date().toISOString();
+    next.products[idx].lastError = null;
+  } catch (e) {
+    if (e.status === 404) { next.products.splice(idx, 1); return next; }
+    next.products[idx].lastError = e.message;
+  }
+  return next;
+}
+
+async function restoreProductInConfig(config, productId, client) {
+  const next = cloneConfig(config);
+  const idx = next.products.findIndex((p) => String(p.productId) === String(productId));
+  if (idx === -1) return next;
+  try {
+    const current = await client.getProductVariants(productId);
+    const plan = buildStockRestorePlan(next.products[idx].stockSnapshot || [], current);
+    await applyStockPlan(client, productId, plan);
+    next.products[idx].status = "launched";
+    next.products[idx].launchedAt = new Date().toISOString();
+    next.products[idx].lastError = null;
+  } catch (e) {
+    if (e.status === 404) { next.products.splice(idx, 1); return next; }
+    next.products[idx].lastError = e.message;
+  }
+  return next;
+}
+
+async function reconcileStore({ config, client, nowMs }) {
+  let working = config;
+  let changed = false;
+  const due = (config.products || []).filter(
+    (p) => p.status === "scheduled" && isPastLaunch(p.launchDate, nowMs)
+  );
+  for (const p of due) {
+    working = await restoreProductInConfig(working, p.productId, client);
+    changed = true;
+  }
+  return { config: working, changed };
+}
+
 module.exports = {
   COLLECTION,
   COMING_SOON_SCRIPT_ID,
@@ -286,4 +346,7 @@ module.exports = {
   shapeWidgetProducts,
   createTiendanubeClient,
   applyStockPlan,
+  pauseProductInConfig,
+  restoreProductInConfig,
+  reconcileStore,
 };

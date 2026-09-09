@@ -291,3 +291,68 @@ test("applyStockPlan no reintenta error HTTP con .status (ej. 422)", async () =>
   assert.equal(res.errors[0].variantId, "11");
   assert.equal(callCount, 1); // solo un intento, sin reintento
 });
+
+// --- Task 4: orquestación pause/restore/reconcile ---
+
+const { pauseProductInConfig, restoreProductInConfig, reconcileStore } = require("./coming-soon");
+
+function fakeClient(variantsByProduct, { throw404 } = {}) {
+  const puts = [];
+  return {
+    puts,
+    async getProductVariants(productId) {
+      if (throw404 && throw404.includes(String(productId))) { const e = new Error("404"); e.status = 404; throw e; }
+      return variantsByProduct[String(productId)] || [];
+    },
+    async putVariant(productId, variantId, { stock, stockManagement }) {
+      puts.push({ productId, variantId, body: { stock, stock_management: stockManagement } });
+      return {};
+    },
+  };
+}
+
+test("pauseProductInConfig guarda snapshot y pone stock 0", async () => {
+  const config = { products: [{ productId: "1", status: "scheduled", stockSnapshot: [] }] };
+  const client = fakeClient({ "1": [{ id: 11, stock: 7, stock_management: true }] });
+  const out = await pauseProductInConfig(config, "1", client);
+  assert.deepEqual(out.products[0].stockSnapshot, [{ variantId: "11", stock: 7, stockManagement: true }]);
+  assert.ok(out.products[0].pausedAt);
+  assert.deepEqual(client.puts[0].body, { stock: 0, stock_management: true });
+  assert.deepEqual(config.products[0].stockSnapshot, []); // no mutó el original
+});
+
+test("pauseProductInConfig ante 404 quita el producto", async () => {
+  const config = { products: [{ productId: "9", status: "scheduled" }] };
+  const client = fakeClient({}, { throw404: ["9"] });
+  const out = await pauseProductInConfig(config, "9", client);
+  assert.equal(out.products.length, 0);
+});
+
+test("restoreProductInConfig restaura stock intacto y marca launched", async () => {
+  const config = { products: [{ productId: "1", status: "scheduled", stockSnapshot: [{ variantId: "11", stock: 7, stockManagement: true }] }] };
+  const client = fakeClient({ "1": [{ id: 11, stock: 0, stock_management: true }] });
+  const out = await restoreProductInConfig(config, "1", client);
+  assert.equal(out.products[0].status, "launched");
+  assert.ok(out.products[0].launchedAt);
+  assert.deepEqual(client.puts[0].body, { stock: 7, stock_management: true });
+});
+
+test("reconcileStore lanza solo los vencidos", async () => {
+  const now = Date.UTC(2026, 5, 1, 0, 0, 0);
+  const config = { products: [
+    { productId: "1", status: "scheduled", launchDate: "2026-05-01T10:00:00", stockSnapshot: [{ variantId: "11", stock: 3, stockManagement: true }] },
+    { productId: "2", status: "scheduled", launchDate: "2026-07-01T10:00:00", stockSnapshot: [] },
+  ] };
+  const client = fakeClient({ "1": [{ id: 11, stock: 0, stock_management: true }], "2": [] });
+  const { config: out, changed } = await reconcileStore({ config, client, nowMs: now });
+  assert.equal(changed, true);
+  assert.equal(out.products.find((p) => p.productId === "1").status, "launched");
+  assert.equal(out.products.find((p) => p.productId === "2").status, "scheduled");
+});
+
+test("reconcileStore sin vencidos no cambia nada", async () => {
+  const now = Date.UTC(2026, 0, 1, 0, 0, 0);
+  const config = { products: [{ productId: "2", status: "scheduled", launchDate: "2026-07-01T10:00:00", stockSnapshot: [] }] };
+  const { changed } = await reconcileStore({ config, client: fakeClient({ "2": [] }), nowMs: now });
+  assert.equal(changed, false);
+});
