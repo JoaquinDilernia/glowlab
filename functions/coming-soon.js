@@ -672,6 +672,84 @@ function registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive }) {
       res.status(500).json({ success: false, message: error.message });
     }
   });
+
+  const _subLimiter = new Map(); // key -> { count, windowStart }
+  function rateLimited(key) {
+    const now = Date.now();
+    const rec = _subLimiter.get(key);
+    if (!rec || now - rec.windowStart > 60000) { _subLimiter.set(key, { count: 1, windowStart: now }); return false; }
+    rec.count++;
+    return rec.count > 5;
+  }
+
+  // POST subscribe (storefront) — lead "avisame"
+  app.post("/api/coming-soon/subscribe", async (req, res) => {
+    const { store, productId, email } = req.body || {};
+    if (!store || !productId || !isValidEmail(email)) return res.status(400).json({ success: false, message: "Datos inválidos" });
+    const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "?").split(",")[0].trim();
+    if (rateLimited(`${ip}:${store}`)) return res.status(429).json({ success: false, message: "Demasiados intentos" });
+    try {
+      await db.collection(COLLECTION).doc(String(store)).collection("leads").add({
+        productId: String(productId),
+        email: email.trim().toLowerCase(),
+        createdAt: FieldValue.serverTimestamp(),
+        userAgent: String(req.headers["user-agent"] || "").slice(0, 300),
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[ComingSoon subscribe]", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // GET leads.csv (admin) — export de leads capturados
+  app.get("/api/coming-soon/leads.csv", async (req, res) => {
+    const { storeId } = req.query;
+    if (!storeId) return res.status(400).send("storeId requerido");
+    try {
+      const [config, leadsSnap] = await Promise.all([
+        getConfig(db, storeId),
+        db.collection(COLLECTION).doc(String(storeId)).collection("leads").orderBy("createdAt", "desc").limit(5000).get(),
+      ]);
+      const nameById = new Map((config.products || []).map((p) => [String(p.productId), p.productName || ""]));
+      const rows = leadsSnap.docs.map((d) => {
+        const x = d.data();
+        return { productId: x.productId, productName: nameById.get(String(x.productId)) || "", email: x.email, createdAt: x.createdAt };
+      });
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="leads-proximamente.csv"');
+      res.send(leadsToCsv(rows));
+    } catch (error) {
+      console.error("[ComingSoon leads.csv]", error);
+      res.status(500).send("error: " + error.message);
+    }
+  });
+
+  // POST install (admin) — asocia el script a la tienda en Tiendanube Partners
+  app.post("/api/coming-soon/install", async (req, res) => {
+    const { storeId } = req.body || {};
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+    if (COMING_SOON_SCRIPT_ID == null) return res.status(503).json({ success: false, message: "Script no configurado todavía" });
+    if (!(await checkStoreActive(storeId))) return res.status(403).json({ success: false, message: "Plan inactivo" });
+    try {
+      const store = await loadStore(db, storeId);
+      if (!store || !store.accessToken) return res.status(404).json({ success: false, message: "Store no encontrada" });
+      const r = await fetch(`https://api.tiendanube.com/2025-03/${storeId}/scripts`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${store.accessToken}`, "User-Agent": TN_UA, "Content-Type": "application/json" },
+        body: JSON.stringify({ script_id: COMING_SOON_SCRIPT_ID }),
+      });
+      if (!r.ok) return res.status(500).json({ success: false, message: "Error TN: " + (await r.text()) });
+      res.json({ success: true, result: await r.json() });
+    } catch (error) {
+      console.error("[ComingSoon install]", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+}
+
+function isValidEmail(s) {
+  return typeof s === "string" && s.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
 }
 
 async function runSchedulerPass({ db, FieldValue, nowMs, clientFactory }) {
@@ -740,4 +818,5 @@ module.exports = {
   registerComingSoonRoutes,
   runSchedulerPass,
   startComingSoonScheduler,
+  isValidEmail,
 };

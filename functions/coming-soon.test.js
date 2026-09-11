@@ -450,3 +450,12 @@ test("runSchedulerPass reconcilia solo las tiendas con productos vencidos", asyn
   assert.equal(db.saved["900"].products[0].status, "launched");
   assert.equal(db.saved["901"], undefined);
 });
+
+const { isValidEmail } = require("./coming-soon");
+test("isValidEmail", () => {
+  assert.equal(isValidEmail("a@b.com"), true);
+  assert.equal(isValidEmail("a@b"), false);
+  assert.equal(isValidEmail("nope"), false);
+  assert.equal(isValidEmail(""), false);
+  assert.equal(isValidEmail("x@" + "y".repeat(300) + ".com"), false);
+});
