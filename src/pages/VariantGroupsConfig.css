@@ -1,0 +1,76 @@
+.vg-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 40px 60px;
+  color-scheme: dark;
+}
+
+.vg-loading {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--gl-text-muted);
+}
+.vg-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(124, 124, 255, 0.15);
+  border-top: 3px solid #7C7CFF;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.vg-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+
+.vg-btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--gl-accent-gradient);
+  color: #fff;
+  border: none;
+  border-radius: var(--gl-radius-md);
+  padding: 10px 20px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0, 217, 255, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.vg-btn-save:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 25px rgba(0, 217, 255, 0.5); }
+.vg-btn-save:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.vg-hero { display: flex; gap: 16px; align-items: center; margin-bottom: 28px; }
+.vg-hero-icon {
+  width: 48px; height: 48px; flex-shrink: 0;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--gl-accent-gradient);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(0, 217, 255, 0.35);
+}
+.vg-hero h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+  font-weight: 700;
+  background: var(--gl-accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.vg-hero p { margin: 0; font-size: 14px; color: var(--gl-text-secondary); }
+
+.vg-hint { color: var(--gl-text-muted); font-size: 13px; margin: 10px 0 0; line-height: 1.5; }
+
+.vg-page > .config-section { margin-bottom: 20px; }
+
+.vg-row { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+.vg-check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--gl-text-secondary); cursor: pointer; }
+.vg-field { display: flex; flex-direction: column; gap: 6px; min-width: 150px; }
+.vg-field label {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--gl-text-muted);
+}
+.vg-field select { padding: 10px 12px; border-radius: var(--gl-radius-sm); font-size: 14px; min-width: 160px; }

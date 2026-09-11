@@ -33,6 +33,7 @@ import StorefrontBlockConfig from './pages/StorefrontBlockConfig';
 import PriceFinancingConfig from './pages/PriceFinancingConfig';
 import SearchConfig from './pages/SearchConfig';
 import ComingSoonConfig from './pages/ComingSoonConfig';
+import VariantGroupsConfig from './pages/VariantGroupsConfig';
 import './App.css';
 
 function App() {
@@ -81,6 +82,7 @@ function App() {
           <Route path="/storefront-blocks/:blockId/config" element={<StorefrontBlockConfig />} />
           <Route path="/precios-cuotas" element={<PriceFinancingConfig />} />
           <Route path="/proximamente" element={<ComingSoonConfig />} />
+          <Route path="/grupos-variantes" element={<VariantGroupsConfig />} />
           <Route path="/buscador-inteligente" element={<SearchConfig />} />
         </Route>
       </Routes>
