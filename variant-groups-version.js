@@ -1,4 +1,4 @@
-// PromoNube Grupos de Variantes - Bootstrap script para subir al panel de TiendaNube Partners.
+// Grupos de Variantes - Bootstrap script para subir al panel de TiendaNube Partners.
 // Detecta el storeId automáticamente y carga el widget dinámico (multi-tenant).
 
 (function() {
@@ -16,7 +16,7 @@
     if (bodyStore) {
       return bodyStore;
     }
-    console.warn('PromoNube VariantGroups: no se pudo detectar el storeId');
+    console.warn('Grupos de Variantes: no se pudo detectar el storeId');
     return null;
   }
 
@@ -34,7 +34,7 @@
   script.src = 'https://glowlab-production.up.railway.app/api/variant-groups-widget.js?store=' + encodeURIComponent(storeId);
   script.async = true;
   script.onerror = function() {
-    console.error('PromoNube VariantGroups: error cargando el widget');
+    console.error('Grupos de Variantes: error cargando el widget');
     window.__promonubeVariantGroupsBootstrap = false;
   };
   document.head.appendChild(script);
