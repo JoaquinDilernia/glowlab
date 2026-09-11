@@ -262,12 +262,33 @@ function buildWidgetScript(store, cfg) {
 
   var LISTING_SELECTORS = ['[data-item-id]', '.product-item', '.item-product', '[data-product-id]'];
 
+  var INFO_BLOCK_SELECTORS = ['[class*="item-description"]', '[class*="product-info"]', '[class*="item-info"]', '[class*="description"]'];
+
+  function insertRowInCard(card, row) {
+    // Insertar justo antes del bloque de nombre/precio (no al final de la
+    // card) para que el swatch quede arriba de esos datos. Subir desde el
+    // primer <img> hasta el hijo directo de la card no alcanza en themes con
+    // carrusel de imagenes (la imagen tiene varios <img> hermanos) - se
+    // busca directamente el bloque de info del producto.
+    for (var i = 0; i < INFO_BLOCK_SELECTORS.length; i++) {
+      var info = card.querySelector(INFO_BLOCK_SELECTORS[i]);
+      if (info && info.parentNode) {
+        info.parentNode.insertBefore(row, info);
+        return;
+      }
+    }
+    card.appendChild(row);
+  }
+
   function runListing() {
     if (!CFG.showOnListing) return;
     var cards = [];
     for (var i = 0; i < LISTING_SELECTORS.length; i++) {
       var found = document.querySelectorAll(LISTING_SELECTORS[i]);
-      if (found.length) { cards = found; break; }
+      // Se usa el selector con MAS coincidencias, no el primero que matchee
+      // algo: '[data-item-id]' puede matchear items del carrito (0x0,
+      // ajenos al grid de productos) antes de llegar al selector real.
+      if (found.length > cards.length) cards = found;
     }
     cards.forEach(function(card) {
       if (card.querySelector('.pn-vg-row')) return;
@@ -275,7 +296,7 @@ function buildWidgetScript(store, cfg) {
       if (!id) return;
       var entry = INDEX[String(id)];
       if (!entry) return;
-      card.appendChild(buildRow(entry));
+      insertRowInCard(card, buildRow(entry));
     });
   }
 
