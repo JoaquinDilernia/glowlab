@@ -212,6 +212,7 @@ function buildWidgetScript(store, cfg) {
   var DATA_URL = 'https://glowlab-production.up.railway.app/api/variant-groups-data.json?store=${store}';
   var INDEX = null;
   var SWATCH_PX = { sm: 28, md: 36, lg: 44 }[CFG.swatchSize] || 36;
+  var MAX_VISIBLE_SWATCHES = 6;
 
   function injectStyles() {
     if (document.getElementById('pn-vg-styles')) return;
@@ -219,10 +220,11 @@ function buildWidgetScript(store, cfg) {
     s.id = 'pn-vg-styles';
     s.textContent = [
       '.pn-vg-row, .pn-vg-row * { box-sizing: border-box !important; }',
-      '.pn-vg-row { display: flex !important; gap: 6px !important; flex-wrap: wrap !important; margin: 8px 0 !important; }',
-      '.pn-vg-swatch { display: inline-block !important; width: ' + SWATCH_PX + 'px !important; height: ' + SWATCH_PX + 'px !important; border-radius: 50% !important; background-size: cover !important; background-position: center !important; border: 2px solid transparent !important; text-decoration: none !important; }',
+      '.pn-vg-row { display: flex !important; gap: 6px !important; flex-wrap: nowrap !important; align-items: center !important; margin: 8px 0 !important; }',
+      '.pn-vg-swatch { display: inline-block !important; flex: none !important; width: ' + SWATCH_PX + 'px !important; height: ' + SWATCH_PX + 'px !important; border-radius: 50% !important; background-size: cover !important; background-position: center !important; border: 2px solid transparent !important; text-decoration: none !important; }',
       '.pn-vg-swatch.pn-vg-active { border-color: #111 !important; }',
       'a.pn-vg-swatch { cursor: pointer !important; }',
+      '.pn-vg-swatch-more { display: inline-flex !important; flex: none !important; align-items: center !important; justify-content: center !important; width: ' + SWATCH_PX + 'px !important; height: ' + SWATCH_PX + 'px !important; border-radius: 50% !important; background: rgba(0,0,0,0.06) !important; color: #666 !important; font-size: ' + Math.round(SWATCH_PX * 0.32) + 'px !important; font-weight: 600 !important; line-height: 1 !important; }',
     ].join('');
     document.head.appendChild(s);
   }
@@ -238,13 +240,35 @@ function buildWidgetScript(store, cfg) {
   function buildRow(entry) {
     var row = document.createElement('div');
     row.className = 'pn-vg-row';
-    entry.siblings.forEach(function(sib) {
+    var siblings = entry.siblings;
+    var visible = siblings;
+    var hiddenCount = 0;
+    if (siblings.length > MAX_VISIBLE_SWATCHES) {
+      visible = siblings.slice(0, MAX_VISIBLE_SWATCHES);
+      // Si el propio producto (active) quedo fuera del recorte, se lo
+      // canjea por el ultimo visible para que siempre se vea marcado.
+      var activeIdx = -1;
+      for (var i = 0; i < siblings.length; i++) {
+        if (siblings[i].active) { activeIdx = i; break; }
+      }
+      if (activeIdx >= MAX_VISIBLE_SWATCHES) {
+        visible[MAX_VISIBLE_SWATCHES - 1] = siblings[activeIdx];
+      }
+      hiddenCount = siblings.length - MAX_VISIBLE_SWATCHES;
+    }
+    visible.forEach(function(sib) {
       var el = document.createElement(sib.active ? 'span' : 'a');
       el.className = 'pn-vg-swatch' + (sib.active ? ' pn-vg-active' : '');
       if (!sib.active) el.setAttribute('href', sib.url);
       if (sib.image) el.style.backgroundImage = 'url(' + sib.image + ')';
       row.appendChild(el);
     });
+    if (hiddenCount > 0) {
+      var more = document.createElement('span');
+      more.className = 'pn-vg-swatch-more';
+      more.textContent = '+' + hiddenCount;
+      row.appendChild(more);
+    }
     return row;
   }
 
