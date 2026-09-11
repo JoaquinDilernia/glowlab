@@ -63,8 +63,53 @@ function computeSkuGroups(products) {
   return { groups, ungrouped };
 }
 
+function diffScanWithPublished(scanResult, publishedGroups) {
+  const published = new Map((publishedGroups || []).map((g) => [g.groupKey, g]));
+  const newGroups = [];
+  const groupsWithAdditions = [];
+  const removedFromCatalog = [];
+
+  for (const scanned of scanResult.groups) {
+    const pub = published.get(scanned.groupKey);
+    if (!pub) {
+      newGroups.push(scanned);
+      continue;
+    }
+
+    const excluded = new Set((pub.excludedProductIds || []).map(String));
+    const existingIds = new Set(pub.products.map((p) => String(p.productId)));
+    const newProducts = scanned.products.filter(
+      (p) => !existingIds.has(String(p.productId)) && !excluded.has(String(p.productId))
+    );
+    if (newProducts.length) {
+      groupsWithAdditions.push({
+        groupKey: scanned.groupKey,
+        title: pub.title,
+        existingProducts: pub.products,
+        newProducts,
+      });
+    }
+
+    const scannedIds = new Set(scanned.products.map((p) => String(p.productId)));
+    const missing = pub.products.filter((p) => !scannedIds.has(String(p.productId)));
+    if (missing.length) {
+      removedFromCatalog.push({ groupKey: scanned.groupKey, title: pub.title, products: missing });
+    }
+  }
+
+  for (const pub of publishedGroups || []) {
+    const stillScanned = scanResult.groups.some((g) => g.groupKey === pub.groupKey);
+    if (!stillScanned && pub.products.length) {
+      removedFromCatalog.push({ groupKey: pub.groupKey, title: pub.title, products: pub.products });
+    }
+  }
+
+  return { newGroups, groupsWithAdditions, removedFromCatalog, ungrouped: scanResult.ungrouped };
+}
+
 module.exports = {
   splitSku,
   deriveGroupTitle,
   computeSkuGroups,
+  diffScanWithPublished,
 };
