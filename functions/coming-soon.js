@@ -377,7 +377,6 @@ function buildWidgetScript(store, payload) {
       '.pn-cs-badge{position:absolute;z-index:20;' + pos + 'background:' + S.badgeBg + ' !important;color:' + S.badgeTextColor + ' !important;',
       'font-family:' + S.badgeFontFamily + ';font-size:' + S.badgeFontSize + 'px !important;font-weight:700;padding:5px 10px;border-radius:' + radius + ';',
       'letter-spacing:.4px;line-height:1;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.18);' + (S.badgeUppercase ? 'text-transform:uppercase;' : '') + '}',
-      '.pn-cs-wrap{position:relative !important;}',
       '.pn-cs-price-tag{color:' + S.priceReplaceColor + ' !important;font-size:' + S.priceReplaceFontSize + 'px !important;font-weight:600;margin:6px 0;}',
       '.pn-cs-hidden{display:none !important;}',
       '.pn-cs-cd{margin:14px 0;font-family:' + S.countdownFontFamily + ';}',
@@ -404,6 +403,27 @@ function buildWidgetScript(store, payload) {
     return b;
   }
 
+  // Muchos temas envuelven la imagen en un <a> de click (position:static,
+  // 0x0 de por sí) dentro de un contenedor con el truco padding-bottom para
+  // el aspect-ratio (position:relative, con el tamaño real). La imagen,
+  // position:absolute, se ancla a ese contenedor saltando el <a> estático.
+  // Si forzáramos position:relative en el <a>, pasaría a ser el ancestro
+  // posicionado más cercano y la imagen colapsaría a 0x0 (rompe el click a
+  // la PDP). Por eso subimos hasta el ancestro que YA tiene tamaño
+  // renderizado y anclamos el badge ahí, sin tocar el <a> para nada.
+  function findVisualContainer(img) {
+    var node = img.parentElement;
+    while (node && node !== document.body) {
+      if (node.offsetWidth > 0 && node.offsetHeight > 0) return node;
+      node = node.parentElement;
+    }
+    return img.parentElement;
+  }
+
+  function ensureRelative(el) {
+    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+  }
+
   // ---- listado ----
   var CARD_SELECTORS = ['[data-item-id]', '[data-product-id]', '.js-item-product', '.product-item', '.item-product'];
   var PRICE_SELECTORS = ['.js-price-display', '.js-product-price', '.product-price', '.price', '[data-store="product-price"]', '.item-price'];
@@ -426,9 +446,9 @@ function buildWidgetScript(store, payload) {
         if (!id || !TARGET[id]) return;
         card.setAttribute('data-pn-cs', '1');
         var img = card.querySelector('img');
-        var imgWrap = img && (img.closest('a, figure, .item-image, .product-image, picture') || img.parentElement);
-        if (imgWrap) { imgWrap.classList.add('pn-cs-wrap'); imgWrap.appendChild(makeBadge()); }
-        else { card.classList.add('pn-cs-wrap'); card.appendChild(makeBadge()); }
+        var imgWrap = img && findVisualContainer(img);
+        if (imgWrap) { ensureRelative(imgWrap); imgWrap.appendChild(makeBadge()); }
+        else { ensureRelative(card); card.appendChild(makeBadge()); }
         PRICE_SELECTORS.forEach(function (ps) { card.querySelectorAll(ps).forEach(function (n) { n.classList.add('pn-cs-hidden'); }); });
         BUY_SELECTORS.forEach(function (bs) { card.querySelectorAll(bs).forEach(function (n) { n.setAttribute('disabled', 'disabled'); n.style.pointerEvents = 'none'; n.style.opacity = '.5'; }); });
       });
@@ -441,7 +461,6 @@ function buildWidgetScript(store, payload) {
   function applyPdp(id) {
     var entry = TARGET[id];
     var name = document.querySelector('.product-name, h1[itemprop="name"], [data-store="product-name"], h1');
-    if (name && !name.querySelector('.pn-cs-badge')) { name.style.position = 'relative'; }
     if (name && !document.querySelector('.pn-cs-badge')) {
       var nb = makeBadge(); nb.style.position = 'static'; nb.style.display = 'inline-block'; nb.style.marginBottom = '8px';
       name.parentNode.insertBefore(nb, name);
