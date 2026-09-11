@@ -24,7 +24,7 @@ const DEFAULT_CONFIG = {
 
 const BANNER_SIZE_HINT = {
   minimal: 'Recomendado: 800×600px (proporción 4:3) — se muestran sin recortar.',
-  grid: 'Recomendado: 600×800px (proporción 3:4, vertical) — se recortan a ese formato en la columna lateral.',
+  grid: 'Recomendado: 600×800px (proporción 3:4, vertical) — con esa medida ocupan todo el espacio. Con otra proporción se ven completas igual, sin recortar, pero con un margen a los costados.',
   compact: 'La plantilla "Compacto" no muestra banners.',
 };
 

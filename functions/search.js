@@ -329,7 +329,7 @@ function buildWidgetScript(store, cfg) {
       '.pn-tpl-grid .pn-search-panel { max-width: 860px; display: flex; align-items: stretch; }',
       '.pn-search-side { width: 230px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 22px 16px; background: #f6f6f6; overflow-y: auto; max-height: 66vh; }',
       '.pn-search-side-banner { display: block; border-radius: 12px; overflow: hidden; }',
-      '.pn-search-side-banner img { width: 100%; display: block; aspect-ratio: 3 / 4; object-fit: cover; }',
+      '.pn-search-side-banner img { width: 100%; display: block; aspect-ratio: 3 / 4; object-fit: contain; background: #f4f4f4; }',
       '.pn-search-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }',
       '.pn-tpl-grid .pn-search-body { flex: 1; }',
       '.pn-search-results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; margin-top: 4px; }',
