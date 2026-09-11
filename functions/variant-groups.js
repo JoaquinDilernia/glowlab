@@ -241,14 +241,14 @@ function buildWidgetScript(store, cfg) {
     }).catch(function() { INDEX = {}; cb(INDEX); });
   }
 
-  function buildRow(entry) {
+  function buildRow(entry, truncate) {
     var row = document.createElement('div');
     row.className = 'pn-vg-row';
     var siblings = entry.siblings;
     var maxVisible = maxVisibleSwatches();
     var visible = siblings;
     var hiddenCount = 0;
-    if (siblings.length > maxVisible) {
+    if (truncate !== false && siblings.length > maxVisible) {
       visible = siblings.slice(0, maxVisible);
       // Si el propio producto (active) quedo fuera del recorte, se lo
       // canjea por el ultimo visible para que siempre se vea marcado.
@@ -286,7 +286,9 @@ function buildWidgetScript(store, cfg) {
     if (document.querySelector('.pn-vg-row')) return;
     var anchor = document.querySelector('.product-price, .js-product-price, [data-store="product-price"], h1');
     if (!anchor || !anchor.parentNode) return;
-    anchor.parentNode.insertBefore(buildRow(entry), anchor.nextSibling);
+    // En la PDP se muestran todas las variantes sin recorte ni "+N" (a
+    // diferencia del listado, donde el espacio de la card es limitado).
+    anchor.parentNode.insertBefore(buildRow(entry, false), anchor.nextSibling);
   }
 
   var LISTING_SELECTORS = ['[data-item-id]', '.product-item', '.item-product', '[data-product-id]'];
