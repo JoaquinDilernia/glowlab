@@ -654,6 +654,61 @@ function registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive }) {
       res.send("// coming soon: error " + error.message);
     }
   });
+
+  // POST launch (admin) — "lanzar ahora"
+  app.post("/api/coming-soon/launch", async (req, res) => {
+    const { storeId, productId } = req.body || {};
+    if (!storeId || !productId) return res.status(400).json({ success: false, message: "storeId y productId requeridos" });
+    try {
+      const store = await loadStore(db, storeId);
+      if (!store || !store.accessToken) return res.status(404).json({ success: false, message: "Tienda sin token" });
+      const config = await getConfig(db, storeId);
+      const client = createTiendanubeClient({ storeId, accessToken: store.accessToken });
+      const next = await restoreProductInConfig(config, productId, client);
+      await saveConfig(db, FieldValue, storeId, next);
+      res.json({ success: true, config: next });
+    } catch (error) {
+      console.error("[ComingSoon launch]", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+}
+
+async function runSchedulerPass({ db, FieldValue, nowMs, clientFactory }) {
+  const factory = clientFactory || createTiendanubeClient;
+  const snap = await db.collection(COLLECTION).get();
+  let storesReconciled = 0;
+  for (const doc of snap.docs) {
+    const storeId = doc.id;
+    try {
+      const config = mergeConfig(doc.data());
+      const hasDue = (config.products || []).some((p) => p.status === "scheduled" && isPastLaunch(p.launchDate, nowMs));
+      if (!hasDue) continue;
+      const store = await db.collection("promonube_stores").doc(storeId).get();
+      if (!store.exists || !store.data().accessToken) continue;
+      const client = factory({ storeId, accessToken: store.data().accessToken });
+      const r = await reconcileStore({ config, client, nowMs });
+      if (r.changed) {
+        await db.collection(COLLECTION).doc(storeId).set({ ...r.config, updatedAt: FieldValue.serverTimestamp() }, { merge: false });
+        storesReconciled++;
+      }
+    } catch (e) {
+      console.error(`[ComingSoon scheduler] store ${storeId}:`, e.message);
+    }
+  }
+  return { storesReconciled };
+}
+
+function startComingSoonScheduler({ db, FieldValue, intervalMs }) {
+  const ms = intervalMs || 5 * 60 * 1000;
+  const timer = setInterval(() => {
+    runSchedulerPass({ db, FieldValue, nowMs: Date.now() }).catch((e) =>
+      console.error("[ComingSoon scheduler] pass failed:", e.message)
+    );
+  }, ms);
+  if (timer.unref) timer.unref();
+  console.log(`[ComingSoon] scheduler activo cada ${ms / 1000}s`);
+  return { stop: () => clearInterval(timer) };
 }
 
 module.exports = {
@@ -683,4 +738,6 @@ module.exports = {
   reconcileStore,
   buildWidgetScript,
   registerComingSoonRoutes,
+  runSchedulerPass,
+  startComingSoonScheduler,
 };

@@ -405,3 +405,48 @@ test("buildWidgetScript embebe los productos como JSON", () => {
   const js = buildWidgetScript("1", { style: DEFAULT_STYLE, products: [{ productId: "99", launchDate: "2026-07-01T10:00:00", message: "hey" }], apiBase: "x" });
   assert.match(js, /"productId":"99"/);
 });
+
+const { runSchedulerPass } = require("./coming-soon");
+
+function fakeDb(docsByStore, stores) {
+  const saved = {};
+  return {
+    saved,
+    collection(name) {
+      return {
+        async get() {
+          return { docs: Object.entries(docsByStore).map(([id, data]) => ({ id, data: () => data })) };
+        },
+        doc(id) {
+          return {
+            async get() {
+              if (name === "promonube_stores") return { exists: !!stores[id], data: () => stores[id] };
+              return { exists: !!docsByStore[id], data: () => docsByStore[id] };
+            },
+            async set(v) { saved[id] = v; },
+          };
+        },
+      };
+    },
+  };
+}
+
+test("runSchedulerPass reconcilia solo las tiendas con productos vencidos", async () => {
+  const now = Date.UTC(2026, 5, 1, 0, 0, 0);
+  const db = fakeDb(
+    {
+      "900": { enabled: true, products: [{ productId: "1", status: "scheduled", launchDate: "2026-05-01T00:00:00", stockSnapshot: [{ variantId: "11", stock: 4, stockManagement: true }] }] },
+      "901": { enabled: true, products: [{ productId: "2", status: "scheduled", launchDate: "2026-09-01T00:00:00", stockSnapshot: [] }] },
+    },
+    { "900": { accessToken: "T" }, "901": { accessToken: "T" } }
+  );
+  const clientFactory = () => ({
+    async getProductVariants() { return [{ id: 11, stock: 0, stock_management: true }]; },
+    async putVariant() { return {}; },
+  });
+  const FieldValue = { serverTimestamp: () => "TS" };
+  const res = await runSchedulerPass({ db, FieldValue, nowMs: now, clientFactory });
+  assert.equal(res.storesReconciled, 1);
+  assert.equal(db.saved["900"].products[0].status, "launched");
+  assert.equal(db.saved["901"], undefined);
+});
