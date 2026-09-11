@@ -64,6 +64,135 @@ export default function VariantGroupsConfig() {
     }
   }, [storeId, config, toast]);
 
+  const [scanning, setScanning] = useState(false);
+  const [proposal, setProposal] = useState(null);
+  // selección editable: qué incluir de cada bucket propuesto
+  const [includedNewGroupProducts, setIncludedNewGroupProducts] = useState({}); // { [groupKey]: Set(productId) }
+  const [includedAdditions, setIncludedAdditions] = useState({}); // { [groupKey]: Set(productId) }
+  const [includedRemovals, setIncludedRemovals] = useState({}); // { [groupKey]: Set(productId) }
+  const [groupTitleEdits, setGroupTitleEdits] = useState({}); // { [groupKey]: title }
+  const [ungroupedAssignment, setUngroupedAssignment] = useState({}); // { [productId]: groupKey }
+
+  const runScan = async () => {
+    setScanning(true);
+    try {
+      const res = await apiRequest('/api/variant-groups/scan', {
+        method: 'POST',
+        body: JSON.stringify({ storeId }),
+      });
+      if (!res?.success) { toast.error(res?.message || 'Error al escanear'); return; }
+
+      setProposal(res);
+      setIncludedNewGroupProducts(
+        Object.fromEntries(res.newGroups.map(g => [g.groupKey, new Set(g.products.map(p => String(p.productId)))]))
+      );
+      setIncludedAdditions(
+        Object.fromEntries(res.groupsWithAdditions.map(g => [g.groupKey, new Set(g.newProducts.map(p => String(p.productId)))]))
+      );
+      setIncludedRemovals(
+        Object.fromEntries(res.removedFromCatalog.map(g => [g.groupKey, new Set(g.products.map(p => String(p.productId)))]))
+      );
+      setGroupTitleEdits(Object.fromEntries(res.newGroups.map(g => [g.groupKey, g.title])));
+      setUngroupedAssignment({});
+      toast.success(`Escaneo listo: ${res.newGroups.length} grupos nuevos, ${res.groupsWithAdditions.length} con novedades`);
+    } catch (e) {
+      toast.error('Error: ' + e.message);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const toggleInSet = (setter, groupKey, productId) => setter(prev => {
+    const next = { ...prev };
+    const current = new Set(next[groupKey] || []);
+    const id = String(productId);
+    if (current.has(id)) current.delete(id); else current.add(id);
+    next[groupKey] = current;
+    return next;
+  });
+
+  const allGroupKeysForAssignment = () => {
+    const fromNew = (proposal?.newGroups || []).map(g => g.groupKey);
+    const fromPublished = (proposal?.publishedGroups || []).map(g => g.groupKey);
+    return [...new Set([...fromNew, ...fromPublished])];
+  };
+
+  const publishProposal = async () => {
+    if (!proposal) return;
+
+    const byKey = new Map((proposal.publishedGroups || []).map(g => [g.groupKey, {
+      ...g,
+      products: [...g.products],
+      excludedProductIds: [...(g.excludedProductIds || [])],
+    }]));
+
+    // grupos nuevos aprobados
+    for (const g of proposal.newGroups) {
+      const included = includedNewGroupProducts[g.groupKey] || new Set();
+      const products = g.products.filter(p => included.has(String(p.productId)));
+      if (products.length < 2) continue; // sin suficientes productos, no se publica
+      byKey.set(g.groupKey, {
+        groupKey: g.groupKey,
+        title: groupTitleEdits[g.groupKey] || g.title,
+        hidden: false,
+        excludedProductIds: [],
+        products,
+      });
+    }
+
+    // adiciones a grupos ya publicados
+    for (const g of proposal.groupsWithAdditions) {
+      const existing = byKey.get(g.groupKey);
+      if (!existing) continue;
+      const included = includedAdditions[g.groupKey] || new Set();
+      const toAdd = g.newProducts.filter(p => included.has(String(p.productId)));
+      const notIncluded = g.newProducts.filter(p => !included.has(String(p.productId)));
+      existing.products = [...existing.products, ...toAdd];
+      existing.excludedProductIds = [
+        ...existing.excludedProductIds,
+        ...notIncluded.map(p => String(p.productId)),
+      ];
+    }
+
+    // productos que ya no estan en el catalogo
+    for (const g of proposal.removedFromCatalog) {
+      const existing = byKey.get(g.groupKey);
+      if (!existing) continue;
+      const toRemove = includedRemovals[g.groupKey] || new Set();
+      existing.products = existing.products.filter(p => !toRemove.has(String(p.productId)));
+    }
+
+    // sin agrupar asignados a mano a un grupo
+    for (const [productId, targetKey] of Object.entries(ungroupedAssignment)) {
+      if (!targetKey) continue;
+      const target = byKey.get(targetKey);
+      const source = proposal.ungrouped.find(p => String(p.productId) === productId);
+      if (!target || !source) continue;
+      if (target.products.some(p => String(p.productId) === productId)) continue;
+      target.products.push({ productId: source.productId, sku: source.sku, name: source.name, image: source.image, url: source.url });
+    }
+
+    const finalGroups = [...byKey.values()].filter(g => g.products.length >= 2);
+    const assignedIds = new Set(Object.keys(ungroupedAssignment).filter(id => ungroupedAssignment[id]));
+    const finalUngrouped = proposal.ungrouped.filter(p => !assignedIds.has(String(p.productId)));
+
+    try {
+      const res = await apiRequest('/api/variant-groups/publish', {
+        method: 'POST',
+        body: JSON.stringify({ storeId, groups: finalGroups, ungrouped: finalUngrouped }),
+      });
+      if (res?.success) {
+        toast.success('Grupos publicados');
+        setProposal(null);
+        loadConfig();
+      } else {
+        toast.error(res?.message || 'Error al publicar');
+      }
+    } catch (e) {
+      toast.error('Error: ' + e.message);
+    }
+  };
+
   if (!ALLOWED_STORE_IDS.includes(String(storeId))) return null;
 
   if (loading) {
@@ -123,6 +252,122 @@ export default function VariantGroupsConfig() {
         <p className="vg-hint">
           {config.lastScanAt ? 'Último escaneo publicado.' : 'Todavía no escaneaste el catálogo.'}
         </p>
+      </div>
+
+      <div className="config-section">
+        <div className="section-header">
+          <h2>Escanear y revisar</h2>
+          <button className="vg-btn-save" onClick={runScan} disabled={scanning}>
+            {scanning ? 'Leyendo catálogo…' : 'Escanear productos'}
+          </button>
+        </div>
+
+        {!proposal && (
+          <p className="vg-hint">Corré un escaneo para ver la propuesta de agrupado por SKU.</p>
+        )}
+
+        {proposal && (
+          <div className="vg-review">
+            {proposal.newGroups.map(g => (
+              <div key={g.groupKey} className="vg-group-card">
+                <div className="vg-group-card-head">
+                  <input
+                    type="text"
+                    value={groupTitleEdits[g.groupKey] ?? g.title}
+                    onChange={e => setGroupTitleEdits(prev => ({ ...prev, [g.groupKey]: e.target.value }))}
+                  />
+                  <span className="vg-tag vg-tag--new">Grupo nuevo · {g.groupKey}</span>
+                </div>
+                <div className="vg-prod-chips">
+                  {g.products.map(p => {
+                    const included = (includedNewGroupProducts[g.groupKey] || new Set()).has(String(p.productId));
+                    return (
+                      <label key={p.productId} className={`vg-chip ${included ? '' : 'vg-chip--off'}`}>
+                        <input type="checkbox" checked={included}
+                          onChange={() => toggleInSet(setIncludedNewGroupProducts, g.groupKey, p.productId)} />
+                        {p.image && <img src={p.image} alt="" />}
+                        <span>{p.name} · {p.sku}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {proposal.groupsWithAdditions.map(g => (
+              <div key={g.groupKey} className="vg-group-card">
+                <div className="vg-group-card-head">
+                  <strong>{g.title}</strong>
+                  <span className="vg-tag vg-tag--addition">Productos nuevos para este grupo · {g.groupKey}</span>
+                </div>
+                <div className="vg-prod-chips">
+                  {g.existingProducts.map(p => (
+                    <span key={p.productId} className="vg-chip vg-chip--static">
+                      {p.image && <img src={p.image} alt="" />}
+                      <span>{p.name} · {p.sku}</span>
+                    </span>
+                  ))}
+                  {g.newProducts.map(p => {
+                    const included = (includedAdditions[g.groupKey] || new Set()).has(String(p.productId));
+                    return (
+                      <label key={p.productId} className={`vg-chip vg-chip--highlight ${included ? '' : 'vg-chip--off'}`}>
+                        <input type="checkbox" checked={included}
+                          onChange={() => toggleInSet(setIncludedAdditions, g.groupKey, p.productId)} />
+                        {p.image && <img src={p.image} alt="" />}
+                        <span>{p.name} · {p.sku}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {proposal.removedFromCatalog.length > 0 && (
+              <div className="vg-group-card vg-group-card--warn">
+                <div className="vg-group-card-head"><strong>Ya no están en el catálogo</strong></div>
+                {proposal.removedFromCatalog.map(g => (
+                  <div key={g.groupKey} className="vg-prod-chips">
+                    {g.products.map(p => {
+                      const checked = (includedRemovals[g.groupKey] || new Set()).has(String(p.productId));
+                      return (
+                        <label key={p.productId} className="vg-chip vg-chip--danger">
+                          <input type="checkbox" checked={checked}
+                            onChange={() => toggleInSet(setIncludedRemovals, g.groupKey, p.productId)} />
+                          <span>{p.name} · {p.sku} — quitar del grupo "{g.title}"</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {proposal.ungrouped.length > 0 && (
+              <div className="vg-group-card">
+                <div className="vg-group-card-head"><strong>Sin agrupar</strong></div>
+                <div className="vg-ungrouped-list">
+                  {proposal.ungrouped.map(p => (
+                    <div key={p.productId} className="vg-ungrouped-row">
+                      {p.image && <img src={p.image} alt="" />}
+                      <span className="vg-ungrouped-name">{p.name} · {p.sku || 'sin SKU'}</span>
+                      <select
+                        value={ungroupedAssignment[p.productId] || ''}
+                        onChange={e => setUngroupedAssignment(prev => ({ ...prev, [p.productId]: e.target.value }))}
+                      >
+                        <option value="">Asignar a un grupo…</option>
+                        {allGroupKeysForAssignment().map(key => (
+                          <option key={key} value={key}>{key}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button className="vg-btn-save" onClick={publishProposal}>Publicar</button>
+          </div>
+        )}
       </div>
     </div>
   );

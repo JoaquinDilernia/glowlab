@@ -74,3 +74,40 @@
   font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--gl-text-muted);
 }
 .vg-field select { padding: 10px 12px; border-radius: var(--gl-radius-sm); font-size: 14px; min-width: 160px; }
+
+.vg-review { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+
+.vg-group-card {
+  border: 1px solid var(--gl-border);
+  border-radius: var(--gl-radius-md);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.vg-group-card--warn { border-color: rgba(239, 68, 68, 0.35); }
+
+.vg-group-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.vg-group-card-head input[type="text"] { flex: 1; min-width: 160px; padding: 8px 10px; border-radius: var(--gl-radius-sm); font-size: 14px; font-weight: 600; }
+.vg-group-card-head strong { color: var(--gl-text-primary); font-size: 14px; }
+
+.vg-tag { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.3px; }
+.vg-tag--new { background: rgba(124, 124, 255, 0.18); color: #a5a5ff; }
+.vg-tag--addition { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+
+.vg-prod-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.vg-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: var(--gl-radius-sm);
+  border: 1px solid var(--gl-border); background: rgba(255, 255, 255, 0.03);
+  font-size: 13px; color: var(--gl-text-secondary); cursor: pointer;
+}
+.vg-chip img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+.vg-chip--static { cursor: default; opacity: 0.85; }
+.vg-chip--highlight { border-color: rgba(74, 222, 128, 0.35); }
+.vg-chip--danger { border-color: rgba(239, 68, 68, 0.35); }
+.vg-chip--off { opacity: 0.45; text-decoration: line-through; }
+
+.vg-ungrouped-list { display: flex; flex-direction: column; gap: 8px; }
+.vg-ungrouped-row { display: flex; align-items: center; gap: 10px; }
+.vg-ungrouped-row img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
+.vg-ungrouped-name { flex: 1; font-size: 13px; color: var(--gl-text-secondary); }
+.vg-ungrouped-row select { padding: 6px 10px; border-radius: var(--gl-radius-sm); font-size: 13px; }
