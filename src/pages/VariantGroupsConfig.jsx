@@ -35,6 +35,7 @@ export default function VariantGroupsConfig() {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
 
   const loadConfig = useCallback(async () => {
+    if (!ALLOWED_STORE_IDS.includes(String(storeId))) return;
     try {
       const res = await apiRequest(`/api/variant-groups-config?storeId=${storeId}`);
       if (res?.success && res.config) {
@@ -62,6 +63,8 @@ export default function VariantGroupsConfig() {
       setSaving(false);
     }
   }, [storeId, config, toast]);
+
+  if (!ALLOWED_STORE_IDS.includes(String(storeId))) return null;
 
   if (loading) {
     return (
