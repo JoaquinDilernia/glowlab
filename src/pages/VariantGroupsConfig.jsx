@@ -126,11 +126,17 @@ export default function VariantGroupsConfig() {
       excludedProductIds: [...(g.excludedProductIds || [])],
     }]));
 
+    // productos que quedan solos tras el merge (no se descartan, van a "sin agrupar")
+    const orphans = [];
+
     // grupos nuevos aprobados
     for (const g of proposal.newGroups) {
       const included = includedNewGroupProducts[g.groupKey] || new Set();
       const products = g.products.filter(p => included.has(String(p.productId)));
-      if (products.length < 2) continue; // sin suficientes productos, no se publica
+      if (products.length < 2) {
+        if (products.length === 1) orphans.push(products[0]);
+        continue; // sin suficientes productos, no se publica
+      }
       byKey.set(g.groupKey, {
         groupKey: g.groupKey,
         title: groupTitleEdits[g.groupKey] || g.title,
@@ -172,9 +178,19 @@ export default function VariantGroupsConfig() {
       target.products.push({ productId: source.productId, sku: source.sku, name: source.name, image: source.image, url: source.url });
     }
 
-    const finalGroups = [...byKey.values()].filter(g => g.products.length >= 2);
+    const finalGroups = [];
+    for (const g of byKey.values()) {
+      if (g.products.length >= 2) {
+        finalGroups.push(g);
+      } else if (g.products.length === 1) {
+        orphans.push(g.products[0]);
+      }
+    }
     const assignedIds = new Set(Object.keys(ungroupedAssignment).filter(id => ungroupedAssignment[id]));
-    const finalUngrouped = proposal.ungrouped.filter(p => !assignedIds.has(String(p.productId)));
+    const finalUngrouped = [
+      ...proposal.ungrouped.filter(p => !assignedIds.has(String(p.productId))),
+      ...orphans.map(p => ({ ...p, reason: 'single_product' })),
+    ];
 
     try {
       const res = await apiRequest('/api/variant-groups/publish', {
