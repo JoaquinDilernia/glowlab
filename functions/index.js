@@ -9515,24 +9515,38 @@ app.get("/api/tiendanube/categories", async (req, res) => {
       return res.status(401).json({ error: "No hay token de acceso" });
     }
 
-    const response = await fetch(
-      `https://api.tiendanube.com/v1/${storeId}/categories`,
-      {
-        headers: {
-          "Authentication": `bearer ${accessToken}`,
-          "User-Agent": "PromoNube App (contacto@promonube.com)"
-        }
-      }
-    );
+    // Tiendanube pagina esta lista (default ~30 por pagina). Sin recorrer
+    // todas las paginas, tiendas con muchas categorias (ej. Alto Rancho,
+    // 299 categorias) solo ven las mas viejas y las nuevas nunca aparecen.
+    const MAX_CATEGORY_PAGES = 20;
+    const allCategories = [];
+    let page = 1;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Error TiendaNube categories:", response.status, errorText);
-      return res.status(response.status).json({ error: "Error obteniendo categor�as" });
+    while (page <= MAX_CATEGORY_PAGES) {
+      const response = await fetch(
+        `https://api.tiendanube.com/v1/${storeId}/categories?page=${page}&per_page=200`,
+        {
+          headers: {
+            "Authentication": `bearer ${accessToken}`,
+            "User-Agent": "PromoNube App (contacto@promonube.com)"
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Error TiendaNube categories:", response.status, errorText);
+        return res.status(response.status).json({ error: "Error obteniendo categor�as" });
+      }
+
+      const items = await response.json();
+      if (!Array.isArray(items) || items.length === 0) break;
+      allCategories.push(...items);
+      if (items.length < 200) break;
+      page++;
     }
 
-    const data = await response.json();
-    res.json(data);
+    res.json(allCategories);
 
   } catch (error) {
     console.error("Error obteniendo categor�as:", error);
