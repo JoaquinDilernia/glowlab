@@ -19,7 +19,21 @@ const DEFAULT_CONFIG = {
   aiEnabled: false,
   banners: [],
   featuredSearches: [],
+  maxResults: 8,
+  transferDiscountPercent: 0,
+  transferLabel: "por transferencia",
 };
+
+// Si el admin cargo la URL sin la barra inicial (ej. "productos/silla" en vez
+// de "/productos/silla"), el link navega relativo a la pagina actual en vez
+// de a la raiz del sitio - se normaliza al servir el widget.
+function normalizeUrl(url) {
+  if (!url || typeof url !== "string") return "#";
+  const trimmed = url.trim();
+  if (!trimmed) return "#";
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("/") || trimmed.startsWith("#")) return trimmed;
+  return "/" + trimmed;
+}
 
 function registerSearchRoutes(app, { db, FieldValue, checkStoreActive }) {
   app.get("/api/search-config", async (req, res) => {
@@ -70,8 +84,14 @@ function registerSearchRoutes(app, { db, FieldValue, checkStoreActive }) {
         primaryColor: cfg.primaryColor || DEFAULT_CONFIG.primaryColor,
         fontFamily: cfg.fontFamily || DEFAULT_CONFIG.fontFamily,
         fontSize: cfg.fontSize || DEFAULT_CONFIG.fontSize,
-        banners: Array.isArray(cfg.banners) ? cfg.banners.filter((b) => b && b.imageUrl) : [],
-        featuredSearches: Array.isArray(cfg.featuredSearches) ? cfg.featuredSearches.filter((f) => f && f.label) : [],
+        banners: Array.isArray(cfg.banners)
+          ? cfg.banners.filter((b) => b && b.imageUrl).map((b) => ({ ...b, url: normalizeUrl(b.url) }))
+          : [],
+        featuredSearches: Array.isArray(cfg.featuredSearches)
+          ? cfg.featuredSearches.filter((f) => f && f.label).map((f) => ({ ...f, url: normalizeUrl(f.url) }))
+          : [],
+        transferDiscountPercent: Number(cfg.transferDiscountPercent) || 0,
+        transferLabel: cfg.transferLabel || DEFAULT_CONFIG.transferLabel,
       };
 
       res.send(buildWidgetScript(store, widgetConfig));
@@ -83,7 +103,7 @@ function registerSearchRoutes(app, { db, FieldValue, checkStoreActive }) {
   // GET /api/search-query?storeId=&q= - búsqueda real: catálogo cacheado + fuzzy + fallback IA
   app.get("/api/search-query", async (req, res) => {
     const { storeId, q } = req.query;
-    if (!storeId || !q) return res.json({ success: true, products: [], usedAI: false });
+    if (!storeId || !q) return res.json({ success: true, products: [], usedAI: false, hasMore: false });
 
     try {
       const [catalog, cfgDoc] = await Promise.all([
@@ -92,19 +112,24 @@ function registerSearchRoutes(app, { db, FieldValue, checkStoreActive }) {
       ]);
       const cfg = cfgDoc.exists ? { ...DEFAULT_CONFIG, ...cfgDoc.data() } : DEFAULT_CONFIG;
 
+      const maxResults = Math.min(24, Math.max(3, Number(cfg.maxResults) || DEFAULT_CONFIG.maxResults));
+
       const fuse = new Fuse(catalog, {
         keys: ["name", "tags"],
         threshold: 0.5,
         ignoreLocation: true,
       });
-      let results = fuse.search(String(q)).slice(0, 12).map((r) => r.item);
+      const allMatches = fuse.search(String(q)).map((r) => r.item);
+      let results = allMatches.slice(0, maxResults);
+      let hasMore = allMatches.length > results.length;
       let usedAI = false;
 
       if (results.length === 0 && cfg.aiEnabled && process.env.ANTHROPIC_API_KEY) {
         try {
           const aiResults = await searchWithAI(String(q), catalog);
           if (aiResults.length) {
-            results = aiResults;
+            results = aiResults.slice(0, maxResults);
+            hasMore = aiResults.length > results.length;
             usedAI = true;
           }
         } catch (aiError) {
@@ -112,10 +137,10 @@ function registerSearchRoutes(app, { db, FieldValue, checkStoreActive }) {
         }
       }
 
-      res.json({ success: true, products: results, usedAI });
+      res.json({ success: true, products: results, usedAI, hasMore });
     } catch (error) {
       console.error("[Search query]", error);
-      res.status(500).json({ success: false, products: [], usedAI: false, message: error.message });
+      res.status(500).json({ success: false, products: [], usedAI: false, hasMore: false, message: error.message });
     }
   });
 
@@ -282,7 +307,10 @@ function buildWidgetScript(store, cfg) {
       '.pn-search-result img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; background: #f0f0f0; flex-shrink: 0; }',
       '.pn-search-result-name { font-size: 14px; color: #111; }',
       '.pn-search-result-price { font-size: 13px; color: ' + CFG.primaryColor + '; font-weight: 600; margin-top: 2px; }',
+      '.pn-search-transfer-price { font-size: 12px; color: #16a34a; font-weight: 600; margin-top: 1px; }',
       '.pn-search-empty { color: #999; font-size: 14px; padding: 20px 4px; text-align: center; }',
+      '.pn-search-viewmore { display: block; text-align: center; margin: 12px 4px 4px; padding: 10px; border-radius: 10px; background: #f4f4f4; color: #333; text-decoration: none; font-size: 13px; font-weight: 600; }',
+      '.pn-search-viewmore:hover { background: #eaeaea; }',
 
       // Plantilla "Compacto": dropdown chico anclado al trigger, sin fondo oscuro, sin banners, todo mas denso
       '.pn-search-overlay.pn-tpl-compact { background: transparent; backdrop-filter: none; align-items: flex-start; justify-content: flex-start; padding: 0; }',
@@ -319,6 +347,20 @@ function buildWidgetScript(store, cfg) {
     var num = Number(n);
     if (isNaN(num)) return '';
     return '$' + Math.round(num).toLocaleString('es-AR');
+  }
+
+  function priceBlock(p) {
+    if (!p.price) return '';
+    var html = '<div class="pn-search-result-price">' + fmtPrice(p.price) + '</div>';
+    if (CFG.transferDiscountPercent > 0) {
+      var transferPrice = Number(p.price) * (1 - CFG.transferDiscountPercent / 100);
+      html += '<div class="pn-search-transfer-price">' + fmtPrice(transferPrice) + ' ' + CFG.transferLabel + '</div>';
+    }
+    return html;
+  }
+
+  function viewMoreLink(q) {
+    return '<a class="pn-search-viewmore" href="/search?q=' + encodeURIComponent(q) + '">Ver más productos</a>';
   }
 
   var overlay = null;
@@ -383,35 +425,36 @@ function buildWidgetScript(store, cfg) {
     body.innerHTML = html;
   }
 
-  function renderResults(products, usedAI) {
+  function renderResults(products, usedAI, hasMore, q) {
     if (!products.length) {
       body.innerHTML = '<div class="pn-search-empty">Sin resultados</div>';
       return;
     }
+    var more = hasMore ? viewMoreLink(q) : '';
     if (CFG.template === 'grid') {
       body.innerHTML = '<div class="pn-search-results-grid">' + products.map(function(p) {
         return '<a class="pn-search-result-card" href="' + (p.url || '#') + '">' +
           '<img src="' + (p.image || '') + '" alt="" onerror="this.style.visibility=\\'hidden\\'" />' +
           '<div class="pn-search-result-name">' + p.name + '</div>' +
-          (p.price ? '<div class="pn-search-result-price">' + fmtPrice(p.price) + '</div>' : '') +
+          priceBlock(p) +
           '</a>';
-      }).join('') + '</div>';
+      }).join('') + '</div>' + more;
       return;
     }
     body.innerHTML = products.map(function(p) {
       return '<a class="pn-search-result" href="' + (p.url || '#') + '">' +
         '<img src="' + (p.image || '') + '" alt="" onerror="this.style.visibility=\\'hidden\\'" />' +
         '<div><div class="pn-search-result-name">' + p.name + '</div>' +
-        (p.price ? '<div class="pn-search-result-price">' + fmtPrice(p.price) + '</div>' : '') +
+        priceBlock(p) +
         '</div></a>';
-    }).join('');
+    }).join('') + more;
   }
 
   function runSearch(q) {
     body.innerHTML = '<div class="pn-search-empty">Buscando…</div>';
     fetch(API_BASE + '/api/search-query?storeId=' + encodeURIComponent(STORE_ID) + '&q=' + encodeURIComponent(q))
       .then(function(r) { return r.json(); })
-      .then(function(data) { renderResults(data.products || [], data.usedAI); })
+      .then(function(data) { renderResults(data.products || [], data.usedAI, data.hasMore, q); })
       .catch(function() { body.innerHTML = '<div class="pn-search-empty">Error al buscar</div>'; });
   }
 

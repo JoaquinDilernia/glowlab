@@ -17,6 +17,15 @@ const DEFAULT_CONFIG = {
   aiEnabled: false,
   banners: [],
   featuredSearches: [],
+  maxResults: 8,
+  transferDiscountPercent: 0,
+  transferLabel: 'por transferencia',
+};
+
+const BANNER_SIZE_HINT = {
+  minimal: 'Recomendado: 800×600px (proporción 4:3) — se muestran sin recortar.',
+  grid: 'Recomendado: 600×800px (proporción 3:4, vertical) — se recortan a ese formato en la columna lateral.',
+  compact: 'La plantilla "Compacto" no muestra banners.',
 };
 
 const FONT_OPTIONS = [
@@ -130,6 +139,12 @@ function SearchConfig() {
     );
   }
 
+  const transferPricePreview = (price) => {
+    if (!config.transferDiscountPercent) return null;
+    const transferPrice = price * (1 - config.transferDiscountPercent / 100);
+    return <div className="sc-preview-transfer-price">${fmt(transferPrice)} {config.transferLabel}</div>;
+  };
+
   const fontSizeMap = { small: 14, medium: 16, large: 18 };
   const previewFiltered = previewQuery
     ? PREVIEW_PRODUCTS.filter(p => p.name.toLowerCase().includes(previewQuery.toLowerCase()))
@@ -234,6 +249,7 @@ function SearchConfig() {
             ))}
             {config.banners.length === 0 && <p className="sc-hint">Sin banners todavía.</p>}
           </div>
+          <p className="sc-hint">{BANNER_SIZE_HINT[config.template] || BANNER_SIZE_HINT.minimal}</p>
 
           <div className="sc-block-title-row">
             <div className="sc-block-title" style={{ margin: 0 }}>Búsquedas recomendadas</div>
@@ -253,6 +269,30 @@ function SearchConfig() {
             ))}
             {config.featuredSearches.length === 0 && <p className="sc-hint">Sin búsquedas recomendadas todavía.</p>}
           </div>
+
+          <div className="sc-block-title">Resultados</div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Cantidad de productos a mostrar</label>
+              <input type="number" min={3} max={24} value={config.maxResults}
+                onChange={e => handle('maxResults', Math.min(24, Math.max(3, Number(e.target.value) || 8)))} />
+            </div>
+          </div>
+          <p className="sc-hint">Al llegar al límite aparece un botón "Ver más productos" que lleva al buscador nativo de Tiendanube con la misma búsqueda.</p>
+
+          <div className="sc-block-title">Precio por transferencia</div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Descuento (%)</label>
+              <input type="number" min={0} max={90} value={config.transferDiscountPercent}
+                onChange={e => handle('transferDiscountPercent', Math.min(90, Math.max(0, Number(e.target.value) || 0)))} />
+            </div>
+            <div className="form-group">
+              <label>Texto</label>
+              <input type="text" value={config.transferLabel} onChange={e => handle('transferLabel', e.target.value)} />
+            </div>
+          </div>
+          <p className="sc-hint">Si el descuento es mayor a 0%, se muestra una segunda línea debajo del precio en cada resultado. Dejalo en 0 para no mostrar nada.</p>
 
           <div className="sc-block-title">Inteligencia artificial</div>
           <label className="sc-check">
@@ -301,6 +341,7 @@ function SearchConfig() {
                               <div className="sc-preview-thumb sc-preview-thumb-sq" />
                               <div className="sc-preview-result-name">{p.name}</div>
                               <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
+                              {transferPricePreview(p.price)}
                             </div>
                           ))}
                         </div>
@@ -310,6 +351,7 @@ function SearchConfig() {
                           <div>
                             <div className="sc-preview-result-name">{p.name}</div>
                             <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
+                            {transferPricePreview(p.price)}
                           </div>
                         </div>
                       ))
