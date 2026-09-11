@@ -6,6 +6,7 @@ const {
   deriveGroupTitle,
   computeSkuGroups,
   diffScanWithPublished,
+  buildWidgetIndex,
 } = require("./variant-groups");
 
 test("splitSku - separa raiz y color con sufijo de 2 caracteres", () => {
@@ -146,4 +147,46 @@ test("diffScanWithPublished - ungrouped pasa igual", () => {
   const scan = { groups: [], ungrouped: [product("5", "X1", "Suelto")] };
   const diff = diffScanWithPublished(scan, []);
   assert.equal(diff.ungrouped.length, 1);
+});
+
+test("buildWidgetIndex - cada producto del grupo apunta a sus siblings", () => {
+  const groups = [{
+    groupKey: "BCV136", title: "Silla Rey", hidden: false, excludedProductIds: [],
+    products: [
+      { productId: "1", sku: "BCV136PT", name: "Rojo", image: "img1", url: "/rojo" },
+      { productId: "2", sku: "BCV136NT", name: "Natural", image: "img2", url: "/natural" },
+    ],
+  }];
+  const index = buildWidgetIndex(groups);
+  assert.equal(Object.keys(index).length, 2);
+  assert.equal(index["1"].groupKey, "BCV136");
+  assert.equal(index["1"].siblings.length, 2);
+  const self1 = index["1"].siblings.find((s) => s.productId === "1");
+  assert.equal(self1.active, true);
+  const other1 = index["1"].siblings.find((s) => s.productId === "2");
+  assert.equal(other1.active, false);
+});
+
+test("buildWidgetIndex - excluye grupos hidden", () => {
+  const groups = [{
+    groupKey: "BCV136", title: "Silla Rey", hidden: true, excludedProductIds: [],
+    products: [
+      { productId: "1", sku: "BCV136PT", name: "Rojo", image: "", url: "" },
+      { productId: "2", sku: "BCV136NT", name: "Natural", image: "", url: "" },
+    ],
+  }];
+  assert.deepEqual(buildWidgetIndex(groups), {});
+});
+
+test("buildWidgetIndex - grupo con menos de 2 productos no genera entradas", () => {
+  const groups = [{
+    groupKey: "BCV136", title: "Silla Rey", hidden: false, excludedProductIds: [],
+    products: [{ productId: "1", sku: "BCV136PT", name: "Rojo", image: "", url: "" }],
+  }];
+  assert.deepEqual(buildWidgetIndex(groups), {});
+});
+
+test("buildWidgetIndex - sin grupos da objeto vacio", () => {
+  assert.deepEqual(buildWidgetIndex([]), {});
+  assert.deepEqual(buildWidgetIndex(undefined), {});
 });

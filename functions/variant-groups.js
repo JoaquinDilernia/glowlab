@@ -107,9 +107,30 @@ function diffScanWithPublished(scanResult, publishedGroups) {
   return { newGroups, groupsWithAdditions, removedFromCatalog, ungrouped: scanResult.ungrouped };
 }
 
+function buildWidgetIndex(groups) {
+  const index = {};
+  for (const group of groups || []) {
+    if (group.hidden) continue;
+    if (!group.products || group.products.length < 2) continue;
+    for (const product of group.products) {
+      index[String(product.productId)] = {
+        groupKey: group.groupKey,
+        siblings: group.products.map((p) => ({
+          productId: String(p.productId),
+          url: p.url,
+          image: p.image,
+          active: String(p.productId) === String(product.productId),
+        })),
+      };
+    }
+  }
+  return index;
+}
+
 module.exports = {
   splitSku,
   deriveGroupTitle,
   computeSkuGroups,
   diffScanWithPublished,
+  buildWidgetIndex,
 };
