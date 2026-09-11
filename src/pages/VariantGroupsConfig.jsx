@@ -209,6 +209,72 @@ export default function VariantGroupsConfig() {
     }
   };
 
+  const [groupFilter, setGroupFilter] = useState('');
+  const [editingGroupKey, setEditingGroupKey] = useState(null);
+  const [editingTitle, setEditingTitle] = useState('');
+
+  const filteredGroups = config.groups.filter(g => {
+    const q = groupFilter.trim().toLowerCase();
+    if (!q) return true;
+    return g.title.toLowerCase().includes(q) || g.groupKey.toLowerCase().includes(q) ||
+      g.products.some(p => p.sku.toLowerCase().includes(q));
+  });
+
+  const persistGroups = async (nextGroups, nextUngrouped) => {
+    try {
+      const res = await apiRequest('/api/variant-groups/publish', {
+        method: 'POST',
+        body: JSON.stringify({ storeId, groups: nextGroups, ungrouped: nextUngrouped ?? config.ungrouped }),
+      });
+      if (res?.success) {
+        setConfig(c => ({ ...c, groups: nextGroups, ungrouped: nextUngrouped ?? c.ungrouped }));
+        toast.success('Grupo actualizado');
+      } else {
+        toast.error(res?.message || 'Error al guardar');
+      }
+    } catch (e) {
+      toast.error('Error: ' + e.message);
+    }
+  };
+
+  const toggleHidden = (groupKey) => {
+    const next = config.groups.map(g => g.groupKey === groupKey ? { ...g, hidden: !g.hidden } : g);
+    persistGroups(next);
+  };
+
+  const startEdit = (group) => { setEditingGroupKey(group.groupKey); setEditingTitle(group.title); };
+  const cancelEdit = () => { setEditingGroupKey(null); setEditingTitle(''); };
+
+  const saveTitle = (groupKey) => {
+    const next = config.groups.map(g => g.groupKey === groupKey ? { ...g, title: editingTitle } : g);
+    persistGroups(next);
+    cancelEdit();
+  };
+
+  // Si sacar el producto deja el grupo con menos de 2 (ya no hay nada para
+  // swatchear), el grupo se borra y el/los producto/s que quedaban sueltos
+  // pasan a "sin agrupar" en vez de perderse silenciosamente.
+  const removeProductFromGroup = (groupKey, productId) => {
+    const orphans = [];
+    const next = config.groups
+      .map(g => {
+        if (g.groupKey !== groupKey) return g;
+        const remaining = g.products.filter(p => String(p.productId) !== String(productId));
+        if (remaining.length < 2) orphans.push(...remaining);
+        return {
+          ...g,
+          products: remaining,
+          excludedProductIds: [...(g.excludedProductIds || []), String(productId)],
+        };
+      })
+      .filter(g => g.products.length >= 2);
+    const nextUngrouped = [
+      ...config.ungrouped,
+      ...orphans.map(p => ({ ...p, reason: 'single_product' })),
+    ];
+    persistGroups(next, nextUngrouped);
+  };
+
   if (!ALLOWED_STORE_IDS.includes(String(storeId))) return null;
 
   if (loading) {
@@ -384,6 +450,58 @@ export default function VariantGroupsConfig() {
             <button className="vg-btn-save" onClick={publishProposal}>Publicar</button>
           </div>
         )}
+      </div>
+
+      <div className="config-section">
+        <div className="section-header"><h2>Grupos publicados</h2></div>
+
+        <input
+          type="text"
+          className="vg-search"
+          placeholder="Buscar por título o SKU…"
+          value={groupFilter}
+          onChange={e => setGroupFilter(e.target.value)}
+        />
+
+        {filteredGroups.length === 0 && (
+          <p className="vg-hint">Todavía no hay grupos publicados.</p>
+        )}
+
+        <div className="vg-published-list">
+          {filteredGroups.map(g => (
+            <div key={g.groupKey} className={`vg-published-card ${g.hidden ? 'vg-published-card--hidden' : ''}`}>
+              <div className="vg-published-head">
+                {editingGroupKey === g.groupKey ? (
+                  <>
+                    <input type="text" value={editingTitle} onChange={e => setEditingTitle(e.target.value)} />
+                    <button className="vg-btn-launch" onClick={() => saveTitle(g.groupKey)}>Guardar</button>
+                    <button className="vg-btn-remove" onClick={cancelEdit}>Cancelar</button>
+                  </>
+                ) : (
+                  <>
+                    <strong>{g.title}</strong>
+                    <span className="vg-hint">{g.groupKey} · {g.products.length} productos</span>
+                    <button className="btn-back" onClick={() => startEdit(g)}>Editar</button>
+                    <button className="btn-back" onClick={() => toggleHidden(g.groupKey)}>
+                      {g.hidden ? 'Mostrar' : 'Ocultar'}
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="vg-prod-chips">
+                {g.products.map(p => (
+                  <span key={p.productId} className="vg-chip">
+                    {p.image && <img src={p.image} alt="" />}
+                    <span>{p.name} · {p.sku}</span>
+                    {editingGroupKey === g.groupKey && (
+                      <button className="vg-chip-remove" onClick={() => removeProductFromGroup(g.groupKey, p.productId)}>×</button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

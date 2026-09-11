@@ -111,3 +111,33 @@
 .vg-ungrouped-row img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
 .vg-ungrouped-name { flex: 1; font-size: 13px; color: var(--gl-text-secondary); }
 .vg-ungrouped-row select { padding: 6px 10px; border-radius: var(--gl-radius-sm); font-size: 13px; }
+
+.vg-search {
+  width: 100%; padding: 10px 12px; border-radius: var(--gl-radius-sm); font-size: 14px; margin-bottom: 14px;
+}
+
+.vg-published-list { display: flex; flex-direction: column; gap: 12px; }
+.vg-published-card {
+  border: 1px solid var(--gl-border); border-radius: var(--gl-radius-md); padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.vg-published-card--hidden { opacity: 0.55; }
+
+.vg-published-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.vg-published-head strong { color: var(--gl-text-primary); font-size: 14px; }
+.vg-published-head input[type="text"] { flex: 1; min-width: 160px; padding: 8px 10px; border-radius: var(--gl-radius-sm); font-size: 14px; }
+
+.vg-btn-launch {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 13px; font-weight: 700;
+  border-radius: var(--gl-radius-sm); border: 1px solid rgba(74, 222, 128, 0.35); background: rgba(74, 222, 128, 0.1);
+  color: #4ade80; cursor: pointer;
+}
+.vg-btn-remove {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 13px; font-weight: 700;
+  border-radius: var(--gl-radius-sm); border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08);
+  color: #f87171; cursor: pointer;
+}
+
+.vg-chip-remove {
+  border: none; background: transparent; color: #f87171; cursor: pointer; font-size: 14px; font-weight: 700; padding: 0 2px;
+}
