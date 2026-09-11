@@ -173,6 +173,115 @@ async function fetchAllStoreProducts({ storeId, accessToken, fetchImpl }) {
   return out;
 }
 
+function buildWidgetScript(store, cfg) {
+  return `
+/**
+ * Grupos de Variantes
+ * Tienda: ${store}
+ */
+(function() {
+  'use strict';
+  if (window.__pnVariantGroupsLoaded) return;
+  window.__pnVariantGroupsLoaded = true;
+
+  var CFG = ${JSON.stringify(cfg)};
+  var DATA_URL = 'https://glowlab-production.up.railway.app/api/variant-groups-data.json?store=${store}';
+  var INDEX = null;
+  var SWATCH_PX = { sm: 28, md: 36, lg: 44 }[CFG.swatchSize] || 36;
+
+  function injectStyles() {
+    if (document.getElementById('pn-vg-styles')) return;
+    var s = document.createElement('style');
+    s.id = 'pn-vg-styles';
+    s.textContent = [
+      '.pn-vg-row, .pn-vg-row * { box-sizing: border-box !important; }',
+      '.pn-vg-row { display: flex !important; gap: 6px !important; flex-wrap: wrap !important; margin: 8px 0 !important; }',
+      '.pn-vg-swatch { display: inline-block !important; width: ' + SWATCH_PX + 'px !important; height: ' + SWATCH_PX + 'px !important; border-radius: 50% !important; background-size: cover !important; background-position: center !important; border: 2px solid transparent !important; text-decoration: none !important; }',
+      '.pn-vg-swatch.pn-vg-active { border-color: #111 !important; }',
+      'a.pn-vg-swatch { cursor: pointer !important; }',
+    ].join('');
+    document.head.appendChild(s);
+  }
+
+  function loadIndex(cb) {
+    if (INDEX) return cb(INDEX);
+    fetch(DATA_URL).then(function(r) { return r.json(); }).then(function(data) {
+      INDEX = data || {};
+      cb(INDEX);
+    }).catch(function() { INDEX = {}; cb(INDEX); });
+  }
+
+  function buildRow(entry) {
+    var row = document.createElement('div');
+    row.className = 'pn-vg-row';
+    entry.siblings.forEach(function(sib) {
+      var el = document.createElement(sib.active ? 'span' : 'a');
+      el.className = 'pn-vg-swatch' + (sib.active ? ' pn-vg-active' : '');
+      if (!sib.active) el.setAttribute('href', sib.url);
+      if (sib.image) el.style.backgroundImage = 'url(' + sib.image + ')';
+      row.appendChild(el);
+    });
+    return row;
+  }
+
+  function runPDP() {
+    if (!CFG.showOnPDP) return;
+    var product = window.LS && window.LS.product;
+    if (!product) return;
+    var entry = INDEX[String(product.id)];
+    if (!entry) return;
+    if (document.querySelector('.pn-vg-row')) return;
+    var anchor = document.querySelector('.product-price, .js-product-price, [data-store="product-price"], h1');
+    if (!anchor || !anchor.parentNode) return;
+    anchor.parentNode.insertBefore(buildRow(entry), anchor.nextSibling);
+  }
+
+  var LISTING_SELECTORS = ['[data-item-id]', '.product-item', '.item-product', '[data-product-id]'];
+
+  function runListing() {
+    if (!CFG.showOnListing) return;
+    var cards = [];
+    for (var i = 0; i < LISTING_SELECTORS.length; i++) {
+      var found = document.querySelectorAll(LISTING_SELECTORS[i]);
+      if (found.length) { cards = found; break; }
+    }
+    cards.forEach(function(card) {
+      if (card.querySelector('.pn-vg-row')) return;
+      var id = card.getAttribute('data-item-id') || card.getAttribute('data-product-id');
+      if (!id) return;
+      var entry = INDEX[String(id)];
+      if (!entry) return;
+      card.appendChild(buildRow(entry));
+    });
+  }
+
+  function run() {
+    injectStyles();
+    loadIndex(function() {
+      var isPDP = !!(window.LS && window.LS.product);
+      if (isPDP) runPDP();
+      else runListing();
+    });
+  }
+
+  var debounceTimer = null;
+  function scheduleRun() {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(run, 100);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+
+  var observer = new MutationObserver(scheduleRun);
+  observer.observe(document.body, { childList: true, subtree: true });
+})();
+`;
+}
+
 const COLLECTION = "promonube_variant_groups";
 const TN_2025 = "https://api.tiendanube.com/2025-03";
 
@@ -336,6 +445,57 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
     } catch (error) {
       console.error("[VariantGroups install]", error);
       res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // GET /api/variant-groups-widget.js?store=X - script liviano, no lleva datos embebidos
+  app.get("/api/variant-groups-widget.js", async (req, res) => {
+    const { store } = req.query;
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=60");
+
+    if (!store || !isAllowedStore(store)) {
+      return res.send("// Grupos de Variantes: no disponible");
+    }
+
+    try {
+      if (!(await checkStoreActive(store))) {
+        return res.send("// Grupos de Variantes: plan inactivo");
+      }
+      const doc = await db.collection(COLLECTION).doc(String(store)).get();
+      const cfg = doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG;
+      if (cfg.enabled === false) {
+        return res.send("// Grupos de Variantes: deshabilitado");
+      }
+      res.send(
+        buildWidgetScript(store, {
+          showOnListing: cfg.showOnListing !== false,
+          showOnPDP: cfg.showOnPDP !== false,
+          swatchSize: cfg.swatchSize || "md",
+        })
+      );
+    } catch (error) {
+      res.send("// Grupos de Variantes: error " + error.message);
+    }
+  });
+
+  // GET /api/variant-groups-data.json?store=X - datos que el script pide en runtime
+  app.get("/api/variant-groups-data.json", async (req, res) => {
+    const { store } = req.query;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=60");
+
+    if (!store || !isAllowedStore(store)) return res.json({});
+
+    try {
+      if (!(await checkStoreActive(store))) return res.json({});
+      const doc = await db.collection(COLLECTION).doc(String(store)).get();
+      if (!doc.exists) return res.json({});
+      const cfg = doc.data();
+      if (cfg.enabled === false) return res.json({});
+      res.json(buildWidgetIndex(cfg.groups || []));
+    } catch (error) {
+      res.json({});
     }
   });
 }
