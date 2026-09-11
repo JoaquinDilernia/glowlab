@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Rocket, Plus, Trash2, Search } from 'lucide-react';
-import { apiRequest } from '../config';
+import { apiRequest, API_CONFIG } from '../config';
 import { useToast } from '../context/ToastContext';
 import { useProductPicker } from '../hooks/useProductPicker';
 import { buildCategoryTree, flattenTreeForSelect } from '../utils/categoryTree';
@@ -48,6 +48,66 @@ function ProductRow({ p, hideDate, onDate, onMsg, onLaunch, onRemove }) {
       <input type="text" placeholder="Mensaje (opcional)" value={p.message || ''} onChange={e => onMsg(e.target.value)} style={{ maxWidth: 180 }} />
       {p.status === 'scheduled' && <button className="btn-back" onClick={onLaunch}>Lanzar ahora</button>}
       <button className="btn-back" onClick={onRemove} title="Quitar"><Trash2 size={14} /></button>
+    </div>
+  );
+}
+
+const UNIT_LABELS = { days: 'días', hours: 'hs', minutes: 'min', seconds: 'seg' };
+const UNIT_SAMPLE = { days: '03', hours: '12', minutes: '45', seconds: '09' };
+const BADGE_RADIUS = { ribbon: '4px', pill: '999px', corner: '0', tag: '4px' };
+
+function Preview({ style: s }) {
+  const badgePos = {
+    'top-left': { top: 8, left: 8 }, 'top-right': { top: 8, right: 8 },
+    'bottom-left': { bottom: 8, left: 8 }, 'bottom-right': { bottom: 8, right: 8 },
+  }[s.badgePosition] || { top: 8, left: 8 };
+
+  return (
+    <div className="cs-preview">
+      <div style={{ position: 'relative', background: '#f0f0f0', borderRadius: 10, height: 160, marginBottom: 12 }}>
+        <div
+          className="cs-preview-badge"
+          style={{
+            position: 'absolute', ...badgePos,
+            background: s.badgeBg, color: s.badgeTextColor,
+            fontFamily: s.badgeFontFamily, fontSize: s.badgeFontSize,
+            borderRadius: BADGE_RADIUS[s.badgeShape] || '4px',
+            textTransform: s.badgeUppercase ? 'uppercase' : 'none',
+          }}
+        >
+          {s.badgeText}
+        </div>
+      </div>
+
+      <div style={{ color: s.priceReplaceColor, fontSize: s.priceReplaceFontSize, fontWeight: 600, marginBottom: 10 }}>
+        {s.priceReplaceText}{s.priceShowDate ? ' · 15/03' : ''}
+      </div>
+
+      {s.countdownEnabled && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 13, color: s.countdownLabelsColor, marginBottom: 6, fontFamily: s.countdownFontFamily }}>{s.countdownHeading}</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {s.countdownUnits.map(u => (
+              <div key={u} style={s.countdownLayout === 'boxes' ? { border: `1px solid ${s.countdownAccentColor}`, borderRadius: 8, padding: '6px 10px', textAlign: 'center', minWidth: 46 } : { textAlign: 'center' }}>
+                <div style={{ fontWeight: 700, color: s.countdownDigitsColor, fontSize: s.countdownSize === 'sm' ? 11 : s.countdownSize === 'lg' ? 18 : 14 }}>{UNIT_SAMPLE[u]}</div>
+                <div style={{ fontSize: 10, textTransform: 'uppercase', color: s.countdownLabelsColor }}>{UNIT_LABELS[u]}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {s.notifyEnabled && (
+        <div style={{ padding: 14, borderRadius: 10, background: s.notifyBg, color: s.notifyTextColor }}>
+          <h4 style={{ margin: '0 0 8px', fontSize: 14, color: 'inherit' }}>{s.notifyHeading}</h4>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input type="text" readOnly placeholder={s.notifyPlaceholder} style={{ flex: 1, padding: '9px 12px', border: '1px solid rgba(0,0,0,.15)', borderRadius: 8, fontSize: 14 }} />
+            <button type="button" disabled style={{ padding: '9px 16px', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, background: s.notifyButtonBg, color: s.notifyButtonTextColor }}>
+              {s.notifyButtonText}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -207,6 +267,13 @@ export default function ComingSoonConfig() {
 
   const setStyle = (k, v) => setConfig(c => ({ ...c, style: { ...c.style, [k]: v } }));
 
+  const toggleUnit = (u) => setConfig(c => {
+    const has = c.style.countdownUnits.includes(u);
+    const order = ['days', 'hours', 'minutes', 'seconds'];
+    const next = order.filter(x => x === u ? !has : c.style.countdownUnits.includes(x));
+    return { ...c, style: { ...c.style, countdownUnits: next } };
+  });
+
   const save = useCallback(async () => {
     const now = Date.now();
     for (const p of config.products) {
@@ -344,7 +411,205 @@ export default function ComingSoonConfig() {
         ))}
       </div>
 
-      {/* Sección "Estilo" se agrega en Task 11 */}
+      <div className="cs-style-grid">
+        <div>
+          <div className="config-section">
+            <div className="section-header"><h2>Estilo — Badge</h2></div>
+            <div className="cs-row">
+              <div className="cs-field">
+                <label>Texto</label>
+                <input type="text" value={config.style.badgeText} onChange={e => setStyle('badgeText', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Forma</label>
+                <select value={config.style.badgeShape} onChange={e => setStyle('badgeShape', e.target.value)}>
+                  <option value="ribbon">Cinta</option>
+                  <option value="pill">Píldora</option>
+                  <option value="corner">Esquina</option>
+                  <option value="tag">Etiqueta</option>
+                </select>
+              </div>
+              <div className="cs-field">
+                <label>Posición</label>
+                <select value={config.style.badgePosition} onChange={e => setStyle('badgePosition', e.target.value)}>
+                  <option value="top-left">Arriba izquierda</option>
+                  <option value="top-right">Arriba derecha</option>
+                  <option value="bottom-left">Abajo izquierda</option>
+                  <option value="bottom-right">Abajo derecha</option>
+                </select>
+              </div>
+              <div className="cs-field">
+                <label>Color de fondo</label>
+                <input type="color" value={config.style.badgeBg} onChange={e => setStyle('badgeBg', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Color de texto</label>
+                <input type="color" value={config.style.badgeTextColor} onChange={e => setStyle('badgeTextColor', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Tipografía</label>
+                <select value={config.style.badgeFontFamily} onChange={e => setStyle('badgeFontFamily', e.target.value)}>
+                  <option value="inherit">Predeterminada</option>
+                  <option value="Poppins, sans-serif">Poppins</option>
+                  <option value="Montserrat, sans-serif">Montserrat</option>
+                  <option value="system-ui">System UI</option>
+                </select>
+              </div>
+              <div className="cs-field">
+                <label>Tamaño</label>
+                <input type="number" min={8} max={24} value={config.style.badgeFontSize} onChange={e => setStyle('badgeFontSize', Number(e.target.value))} />
+              </div>
+              <div className="cs-field">
+                <label>
+                  <input type="checkbox" checked={config.style.badgeUppercase} onChange={e => setStyle('badgeUppercase', e.target.checked)} /> Mayúsculas
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="config-section">
+            <div className="section-header"><h2>Estilo — Precio oculto</h2></div>
+            <div className="cs-row">
+              <div className="cs-field">
+                <label>Texto de reemplazo</label>
+                <input type="text" value={config.style.priceReplaceText} onChange={e => setStyle('priceReplaceText', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Color</label>
+                <input type="color" value={config.style.priceReplaceColor} onChange={e => setStyle('priceReplaceColor', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Tamaño</label>
+                <input type="number" min={10} max={28} value={config.style.priceReplaceFontSize} onChange={e => setStyle('priceReplaceFontSize', Number(e.target.value))} />
+              </div>
+              <div className="cs-field">
+                <label>
+                  <input type="checkbox" checked={config.style.priceShowDate} onChange={e => setStyle('priceShowDate', e.target.checked)} /> Mostrar fecha
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="config-section">
+            <div className="section-header"><h2>Estilo — Countdown</h2></div>
+            <div className="cs-row">
+              <div className="cs-field">
+                <label>
+                  <input type="checkbox" checked={config.style.countdownEnabled} onChange={e => setStyle('countdownEnabled', e.target.checked)} /> Activo
+                </label>
+              </div>
+              <div className="cs-field">
+                <label>Encabezado</label>
+                <input type="text" value={config.style.countdownHeading} onChange={e => setStyle('countdownHeading', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Layout</label>
+                <select value={config.style.countdownLayout} onChange={e => setStyle('countdownLayout', e.target.value)}>
+                  <option value="boxes">Cajas</option>
+                  <option value="inline">En línea</option>
+                </select>
+              </div>
+              <div className="cs-field">
+                <label>Tamaño</label>
+                <select value={config.style.countdownSize} onChange={e => setStyle('countdownSize', e.target.value)}>
+                  <option value="sm">Chico</option>
+                  <option value="md">Mediano</option>
+                  <option value="lg">Grande</option>
+                </select>
+              </div>
+              <div className="cs-field">
+                <label>Tipografía</label>
+                <select value={config.style.countdownFontFamily} onChange={e => setStyle('countdownFontFamily', e.target.value)}>
+                  <option value="inherit">Predeterminada</option>
+                  <option value="Poppins, sans-serif">Poppins</option>
+                  <option value="Montserrat, sans-serif">Montserrat</option>
+                  <option value="system-ui">System UI</option>
+                </select>
+              </div>
+              <div className="cs-field">
+                <label>Color de números</label>
+                <input type="color" value={config.style.countdownDigitsColor} onChange={e => setStyle('countdownDigitsColor', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Color de etiquetas</label>
+                <input type="color" value={config.style.countdownLabelsColor} onChange={e => setStyle('countdownLabelsColor', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Color de acento</label>
+                <input type="color" value={config.style.countdownAccentColor} onChange={e => setStyle('countdownAccentColor', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Unidades</label>
+                <div className="cs-row">
+                  {['days', 'hours', 'minutes', 'seconds'].map(u => (
+                    <label key={u} style={{ fontWeight: 400 }}>
+                      <input type="checkbox" checked={config.style.countdownUnits.includes(u)} onChange={() => toggleUnit(u)} /> {UNIT_LABELS[u]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="config-section">
+            <div className="section-header"><h2>Estilo — Avisame</h2></div>
+            <div className="cs-row">
+              <div className="cs-field">
+                <label>
+                  <input type="checkbox" checked={config.style.notifyEnabled} onChange={e => setStyle('notifyEnabled', e.target.checked)} /> Activo
+                </label>
+              </div>
+              <div className="cs-field">
+                <label>Encabezado</label>
+                <input type="text" value={config.style.notifyHeading} onChange={e => setStyle('notifyHeading', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Placeholder</label>
+                <input type="text" value={config.style.notifyPlaceholder} onChange={e => setStyle('notifyPlaceholder', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Texto del botón</label>
+                <input type="text" value={config.style.notifyButtonText} onChange={e => setStyle('notifyButtonText', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Texto de éxito</label>
+                <input type="text" value={config.style.notifySuccessText} onChange={e => setStyle('notifySuccessText', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Fondo</label>
+                <input type="color" value={config.style.notifyBg} onChange={e => setStyle('notifyBg', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Color de texto</label>
+                <input type="color" value={config.style.notifyTextColor} onChange={e => setStyle('notifyTextColor', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Fondo del botón</label>
+                <input type="color" value={config.style.notifyButtonBg} onChange={e => setStyle('notifyButtonBg', e.target.value)} />
+              </div>
+              <div className="cs-field">
+                <label>Texto del botón</label>
+                <input type="color" value={config.style.notifyButtonTextColor} onChange={e => setStyle('notifyButtonTextColor', e.target.value)} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <Preview style={config.style} />
+      </div>
+
+      <div className="config-section">
+        <div className="section-header"><h2>Interesados ("Avisame")</h2></div>
+        <p className="cs-hint">
+          {config.products.length === 0
+            ? 'Todavía no hay productos en prelanzamiento.'
+            : 'Descargá la lista de emails que pidieron aviso de lanzamiento.'}
+        </p>
+        <a className="cs-btn-save" style={{ textDecoration: 'none', display: 'inline-flex' }}
+           href={`${API_CONFIG.BASE_URL}/api/coming-soon/leads.csv?storeId=${storeId}`}>
+          Descargar CSV
+        </a>
+      </div>
     </div>
   );
 }
