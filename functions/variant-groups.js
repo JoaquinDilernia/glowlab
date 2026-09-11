@@ -298,8 +298,8 @@ function buildWidgetScript(store, cfg) {
 const COLLECTION = "promonube_variant_groups";
 const TN_2025 = "https://api.tiendanube.com/2025-03";
 
-// TODO: completar con el id real de Partners (Aplicaciones -> GlowLab #23137 -> Scripts)
-const VARIANT_GROUPS_SCRIPT_ID = null;
+// Script "Grupos de Variantes" registrado en Partners (Aplicaciones -> GlowLab #23137 -> Scripts).
+const VARIANT_GROUPS_SCRIPT_ID = 10101;
 
 // Piloto: solo Alto Rancho y la tienda demo.
 // TODO: quitar allowlist cuando se libere a todas las tiendas.
