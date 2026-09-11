@@ -772,6 +772,10 @@ setSearchScriptId(SEARCH_SCRIPT_ID);
 const { registerComingSoonRoutes, startComingSoonScheduler } = require('./coming-soon');
 registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
 
+// Grupos de Variantes por SKU - agrupa productos de Alto Rancho por SKU (piloto)
+const { registerVariantGroupsRoutes } = require('./variant-groups');
+registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive });
+
 // ============================================
 // CONFIGURACI�N OAUTH TIENDANUBE
 // ============================================

@@ -173,6 +173,173 @@ async function fetchAllStoreProducts({ storeId, accessToken, fetchImpl }) {
   return out;
 }
 
+const COLLECTION = "promonube_variant_groups";
+const TN_2025 = "https://api.tiendanube.com/2025-03";
+
+// TODO: completar con el id real de Partners (Aplicaciones -> GlowLab #23137 -> Scripts)
+const VARIANT_GROUPS_SCRIPT_ID = null;
+
+// Piloto: solo Alto Rancho y la tienda demo.
+// TODO: quitar allowlist cuando se libere a todas las tiendas.
+const ALLOWED_STORE_IDS = ["2547699", "6854698"];
+
+const DEFAULT_CONFIG = {
+  enabled: false,
+  showOnListing: true,
+  showOnPDP: true,
+  swatchSize: "md",
+  groups: [],
+  ungrouped: [],
+  lastScanAt: null,
+};
+
+function isAllowedStore(storeId) {
+  return ALLOWED_STORE_IDS.includes(String(storeId));
+}
+
+function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) {
+  // GET /api/variant-groups-config?storeId=X
+  app.get("/api/variant-groups-config", async (req, res) => {
+    const { storeId } = req.query;
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+    if (!isAllowedStore(storeId)) {
+      return res.status(403).json({ success: false, message: "Módulo no disponible para esta tienda" });
+    }
+
+    try {
+      const doc = await db.collection(COLLECTION).doc(String(storeId)).get();
+      const config = doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG;
+      res.json({ success: true, config });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // POST /api/variant-groups-config - guarda solo settings (no toca groups/ungrouped)
+  app.post("/api/variant-groups-config", async (req, res) => {
+    const { storeId, config } = req.body || {};
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+    if (!isAllowedStore(storeId)) {
+      return res.status(403).json({ success: false, message: "Módulo no disponible para esta tienda" });
+    }
+    if (!config || typeof config !== "object") {
+      return res.status(400).json({ success: false, message: "config requerido" });
+    }
+
+    try {
+      const settings = {
+        enabled: !!config.enabled,
+        showOnListing: config.showOnListing !== false,
+        showOnPDP: config.showOnPDP !== false,
+        swatchSize: ["sm", "md", "lg"].includes(config.swatchSize) ? config.swatchSize : "md",
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      await db.collection(COLLECTION).doc(String(storeId)).set(settings, { merge: true });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // POST /api/variant-groups/scan - escanea el catalogo, propone grupos, NO persiste
+  app.post("/api/variant-groups/scan", async (req, res) => {
+    const { storeId } = req.body || {};
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+    if (!isAllowedStore(storeId)) {
+      return res.status(403).json({ success: false, message: "Módulo no disponible para esta tienda" });
+    }
+    if (!(await checkStoreActive(storeId))) {
+      return res.status(403).json({ success: false, message: "Plan inactivo" });
+    }
+
+    try {
+      const storeDoc = await db.collection("promonube_stores").doc(String(storeId)).get();
+      if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Tienda no encontrada" });
+      const accessToken = storeDoc.data().accessToken;
+      if (!accessToken) return res.status(401).json({ success: false, message: "No hay token de acceso" });
+
+      const products = await fetchAllStoreProducts({ storeId, accessToken });
+      const scanResult = computeSkuGroups(products);
+
+      const configDoc = await db.collection(COLLECTION).doc(String(storeId)).get();
+      const published = configDoc.exists ? configDoc.data().groups || [] : [];
+      const diff = diffScanWithPublished(scanResult, published);
+
+      res.json({ success: true, ...diff, publishedGroups: published });
+    } catch (error) {
+      console.error("[VariantGroups scan]", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // POST /api/variant-groups/publish - persiste el estado final aprobado en la revision
+  app.post("/api/variant-groups/publish", async (req, res) => {
+    const { storeId, groups, ungrouped } = req.body || {};
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+    if (!isAllowedStore(storeId)) {
+      return res.status(403).json({ success: false, message: "Módulo no disponible para esta tienda" });
+    }
+    if (!Array.isArray(groups)) return res.status(400).json({ success: false, message: "groups requerido" });
+
+    try {
+      await db.collection(COLLECTION).doc(String(storeId)).set(
+        {
+          groups,
+          ungrouped: Array.isArray(ungrouped) ? ungrouped : [],
+          lastScanAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // POST /api/variant-groups/install - instala el script en la tienda (Scripts API clasica)
+  app.post("/api/variant-groups/install", async (req, res) => {
+    const { storeId } = req.body || {};
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+    if (!isAllowedStore(storeId)) {
+      return res.status(403).json({ success: false, message: "Módulo no disponible para esta tienda" });
+    }
+    if (!(await checkStoreActive(storeId))) {
+      return res.status(403).json({ success: false, message: "Plan inactivo" });
+    }
+    if (!VARIANT_GROUPS_SCRIPT_ID) {
+      return res.status(500).json({ success: false, message: "Script no registrado en Partners todavía" });
+    }
+
+    try {
+      const storeDoc = await db.collection("promonube_stores").doc(String(storeId)).get();
+      if (!storeDoc.exists) return res.status(404).json({ success: false, message: "Tienda no encontrada" });
+      const accessToken = storeDoc.data().accessToken;
+
+      const installRes = await fetch(`${TN_2025}/${storeId}/scripts`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "User-Agent": TN_UA,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ script_id: VARIANT_GROUPS_SCRIPT_ID }),
+      });
+
+      if (!installRes.ok) {
+        const t = await installRes.text();
+        return res.status(500).json({ success: false, message: "Error TN: " + t });
+      }
+
+      const installed = await installRes.json();
+      res.json({ success: true, message: "Script activado para la tienda", result: installed });
+    } catch (error) {
+      console.error("[VariantGroups install]", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+}
+
 module.exports = {
   splitSku,
   deriveGroupTitle,
@@ -180,4 +347,5 @@ module.exports = {
   diffScanWithPublished,
   buildWidgetIndex,
   fetchAllStoreProducts,
+  registerVariantGroupsRoutes,
 };
