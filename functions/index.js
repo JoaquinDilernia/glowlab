@@ -768,6 +768,10 @@ const { registerSearchRoutes, setSearchScriptId } = require('./search');
 registerSearchRoutes(app, { db, FieldValue, checkStoreActive });
 setSearchScriptId(SEARCH_SCRIPT_ID);
 
+// Próximamente (Coming Soon) - badge + precio oculto + compra pausada + countdown
+const { registerComingSoonRoutes, startComingSoonScheduler } = require('./coming-soon');
+registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
+
 // ============================================
 // CONFIGURACI�N OAUTH TIENDANUBE
 // ============================================
@@ -18561,4 +18565,5 @@ app.post("/api/report-theme", handleReportTheme);
 if (require.main === module) {
   const PORT = process.env.PORT || 8080;
   app.listen(PORT, () => console.warn(`PromoNube API running on port ${PORT}`));
+  startComingSoonScheduler({ db, FieldValue });
 }
