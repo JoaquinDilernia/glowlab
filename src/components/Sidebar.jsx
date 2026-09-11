@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Palette, LogOut, X, MapPin, MessageCircle,
-  ShoppingBag, Percent, Search
+  ShoppingBag, Percent, Search, Rocket
 } from 'lucide-react';
 import { useSubscription } from '../hooks/useSubscription';
 import './Sidebar.css';
@@ -16,6 +16,7 @@ const BASE_NAV_ITEMS = [
   { path: '/style',          icon: Palette,       label: 'Style' },
   { path: '/buscador-inteligente', icon: Search, label: 'Buscador Inteligente Pro' },
   { path: '/precios-cuotas', icon: Percent, label: 'Precios y Cuotas' },
+  { path: '/proximamente', icon: Rocket, label: 'Próximamente' },
   { path: '/shop-the-look',  icon: ShoppingBag,   label: 'Shop the Look' },
 ];
 
