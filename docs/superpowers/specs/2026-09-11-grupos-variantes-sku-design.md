@@ -158,23 +158,32 @@ re-escaneo no vuelva a proponer algo que el dueño ya sacó a mano.
 
 ### Allowlist (temporal — solo mientras es piloto de Alto Rancho)
 
+Alto Rancho: `storeId 2547699`. Tienda demo: `storeId 6854698` (confirmados
+contra `promonube_stores` en Firestore).
+
 ```js
 // functions/variant-groups.js
-const ALLOWED_STORE_IDS = [
-  '<TODO: storeId real de altorancho2>',
-  '<TODO: storeId de la tienda demo>',
-];
+const ALLOWED_STORE_IDS = ['2547699', '6854698'];
 ```
 
 Cada endpoint nuevo chequea `ALLOWED_STORE_IDS.includes(String(storeId))` al
 principio y devuelve `403 { success:false, message:'Módulo no disponible para
-esta tienda' }` si no matchea. Mismo array (duplicado, no hay capa de config
-compartida hoy) en el frontend: `src/config.js` exporta
-`VARIANT_GROUPS_ALLOWED_STORES`, usado en `Sidebar.jsx` (ocultar el ítem de
-menú) y `App.jsx` o el propio `VariantGroupsConfig.jsx` (redirigir a
-`/dashboard` si el storeId no está permitido). **Cuando se decida ofrecerlo a
-todas las tiendas, se borra este chequeo** — queda marcado con un comentario
-`// TODO: quitar allowlist cuando se libere a todas las tiendas`.
+esta tienda' }` si no matchea.
+
+En el frontend **ya existe** el mecanismo para esto — `Sidebar.jsx` tiene
+`STORE_EXCLUSIVE_ITEMS`, un objeto `{ [storeId]: [...items] }` usado hoy para
+"Stock Altorancho" / "Aviso Checkout". Se agrega ahí una entrada para
+`'2547699'` con el ítem "Grupos de Variantes", **y se agrega `'6854698'`
+(demo) como clave nueva** con el mismo ítem (hoy `STORE_EXCLUSIVE_ITEMS` solo
+tiene la entrada de Alto Rancho). Se sigue el mismo patrón existente en vez de
+crear una capa de allowlist paralela. `App.jsx`/`VariantGroupsConfig.jsx`
+igual valida `ALLOWED_STORE_IDS` (mismos dos IDs, duplicados a mano como ya
+pasa con `PRICE_FINANCING_SCRIPT_ID` y similares en este repo) y redirige a
+`/dashboard` si el storeId no matchea, por si alguien navega directo a la URL
+sin pasar por el menú. **Cuando se decida ofrecerlo a todas las tiendas**, se
+saca la entrada de `STORE_EXCLUSIVE_ITEMS` (el ítem pasa a `BASE_NAV_ITEMS`) y
+se borra el chequeo de `ALLOWED_STORE_IDS` en backend y frontend — queda
+marcado con `// TODO: quitar allowlist cuando se libere a todas las tiendas`.
 
 ### Bootstrap script (Tiendanube Partners)
 
@@ -299,9 +308,8 @@ sentido tematizarlo más para v1 (YAGNI).
 | `variant-groups-version.js` (raíz) | Crear — bootstrap para Partners (molde `price-financing-version.js`) |
 | `src/pages/VariantGroupsConfig.jsx` | Crear |
 | `src/pages/VariantGroupsConfig.css` | Crear — tema dark `--gl-*` desde el arranque (no repetir el error de Próximamente) |
-| `src/App.jsx` | `import` + `<Route path="/grupos-variantes">`, gateado por allowlist |
-| `src/components/Sidebar.jsx` | Ítem "Grupos de Variantes" (ícono `Layers` de lucide-react), oculto si el storeId no está en `VARIANT_GROUPS_ALLOWED_STORES` |
-| `src/config.js` | Agregar `VARIANT_GROUPS_ALLOWED_STORES` |
+| `src/App.jsx` | `import` + `<Route path="/grupos-variantes">` (el guard de allowlist vive en la propia página) |
+| `src/components/Sidebar.jsx` | Agregar el ítem "Grupos de Variantes" (ícono `Layers`) a `STORE_EXCLUSIVE_ITEMS['2547699']`, y agregar una entrada nueva `STORE_EXCLUSIVE_ITEMS['6854698']` (demo) con el mismo ítem |
 
 Colección Firestore nueva: `promonube_variant_groups`. No se modifica ningún
 módulo existente más allá del wiring.
