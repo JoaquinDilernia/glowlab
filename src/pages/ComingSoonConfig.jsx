@@ -189,7 +189,7 @@ export default function ComingSoonConfig() {
     if (!catDate || new Date(catDate).getTime() <= Date.now()) { toast.error('Poné una fecha de lanzamiento futura'); return; }
     setCatBusy(true);
     try {
-      const res = await apiRequest(`/api/tiendanube/category-products?storeId=${storeId}&categoryId=${catChoice}`);
+      const res = await apiRequest(`/api/coming-soon/category-products?storeId=${storeId}&categoryId=${catChoice}`);
       const prods = Array.isArray(res) ? res : (res.products || res.data || []);
       const already = existingIds();
       const chosen = catRows.find(r => String(r.id) === String(catChoice));
@@ -225,7 +225,7 @@ export default function ComingSoonConfig() {
     const cat = config.categories.find(k => String(k.categoryId) === String(categoryId));
     if (!cat) return;
     try {
-      const res = await apiRequest(`/api/tiendanube/category-products?storeId=${storeId}&categoryId=${categoryId}`);
+      const res = await apiRequest(`/api/coming-soon/category-products?storeId=${storeId}&categoryId=${categoryId}`);
       const prods = Array.isArray(res) ? res : (res.products || res.data || []);
       const already = existingIds();
       const newItems = prods.filter(p => !already.has(String(p.id))).map(p => ({

@@ -570,7 +570,51 @@ async function saveConfig(db, FieldValue, storeId, config) {
 
 const API_BASE = "https://glowlab-production.up.railway.app";
 
+const TN_UA_PUBLIC = "PromoNube App (contacto@promonube.com)";
+const CATEGORY_PRODUCTS_MAX_PAGES = 10;
+const CATEGORY_PRODUCTS_PER_PAGE = 200;
+
+async function fetchCategoryProducts({ storeId, categoryId, accessToken, fetchImpl }) {
+  const doFetch = fetchImpl || globalThis.fetch;
+  const headers = { "Authentication": `bearer ${accessToken}`, "User-Agent": TN_UA_PUBLIC };
+  const out = [];
+  let page = 1;
+  while (page <= CATEGORY_PRODUCTS_MAX_PAGES) {
+    const res = await doFetch(
+      `${TN_V1}/${storeId}/products?category_id=${categoryId}&page=${page}&per_page=${CATEGORY_PRODUCTS_PER_PAGE}&fields=id,name,canonical_url,images,variants`,
+      { headers }
+    );
+    if (!res.ok) {
+      const err = new Error(`TN GET category products page ${page}: ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    const items = await res.json();
+    if (!Array.isArray(items) || items.length === 0) break;
+    out.push(...items);
+    if (items.length < CATEGORY_PRODUCTS_PER_PAGE) break;
+    page++;
+  }
+  return out;
+}
+
 function registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive }) {
+  // GET productos de una categoría completa, para "Agregar categoría" / "Actualizar
+  // productos" en el panel. Endpoint propio (no el de Flash Sale, que devuelve
+  // un shape distinto {productIds, featuredProducts} truncado a 10 items).
+  app.get("/api/coming-soon/category-products", async (req, res) => {
+    const { storeId, categoryId } = req.query;
+    if (!storeId || !categoryId) return res.status(400).json({ success: false, message: "storeId y categoryId requeridos" });
+    try {
+      const store = await loadStore(db, storeId);
+      if (!store || !store.accessToken) return res.status(404).json({ success: false, message: "Tienda sin token" });
+      const products = await fetchCategoryProducts({ storeId, categoryId, accessToken: store.accessToken });
+      res.json({ success: true, products });
+    } catch (error) {
+      res.status(error.status || 500).json({ success: false, message: error.message });
+    }
+  });
+
   // GET config (admin)
   app.get("/api/coming-soon-config", async (req, res) => {
     const { storeId } = req.query;
