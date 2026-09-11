@@ -120,7 +120,7 @@ export default function VariantGroupsConfig() {
   const publishProposal = async () => {
     if (!proposal) return;
 
-    const byKey = new Map((proposal.publishedGroups || []).map(g => [g.groupKey, {
+    const byKey = new Map((config.groups || []).map(g => [g.groupKey, {
       ...g,
       products: [...g.products],
       excludedProductIds: [...(g.excludedProductIds || [])],
@@ -169,13 +169,16 @@ export default function VariantGroupsConfig() {
     }
 
     // sin agrupar asignados a mano a un grupo
+    const successfullyAssignedIds = new Set();
     for (const [productId, targetKey] of Object.entries(ungroupedAssignment)) {
       if (!targetKey) continue;
       const target = byKey.get(targetKey);
       const source = proposal.ungrouped.find(p => String(p.productId) === productId);
       if (!target || !source) continue;
-      if (target.products.some(p => String(p.productId) === productId)) continue;
-      target.products.push({ productId: source.productId, sku: source.sku, name: source.name, image: source.image, url: source.url });
+      if (!target.products.some(p => String(p.productId) === productId)) {
+        target.products.push({ productId: source.productId, sku: source.sku, name: source.name, image: source.image, url: source.url });
+      }
+      successfullyAssignedIds.add(String(productId));
     }
 
     const finalGroups = [];
@@ -186,9 +189,8 @@ export default function VariantGroupsConfig() {
         orphans.push(g.products[0]);
       }
     }
-    const assignedIds = new Set(Object.keys(ungroupedAssignment).filter(id => ungroupedAssignment[id]));
     const finalUngrouped = [
-      ...proposal.ungrouped.filter(p => !assignedIds.has(String(p.productId))),
+      ...proposal.ungrouped.filter(p => !successfullyAssignedIds.has(String(p.productId))),
       ...orphans.map(p => ({ ...p, reason: 'single_product' })),
     ];
 
