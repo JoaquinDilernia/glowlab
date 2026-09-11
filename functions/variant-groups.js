@@ -225,6 +225,9 @@ function buildWidgetScript(store, cfg) {
     s.textContent = [
       '.pn-vg-row, .pn-vg-row * { box-sizing: border-box !important; }',
       '.pn-vg-row { display: flex !important; gap: 6px !important; flex-wrap: nowrap !important; align-items: center !important; margin: 8px 0 !important; }',
+      // En la PDP se muestran todas las variantes (sin "+N"): se envuelve en
+      // filas de hasta 6 en vez de una sola fila infinita que rompe el layout.
+      '.pn-vg-row-wrap { flex-wrap: wrap !important; max-width: ' + (SWATCH_PX * 6 + 6 * 5) + 'px !important; }',
       '.pn-vg-swatch { display: inline-block !important; flex: none !important; width: ' + SWATCH_PX + 'px !important; height: ' + SWATCH_PX + 'px !important; border-radius: 50% !important; background-size: cover !important; background-position: center !important; border: 2px solid transparent !important; text-decoration: none !important; }',
       '.pn-vg-swatch.pn-vg-active { border-color: #111 !important; }',
       'a.pn-vg-swatch { cursor: pointer !important; }',
@@ -243,7 +246,7 @@ function buildWidgetScript(store, cfg) {
 
   function buildRow(entry, truncate) {
     var row = document.createElement('div');
-    row.className = 'pn-vg-row';
+    row.className = 'pn-vg-row' + (truncate === false ? ' pn-vg-row-wrap' : '');
     var siblings = entry.siblings;
     var maxVisible = maxVisibleSwatches();
     var visible = siblings;
