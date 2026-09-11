@@ -127,10 +127,57 @@ function buildWidgetIndex(groups) {
   return index;
 }
 
+const TN_V1 = "https://api.tiendanube.com/v1";
+const TN_UA = "GlowLab (info@techdi.com.ar)";
+const PRODUCTS_PER_PAGE = 200;
+
+async function fetchAllStoreProducts({ storeId, accessToken, fetchImpl }) {
+  const doFetch = fetchImpl || globalThis.fetch;
+  const headers = { Authentication: `bearer ${accessToken}`, "User-Agent": TN_UA };
+  const out = [];
+  let page = 1;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const res = await doFetch(
+      `${TN_V1}/${storeId}/products?page=${page}&per_page=${PRODUCTS_PER_PAGE}&fields=id,name,images,variants,canonical_url`,
+      { headers }
+    );
+    if (!res.ok) {
+      const err = new Error(`TN GET products page ${page}: ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    const items = await res.json();
+    if (!Array.isArray(items) || items.length === 0) break;
+
+    for (const product of items) {
+      const variant = Array.isArray(product.variants) ? product.variants[0] : null;
+      const name =
+        typeof product.name === "object"
+          ? product.name.es || Object.values(product.name)[0] || ""
+          : product.name || "";
+      out.push({
+        productId: String(product.id),
+        sku: variant && variant.sku ? String(variant.sku) : "",
+        name,
+        image: (product.images && product.images[0] && (product.images[0].src || product.images[0])) || "",
+        url: product.canonical_url || "",
+      });
+    }
+
+    if (items.length < PRODUCTS_PER_PAGE) break;
+    page += 1;
+  }
+
+  return out;
+}
+
 module.exports = {
   splitSku,
   deriveGroupTitle,
   computeSkuGroups,
   diffScanWithPublished,
   buildWidgetIndex,
+  fetchAllStoreProducts,
 };

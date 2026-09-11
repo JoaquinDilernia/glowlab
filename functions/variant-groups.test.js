@@ -7,6 +7,7 @@ const {
   computeSkuGroups,
   diffScanWithPublished,
   buildWidgetIndex,
+  fetchAllStoreProducts,
 } = require("./variant-groups");
 
 test("splitSku - separa raiz y color con sufijo de 2 caracteres", () => {
@@ -189,4 +190,64 @@ test("buildWidgetIndex - grupo con menos de 2 productos no genera entradas", () 
 test("buildWidgetIndex - sin grupos da objeto vacio", () => {
   assert.deepEqual(buildWidgetIndex([]), {});
   assert.deepEqual(buildWidgetIndex(undefined), {});
+});
+
+function fakeProduct(id, sku, name) {
+  return {
+    id,
+    name: { es: name },
+    images: [{ src: "https://img/" + id }],
+    variants: [{ sku }],
+    canonical_url: "https://tienda/productos/" + id,
+  };
+}
+
+test("fetchAllStoreProducts - mapea el shape esperado", async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    return { ok: true, json: async () => [fakeProduct("1", "BCV136PT", "Silla Rey Rojo")] };
+  };
+  const products = await fetchAllStoreProducts({ storeId: "111", accessToken: "tok", fetchImpl });
+  assert.equal(products.length, 1);
+  assert.deepEqual(products[0], {
+    productId: "1",
+    sku: "BCV136PT",
+    name: "Silla Rey Rojo",
+    image: "https://img/1",
+    url: "https://tienda/productos/1",
+  });
+});
+
+test("fetchAllStoreProducts - pagina hasta que una pagina viene incompleta", async () => {
+  let call = 0;
+  const fetchImpl = async () => {
+    call += 1;
+    if (call === 1) {
+      const page = [];
+      for (let i = 0; i < 200; i++) page.push(fakeProduct(String(i), "SKU" + i + "PT", "P" + i));
+      return { ok: true, json: async () => page };
+    }
+    if (call === 2) {
+      return { ok: true, json: async () => [fakeProduct("200", "SKU200PT", "P200")] };
+    }
+    throw new Error("no deberia pedir una tercera pagina");
+  };
+  const products = await fetchAllStoreProducts({ storeId: "111", accessToken: "tok", fetchImpl });
+  assert.equal(products.length, 201);
+  assert.equal(call, 2);
+});
+
+test("fetchAllStoreProducts - producto sin variantes da sku vacio", async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => [{ id: "9", name: "Sin variante", images: [], variants: [], canonical_url: "" }],
+  });
+  const products = await fetchAllStoreProducts({ storeId: "111", accessToken: "tok", fetchImpl });
+  assert.equal(products[0].sku, "");
+});
+
+test("fetchAllStoreProducts - respuesta no-ok lanza error", async () => {
+  const fetchImpl = async () => ({ ok: false, status: 500 });
+  await assert.rejects(() => fetchAllStoreProducts({ storeId: "111", accessToken: "tok", fetchImpl }));
 });
