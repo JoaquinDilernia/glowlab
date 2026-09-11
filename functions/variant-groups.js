@@ -212,7 +212,11 @@ function buildWidgetScript(store, cfg) {
   var DATA_URL = 'https://glowlab-production.up.railway.app/api/variant-groups-data.json?store=${store}';
   var INDEX = null;
   var SWATCH_PX = { sm: 28, md: 36, lg: 44 }[CFG.swatchSize] || 36;
-  var MAX_VISIBLE_SWATCHES = 6;
+  var MOBILE_BREAKPOINT = 767;
+
+  function maxVisibleSwatches() {
+    return window.innerWidth <= MOBILE_BREAKPOINT ? 3 : 6;
+  }
 
   function injectStyles() {
     if (document.getElementById('pn-vg-styles')) return;
@@ -241,20 +245,21 @@ function buildWidgetScript(store, cfg) {
     var row = document.createElement('div');
     row.className = 'pn-vg-row';
     var siblings = entry.siblings;
+    var maxVisible = maxVisibleSwatches();
     var visible = siblings;
     var hiddenCount = 0;
-    if (siblings.length > MAX_VISIBLE_SWATCHES) {
-      visible = siblings.slice(0, MAX_VISIBLE_SWATCHES);
+    if (siblings.length > maxVisible) {
+      visible = siblings.slice(0, maxVisible);
       // Si el propio producto (active) quedo fuera del recorte, se lo
       // canjea por el ultimo visible para que siempre se vea marcado.
       var activeIdx = -1;
       for (var i = 0; i < siblings.length; i++) {
         if (siblings[i].active) { activeIdx = i; break; }
       }
-      if (activeIdx >= MAX_VISIBLE_SWATCHES) {
-        visible[MAX_VISIBLE_SWATCHES - 1] = siblings[activeIdx];
+      if (activeIdx >= maxVisible) {
+        visible[maxVisible - 1] = siblings[activeIdx];
       }
-      hiddenCount = siblings.length - MAX_VISIBLE_SWATCHES;
+      hiddenCount = siblings.length - maxVisible;
     }
     visible.forEach(function(sib) {
       var el = document.createElement(sib.active ? 'span' : 'a');
