@@ -144,6 +144,20 @@ test("diffScanWithPublished - grupo publicado que desaparece por completo del es
   assert.equal(diff.removedFromCatalog[0].groupKey, "OLD99");
 });
 
+test("diffScanWithPublished - producto asignado a mano con SKU no coincidente no se marca como removido si sigue en ungrouped", () => {
+  const published = [{
+    groupKey: "BCV136", title: "Silla Rey", hidden: false, excludedProductIds: [],
+    products: [product("1", "BCV136PT", "Silla Rey Rojo"), product("99", "", "Gift Card")],
+  }];
+  const scan = {
+    groups: [{ groupKey: "BCV136", title: "Silla Rey", products: [product("1", "BCV136PT", "Silla Rey Rojo")] }],
+    ungrouped: [{ ...product("99", "", "Gift Card"), reason: "no_sku" }],
+  };
+  const diff = diffScanWithPublished(scan, published);
+  assert.equal(diff.removedFromCatalog.length, 0);
+  assert.equal(diff.groupsWithAdditions.length, 0);
+});
+
 test("diffScanWithPublished - ungrouped pasa igual", () => {
   const scan = { groups: [], ungrouped: [product("5", "X1", "Suelto")] };
   const diff = diffScanWithPublished(scan, []);

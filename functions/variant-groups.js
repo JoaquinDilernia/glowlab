@@ -69,6 +69,17 @@ function diffScanWithPublished(scanResult, publishedGroups) {
   const groupsWithAdditions = [];
   const removedFromCatalog = [];
 
+  // Todos los productIds que aparecieron en este escaneo, sea en un grupo o en
+  // "sin agrupar". Un producto publicado que sigue en este set sigue existiendo
+  // en el catalogo, aunque el algoritmo ya no lo agrupe automaticamente donde
+  // estaba (ej. se asigno a mano a un grupo cuyo SKU no matchea) - no se marca
+  // como "removido del catalogo" solo por eso.
+  const allScannedIds = new Set();
+  for (const g of scanResult.groups) {
+    for (const p of g.products) allScannedIds.add(String(p.productId));
+  }
+  for (const p of scanResult.ungrouped) allScannedIds.add(String(p.productId));
+
   for (const scanned of scanResult.groups) {
     const pub = published.get(scanned.groupKey);
     if (!pub) {
@@ -90,8 +101,7 @@ function diffScanWithPublished(scanResult, publishedGroups) {
       });
     }
 
-    const scannedIds = new Set(scanned.products.map((p) => String(p.productId)));
-    const missing = pub.products.filter((p) => !scannedIds.has(String(p.productId)));
+    const missing = pub.products.filter((p) => !allScannedIds.has(String(p.productId)));
     if (missing.length) {
       removedFromCatalog.push({ groupKey: scanned.groupKey, title: pub.title, products: missing });
     }
@@ -99,8 +109,11 @@ function diffScanWithPublished(scanResult, publishedGroups) {
 
   for (const pub of publishedGroups || []) {
     const stillScanned = scanResult.groups.some((g) => g.groupKey === pub.groupKey);
-    if (!stillScanned && pub.products.length) {
-      removedFromCatalog.push({ groupKey: pub.groupKey, title: pub.title, products: pub.products });
+    if (!stillScanned) {
+      const missing = pub.products.filter((p) => !allScannedIds.has(String(p.productId)));
+      if (missing.length) {
+        removedFromCatalog.push({ groupKey: pub.groupKey, title: pub.title, products: missing });
+      }
     }
   }
 
