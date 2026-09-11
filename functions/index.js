@@ -768,6 +768,10 @@ const { registerSearchRoutes, setSearchScriptId } = require('./search');
 registerSearchRoutes(app, { db, FieldValue, checkStoreActive });
 setSearchScriptId(SEARCH_SCRIPT_ID);
 
+// Próximamente (Coming Soon) - badge + precio oculto + compra pausada + countdown
+const { registerComingSoonRoutes } = require('./coming-soon');
+registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
+
 // ============================================
 // CONFIGURACI�N OAUTH TIENDANUBE
 // ============================================

@@ -386,3 +386,22 @@ test("reconcileStore sin vencidos no cambia nada", async () => {
   const { changed } = await reconcileStore({ config, client: fakeClient({ "2": [] }), nowMs: now });
   assert.equal(changed, false);
 });
+
+const { buildWidgetScript } = require("./coming-soon");
+
+test("buildWidgetScript devuelve un IIFE con el store y sin branding", () => {
+  const js = buildWidgetScript("12345", {
+    style: DEFAULT_STYLE,
+    products: [{ productId: "1", launchDate: "2026-07-01T10:00:00", message: "" }],
+    apiBase: "https://glowlab-production.up.railway.app",
+  });
+  assert.equal(typeof js, "string");
+  assert.match(js, /12345/);
+  assert.match(js, /__pnComingSoonLoaded/);
+  assert.equal(/PromoNube|GlowLab|promonube|glowlab/i.test(js.replace(/glowlab-production/g, "")), false);
+});
+
+test("buildWidgetScript embebe los productos como JSON", () => {
+  const js = buildWidgetScript("1", { style: DEFAULT_STYLE, products: [{ productId: "99", launchDate: "2026-07-01T10:00:00", message: "hey" }], apiBase: "x" });
+  assert.match(js, /"productId":"99"/);
+});
