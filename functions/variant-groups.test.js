@@ -8,6 +8,7 @@ const {
   diffScanWithPublished,
   buildWidgetIndex,
   fetchAllStoreProducts,
+  isValidGroup,
 } = require("./variant-groups");
 
 test("splitSku - separa raiz y color con sufijo de 2 caracteres", () => {
@@ -206,6 +207,55 @@ test("buildWidgetIndex - sin grupos da objeto vacio", () => {
   assert.deepEqual(buildWidgetIndex(undefined), {});
 });
 
+test("buildWidgetIndex - descarta un url con esquema no seguro (ej. javascript:)", () => {
+  const groups = [{
+    groupKey: "BCV136", title: "Silla Rey", hidden: false, excludedProductIds: [],
+    products: [
+      { productId: "1", sku: "BCV136PT", name: "Rojo", image: "img1", url: "javascript:alert(1)" },
+      { productId: "2", sku: "BCV136NT", name: "Natural", image: "img2", url: "/productos/natural" },
+    ],
+  }];
+  const index = buildWidgetIndex(groups);
+  const sib1 = index["1"].siblings.find((s) => s.productId === "1");
+  assert.equal(sib1.url, "");
+  const sib2 = index["1"].siblings.find((s) => s.productId === "2");
+  assert.equal(sib2.url, "/productos/natural");
+});
+
+test("buildWidgetIndex - acepta url absoluta http(s) y descarta url/image no-string", () => {
+  const groups = [{
+    groupKey: "BCV136", title: "Silla Rey", hidden: false, excludedProductIds: [],
+    products: [
+      { productId: "1", sku: "BCV136PT", name: "Rojo", image: undefined, url: "https://tienda.com/rojo" },
+      { productId: "2", sku: "BCV136NT", name: "Natural", image: "img2", url: null },
+    ],
+  }];
+  const index = buildWidgetIndex(groups);
+  const sib1 = index["1"].siblings.find((s) => s.productId === "1");
+  assert.equal(sib1.url, "https://tienda.com/rojo");
+  assert.equal(sib1.image, "");
+  const sib2 = index["1"].siblings.find((s) => s.productId === "2");
+  assert.equal(sib2.url, "");
+});
+
+test("isValidGroup - acepta un grupo bien formado", () => {
+  assert.equal(isValidGroup({
+    groupKey: "BCV136", title: "Silla Rey", hidden: false, excludedProductIds: [],
+    products: [{ productId: "1", sku: "BCV136PT", name: "Rojo" }],
+  }), true);
+});
+
+test("isValidGroup - rechaza groupKey vacio, products no-array, o producto sin sku", () => {
+  assert.equal(isValidGroup({ groupKey: "", title: "x", products: [] }), false);
+  assert.equal(isValidGroup({ groupKey: "X", title: "x", products: "no-array" }), false);
+  assert.equal(isValidGroup({ groupKey: "X", title: "x", products: [{ productId: "1", name: "Rojo" }] }), false);
+});
+
+test("isValidGroup - excludedProductIds opcional pero debe ser array si esta presente", () => {
+  assert.equal(isValidGroup({ groupKey: "X", title: "x", products: [], excludedProductIds: "no-array" }), false);
+  assert.equal(isValidGroup({ groupKey: "X", title: "x", products: [] }), true);
+});
+
 function fakeProduct(id, sku, name) {
   return {
     id,
@@ -264,4 +314,19 @@ test("fetchAllStoreProducts - producto sin variantes da sku vacio", async () => 
 test("fetchAllStoreProducts - respuesta no-ok lanza error", async () => {
   const fetchImpl = async () => ({ ok: false, status: 500 });
   await assert.rejects(() => fetchAllStoreProducts({ storeId: "111", accessToken: "tok", fetchImpl }));
+});
+
+test("fetchAllStoreProducts - no supera MAX_PAGES aunque el API devuelva paginas llenas para siempre", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    const page = [];
+    for (let i = 0; i < 200; i++) {
+      page.push({ id: String(calls * 1000 + i), name: "P", images: [], variants: [{ sku: "SKU" + i + "PT" }], canonical_url: "" });
+    }
+    return { ok: true, json: async () => page };
+  };
+  const products = await fetchAllStoreProducts({ storeId: "111", accessToken: "tok", fetchImpl });
+  assert.equal(calls, 50);
+  assert.equal(products.length, 50 * 200);
 });

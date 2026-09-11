@@ -120,6 +120,17 @@ function diffScanWithPublished(scanResult, publishedGroups) {
   return { newGroups, groupsWithAdditions, removedFromCatalog, ungrouped: scanResult.ungrouped };
 }
 
+function safeString(v) {
+  return typeof v === "string" ? v : "";
+}
+
+const SAFE_HREF_PATTERN = /^(\/|https?:\/\/)/i;
+
+function safeHref(url) {
+  const s = safeString(url);
+  return SAFE_HREF_PATTERN.test(s) ? s : "";
+}
+
 function buildWidgetIndex(groups) {
   const index = {};
   for (const group of groups || []) {
@@ -130,8 +141,8 @@ function buildWidgetIndex(groups) {
         groupKey: group.groupKey,
         siblings: group.products.map((p) => ({
           productId: String(p.productId),
-          url: p.url,
-          image: p.image,
+          url: safeHref(p.url),
+          image: safeString(p.image),
           active: String(p.productId) === String(product.productId),
         })),
       };
@@ -143,6 +154,7 @@ function buildWidgetIndex(groups) {
 const TN_V1 = "https://api.tiendanube.com/v1";
 const TN_UA = "GlowLab (info@techdi.com.ar)";
 const PRODUCTS_PER_PAGE = 200;
+const MAX_PAGES = 50;
 
 async function fetchAllStoreProducts({ storeId, accessToken, fetchImpl }) {
   const doFetch = fetchImpl || globalThis.fetch;
@@ -150,8 +162,7 @@ async function fetchAllStoreProducts({ storeId, accessToken, fetchImpl }) {
   const out = [];
   let page = 1;
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  while (page <= MAX_PAGES) {
     const res = await doFetch(
       `${TN_V1}/${storeId}/products?page=${page}&per_page=${PRODUCTS_PER_PAGE}&fields=id,name,images,variants,canonical_url`,
       { headers }
@@ -319,6 +330,33 @@ function isAllowedStore(storeId) {
   return ALLOWED_STORE_IDS.includes(String(storeId));
 }
 
+const MAX_GROUPS = 1000;
+const MAX_PRODUCTS_PER_GROUP = 500;
+
+function isValidGroupProduct(p) {
+  return (
+    p &&
+    typeof p === "object" &&
+    (typeof p.productId === "string" || typeof p.productId === "number") &&
+    typeof p.sku === "string" &&
+    typeof p.name === "string"
+  );
+}
+
+function isValidGroup(g) {
+  return (
+    g &&
+    typeof g === "object" &&
+    typeof g.groupKey === "string" &&
+    g.groupKey.length > 0 &&
+    typeof g.title === "string" &&
+    Array.isArray(g.products) &&
+    g.products.length <= MAX_PRODUCTS_PER_GROUP &&
+    g.products.every(isValidGroupProduct) &&
+    (g.excludedProductIds === undefined || Array.isArray(g.excludedProductIds))
+  );
+}
+
 function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) {
   // GET /api/variant-groups-config?storeId=X
   app.get("/api/variant-groups-config", async (req, res) => {
@@ -396,18 +434,28 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
 
   // POST /api/variant-groups/publish - persiste el estado final aprobado en la revision
   app.post("/api/variant-groups/publish", async (req, res) => {
-    const { storeId, groups, ungrouped } = req.body || {};
+    // ungrouped puede venir en el body (el frontend todavia lo manda) pero se
+    // ignora deliberadamente - ver comentario junto al write de abajo.
+    const { storeId, groups } = req.body || {};
     if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
     if (!isAllowedStore(storeId)) {
       return res.status(403).json({ success: false, message: "Módulo no disponible para esta tienda" });
     }
     if (!Array.isArray(groups)) return res.status(400).json({ success: false, message: "groups requerido" });
+    if (groups.length > MAX_GROUPS) {
+      return res.status(400).json({ success: false, message: "Demasiados grupos" });
+    }
+    if (!groups.every(isValidGroup)) {
+      return res.status(400).json({ success: false, message: "Formato de grupos inválido" });
+    }
 
     try {
       await db.collection(COLLECTION).doc(String(storeId)).set(
         {
           groups,
-          ungrouped: Array.isArray(ungrouped) ? ungrouped : [],
+          // ungrouped se re-deriva en cada /scan y no lo lee nadie de Firestore
+          // (ver revision final del plan) - no tiene sentido persistirlo.
+          ungrouped: [],
           lastScanAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -488,7 +536,8 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
         })
       );
     } catch (error) {
-      res.send("// Grupos de Variantes: error " + error.message);
+      console.error("[VariantGroups widget.js]", error);
+      res.send("// Grupos de Variantes: error interno");
     }
   });
 
@@ -520,5 +569,7 @@ module.exports = {
   diffScanWithPublished,
   buildWidgetIndex,
   fetchAllStoreProducts,
+  isValidGroupProduct,
+  isValidGroup,
   registerVariantGroupsRoutes,
 };
