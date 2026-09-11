@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Palette, LogOut, X, MapPin, MessageCircle,
-  ShoppingBag, Percent, Search, Rocket
+  ShoppingBag, Percent, Search, Rocket, Layers
 } from 'lucide-react';
 import { useSubscription } from '../hooks/useSubscription';
 import './Sidebar.css';
@@ -21,11 +21,18 @@ const BASE_NAV_ITEMS = [
 ];
 
 // Módulos exclusivos por tienda
+// Piloto: Grupos de Variantes solo para Alto Rancho (2547699) y la tienda demo (6854698).
+// TODO: mover a BASE_NAV_ITEMS cuando se libere a todas las tiendas.
 const STORE_EXCLUSIVE_ITEMS = {
   '2547699': [
     { divider: true, exclusive: true },
     { path: '/local-stock', icon: MapPin, label: 'Stock Altorancho', exclusive: true },
     { path: '/checkout-notice', icon: MessageCircle, label: 'Aviso Checkout', exclusive: true },
+    { path: '/grupos-variantes', icon: Layers, label: 'Grupos de Variantes', exclusive: true },
+  ],
+  '6854698': [
+    { divider: true, exclusive: true },
+    { path: '/grupos-variantes', icon: Layers, label: 'Grupos de Variantes', exclusive: true },
   ],
 };
 
