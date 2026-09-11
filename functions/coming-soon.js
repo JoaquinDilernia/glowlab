@@ -6,9 +6,8 @@
 const COLLECTION = "promonube_coming_soon";
 
 // Id numérico del script "Próximamente" registrado en Tiendanube Partners
-// (Aplicaciones → GlowLab #23137 → Scripts). Se completa después de crearlo ahí.
-// TODO(deploy): reemplazar null por el id real antes de activar el módulo en tiendas.
-const COMING_SOON_SCRIPT_ID = null;
+// (Aplicaciones → GlowLab #23137 → Scripts).
+const COMING_SOON_SCRIPT_ID = 10094;
 
 // launchDate se guarda como 'YYYY-MM-DDTHH:mm:ss' y se interpreta como hora de
 // Argentina (UTC-3, sin horario de verano).
