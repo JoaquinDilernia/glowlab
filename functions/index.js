@@ -14587,36 +14587,66 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
       // insertMode === 'auto' -> comportamiento original (no tocar)
       // Buscar logo y nav dentro del header
       let logo = header.querySelector('.logo, [class*="logo" i], a[href="/"], img[alt*="logo" i], .site-brand, .brand');
-      let nav = header.querySelector('nav, [role="navigation"], .navigation, .main-nav');
-      
+      // Algunos temas tienen mas de un <nav> (ej: columna angosta de categorias
+      // ademas del nav principal). Nos quedamos con el mas ancho, no con el primero.
+      let nav = null;
+      const navCandidates = header.querySelectorAll('nav, [role="navigation"], .navigation, .main-nav');
+      for (let i = 0; i < navCandidates.length; i++) {
+        const candidate = navCandidates[i];
+        if (!nav || candidate.getBoundingClientRect().width > nav.getBoundingClientRect().width) {
+          nav = candidate;
+        }
+      }
+
       // Si logo es una imagen, subir al contenedor
       if (logo && logo.tagName === 'IMG' && logo.parentElement.tagName === 'A') {
         logo = logo.parentElement;
       }
-      
+
+      // Algunos temas meten el nav dentro de una celda angosta de un grid/flex
+      // (ej: columna "main" de 1021px dentro de una fila de 1905px). Insertar
+      // ahi adentro deja la barra angosta y pegada a la izquierda. Subimos por
+      // los ancestros hasta encontrar uno que ya ocupe el ancho completo del
+      // header, y anclamos la insercion ahi en vez de en el elemento angosto.
+      const headerWidth = header.getBoundingClientRect().width;
+      function widenToHeaderWidth(el) {
+        if (!el) return el;
+        let cur = el;
+        while (
+          cur.parentElement &&
+          cur.parentElement !== header &&
+          cur.getBoundingClientRect().width < headerWidth * 0.9
+        ) {
+          cur = cur.parentElement;
+        }
+        return cur;
+      }
+      const navAnchor = widenToHeaderWidth(nav);
+      const logoAnchor = widenToHeaderWidth(logo);
+
       // Estrategia: Insertar DESPU?S del logo pero ANTES del nav
-      if (logo && nav) {
+      if (logoAnchor && navAnchor) {
         // Verificar que est�n en el mismo contenedor
-        if (logo.parentNode === nav.parentNode) {
+        if (logoAnchor.parentNode === navAnchor.parentNode) {
           // Insertar entre logo y nav
-          logo.parentNode.insertBefore(bar, nav);
+          logoAnchor.parentNode.insertBefore(bar, navAnchor);
           console.log('[PromoNube] ? Top Announcement Bar insertada entre logo y nav');
         } else {
           // Si est�n en diferentes contenedores, insertar antes del nav
-          nav.parentNode.insertBefore(bar, nav);
+          navAnchor.parentNode.insertBefore(bar, navAnchor);
           console.log('[PromoNube] ? Top Announcement Bar insertada antes del nav (diferentes contenedores)');
         }
-      } else if (logo) {
+      } else if (logoAnchor) {
         // Solo tenemos logo, insertar despu�s
-        if (logo.nextSibling) {
-          logo.parentNode.insertBefore(bar, logo.nextSibling);
+        if (logoAnchor.nextSibling) {
+          logoAnchor.parentNode.insertBefore(bar, logoAnchor.nextSibling);
         } else {
-          logo.parentNode.appendChild(bar);
+          logoAnchor.parentNode.appendChild(bar);
         }
         console.log('[PromoNube] ? Top Announcement Bar insertada DESPU?S del logo');
-      } else if (nav) {
+      } else if (navAnchor) {
         // Solo tenemos nav, insertar antes
-        nav.parentNode.insertBefore(bar, nav);
+        navAnchor.parentNode.insertBefore(bar, navAnchor);
         console.log('[PromoNube] ? Top Announcement Bar insertada ANTES del nav');
       } else {
         // No encontramos ni logo ni nav, insertar al principio del header
