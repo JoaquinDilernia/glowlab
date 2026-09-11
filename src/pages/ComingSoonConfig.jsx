@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Rocket, Plus, Trash2, Search } from 'lucide-react';
+import { ArrowLeft, Save, Rocket, Plus, Trash2, Search, Eye } from 'lucide-react';
 import { apiRequest, API_CONFIG } from '../config';
 import { useToast } from '../context/ToastContext';
 import { useProductPicker } from '../hooks/useProductPicker';
@@ -33,21 +33,27 @@ function statusLabel(p) {
   return 'Programado';
 }
 
+function statusModifier(p) {
+  if (p.status === 'launched') return 'launched';
+  if (p.launchDate && new Date(p.launchDate).getTime() <= Date.now()) return 'live';
+  return 'scheduled';
+}
+
 function ProductRow({ p, hideDate, onDate, onMsg, onLaunch, onRemove }) {
   return (
     <div className="cs-prod-row">
       {p.productImage && <img src={p.productImage} alt="" />}
       <div className="cs-prod-main">
         <div className="cs-prod-name">{p.productName}</div>
-        <span className="cs-badge-status">{statusLabel(p)}</span>
-        {p.lastError && <span className="cs-hint" style={{ color: '#c00' }}> · {p.lastError}</span>}
+        <span className={`cs-badge-status cs-badge-status--${statusModifier(p)}`}>{statusLabel(p)}</span>
+        {p.lastError && <span className="cs-hint" style={{ color: '#f87171' }}> · {p.lastError}</span>}
       </div>
       {!hideDate && (
         <input type="datetime-local" value={p.launchDate || ''} onChange={e => onDate(e.target.value)} disabled={p.status === 'launched'} />
       )}
       <input type="text" placeholder="Mensaje (opcional)" value={p.message || ''} onChange={e => onMsg(e.target.value)} style={{ maxWidth: 180 }} />
-      {p.status === 'scheduled' && <button className="btn-back" onClick={onLaunch}>Lanzar ahora</button>}
-      <button className="btn-back" onClick={onRemove} title="Quitar"><Trash2 size={14} /></button>
+      {p.status === 'scheduled' && <button className="cs-btn-launch" onClick={onLaunch}><Rocket size={13} /> Lanzar ahora</button>}
+      <button className="cs-btn-remove" onClick={onRemove} title="Quitar"><Trash2 size={14} /></button>
     </div>
   );
 }
@@ -299,7 +305,11 @@ export default function ComingSoonConfig() {
   }, [storeId, config, toast]);
 
   if (loading) {
-    return <div className="page-container cs-page"><p style={{ padding: 40 }}>Cargando…</p></div>;
+    return (
+      <div className="page-container cs-page">
+        <div className="cs-loading"><div className="cs-spinner" /><p>Cargando…</p></div>
+      </div>
+    );
   }
 
   return (
@@ -397,7 +407,7 @@ export default function ComingSoonConfig() {
               <strong>{k.categoryName || `Categoría ${k.categoryId}`}</strong>
               <input type="datetime-local" value={k.launchDate || ''} onChange={e => setCategoryDate(k.categoryId, e.target.value)} />
               <button className="btn-back" onClick={() => refreshCategory(k.categoryId)}>Actualizar productos</button>
-              <button className="btn-back" onClick={() => removeCategory(k.categoryId)}><Trash2 size={14} /> Quitar categoría</button>
+              <button className="cs-btn-remove" onClick={() => removeCategory(k.categoryId)}><Trash2 size={14} /> Quitar categoría</button>
             </div>
             <div className="cs-prod-list" style={{ padding: 10 }}>
               {config.products.filter(p => p.source === 'category' && String(p.sourceCategoryId) === String(k.categoryId)).map(p => (
@@ -595,7 +605,10 @@ export default function ComingSoonConfig() {
           </div>
         </div>
 
-        <Preview style={config.style} />
+        <div className="cs-preview-col">
+          <div className="cs-preview-label"><Eye size={14} /> Vista previa en tienda</div>
+          <Preview style={config.style} />
+        </div>
       </div>
 
       <div className="config-section">
