@@ -325,7 +325,10 @@ function buildWidgetScript(store, cfg) {
   // <del> es la convención semántica más común para el precio anterior, el
   // resto son clases vistas en distintos themes de Tiendanube. Si no hay
   // tachado cerca, el producto no tiene descuento nativo y no se toca nada.
-  var OLD_PRICE_SELECTORS = ['del', 's', 'strike', '.js-price-before', '.price-old', '.old-price', '.js-original-price'];
+  // .js-compare-price-display es la clase real verificada contra una tienda
+  // real (Alto Rancho, theme ipanema) tanto en listado como en PDP -- el
+  // resto queda como respaldo genérico para otros themes.
+  var OLD_PRICE_SELECTORS = ['.js-compare-price-display', 'del', 's', 'strike', '.js-price-before', '.price-old', '.old-price', '.js-original-price'];
 
   function findOldPriceNode(scope) {
     for (var i = 0; i < OLD_PRICE_SELECTORS.length; i++) {
