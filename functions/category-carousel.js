@@ -270,16 +270,38 @@ function buildWidgetScript(store, cfg) {
     return null;
   }
 
-  // Devuelve la grilla/listado de productos en sí (nunca una tarjeta ni su
-  // wrapper): si el theme tiene gridSelector verificado, ese selector ya
-  // apunta directo a la grilla; si no, findGridContainer() hace el walk-up.
+  // Sube desde la grilla hasta el nivel de <body> (la "sección" de la
+  // categoría: en Tiendanube suele ser algo como <section class=
+  // "category-body">), y desde ahí retrocede por los hermanos anteriores
+  // -- breadcrumb, título de categoría, controles de filtro -- hasta
+  // toparse con el <header> del sitio (o quedarse sin hermanos). Así el
+  // carrusel queda insertado arriba de TODO el contenido de la categoría,
+  // no solo arriba de la grilla de productos.
+  function findInsertionAnchor(grid) {
+    var section = grid;
+    while (section.parentElement && section.parentElement !== document.body) {
+      section = section.parentElement;
+    }
+    var anchor = section;
+    while (anchor.previousElementSibling && anchor.previousElementSibling.tagName !== 'HEADER') {
+      anchor = anchor.previousElementSibling;
+    }
+    return anchor;
+  }
+
+  // Devuelve el elemento antes del cual insertar el carrusel: si el theme
+  // tiene gridSelector verificado, ese selector ya apunta al lugar correcto
+  // (curado a mano para ese theme); si no, se ubica la grilla vía heurística
+  // y se sube hasta arriba del título/breadcrumb de la categoría.
   function findAnchorTarget() {
     var sel = getAnchorSelector(detectThemeCode());
     if (sel && sel.gridSelector) {
       var el = document.querySelector(sel.gridSelector);
       if (el) return el;
     }
-    return findGridContainer();
+    var grid = findGridContainer();
+    if (!grid) return null;
+    return findInsertionAnchor(grid);
   }
 
   function injectStyles() {
@@ -360,14 +382,15 @@ function buildWidgetScript(store, cfg) {
     var carousel = findCarouselForCategory(window.LS.category.id);
     if (!carousel) return;
 
-    // findAnchorTarget() devuelve la grilla de productos en sí (no una
-    // tarjeta ni su wrapper de columna) -- el carrusel se inserta como
-    // hermano, inmediatamente antes de la grilla completa.
-    var grid = findAnchorTarget();
-    if (!grid || !grid.parentElement) return;
+    // findAnchorTarget() devuelve el elemento antes del cual insertar el
+    // carrusel: arriba del breadcrumb/título/filtros de la categoría (no
+    // solo arriba de la grilla de productos), salvo que el theme tenga un
+    // gridSelector verificado apuntando a otro lugar puntual.
+    var anchor = findAnchorTarget();
+    if (!anchor || !anchor.parentElement) return;
 
     injectStyles();
-    grid.parentElement.insertBefore(buildCarousel(carousel), grid);
+    anchor.parentElement.insertBefore(buildCarousel(carousel), anchor);
   }
 
   var debounceTimer = null;

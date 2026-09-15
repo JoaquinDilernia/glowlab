@@ -178,11 +178,19 @@ test("buildWidgetScript usa la misma lista PRODUCT_CARD_SELECTORS verificada en 
   );
 });
 
-test("buildWidgetScript inserta la grilla como hermano (findGridContainer sube hasta el contenedor con varias tarjetas) y agrega el MutationObserver de re-render", () => {
+test("buildWidgetScript ubica la grilla subiendo hasta el contenedor con varias tarjetas y agrega el MutationObserver de re-render", () => {
   const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
   const script = buildWidgetScript("123", widgetConfig);
   assert.match(script, /ancestor\.querySelectorAll\(PRODUCT_CARD_SELECTOR\)\.length >= 2/);
-  assert.match(script, /grid\.parentElement\.insertBefore\(buildCarousel\(carousel\), grid\)/);
+  assert.match(script, /anchor\.parentElement\.insertBefore\(buildCarousel\(carousel\), anchor\)/);
   assert.match(script, /new MutationObserver\(scheduleInit\)/);
   assert.match(script, /document\.querySelector\('\.pn-cc'\)/);
+});
+
+test("buildWidgetScript sube desde la grilla arriba del breadcrumb/título de categoría, hasta toparse con el <header> del sitio", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(script, /function findInsertionAnchor\(grid\)/);
+  assert.match(script, /section\.parentElement !== document\.body/);
+  assert.match(script, /anchor\.previousElementSibling\.tagName !== 'HEADER'/);
 });
