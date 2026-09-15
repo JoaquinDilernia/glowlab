@@ -33,6 +33,8 @@ const DEFAULT_CONFIG = {
   customMessage: "",
   installmentPlans: [],
   cartProgressBar: { enabled: false },
+  discountColorEnabled: false,
+  discountColor: "#e11d48",
 };
 
 function registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, HOSTING_URL }) {
@@ -102,6 +104,8 @@ function registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, H
         customMessage: cfg.customMessage || "",
         installmentPlans: Array.isArray(cfg.installmentPlans) ? cfg.installmentPlans : [],
         cartProgressBar: { enabled: !!(cfg.cartProgressBar && cfg.cartProgressBar.enabled) },
+        discountColorEnabled: !!cfg.discountColorEnabled,
+        discountColor: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(cfg.discountColor || "") ? cfg.discountColor : DEFAULT_CONFIG.discountColor,
       };
 
       res.send(buildWidgetScript(store, widgetConfig));
@@ -282,9 +286,39 @@ function buildWidgetScript(store, cfg) {
     return node;
   }
 
+  // Precio/precio tachado son del propio theme (no los crea este módulo);
+  // <del> es la convención semántica más común para el precio anterior, el
+  // resto son clases vistas en distintos themes de Tiendanube. Si no hay
+  // tachado cerca, el producto no tiene descuento nativo y no se toca nada.
+  var OLD_PRICE_SELECTORS = ['del', 's', 'strike', '.js-price-before', '.price-old', '.old-price', '.js-original-price'];
+
+  function findOldPriceNode(scope) {
+    for (var i = 0; i < OLD_PRICE_SELECTORS.length; i++) {
+      var el = scope.querySelector(OLD_PRICE_SELECTORS[i]);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  function colorizeDiscount(scope, priceNode) {
+    if (!CFG.discountColorEnabled) return;
+    // Busca el tachado cerca del precio (no en toda la página) subiendo un
+    // par de niveles desde el precio, para no confundir con un <del> de
+    // otra parte de la tarjeta/página.
+    var searchScope = priceNode || scope;
+    for (var i = 0; i < 2 && searchScope && searchScope.parentElement; i++) {
+      searchScope = searchScope.parentElement;
+    }
+    var oldPriceNode = findOldPriceNode(searchScope || scope);
+    if (!oldPriceNode) return;
+    if (priceNode) priceNode.style.setProperty('color', CFG.discountColor, 'important');
+    oldPriceNode.style.setProperty('color', CFG.discountColor, 'important');
+  }
+
   function applyTo(scope, lsProduct) {
-    if (scope.querySelector('.pn-pf-block')) return;
     var priceNode = findPriceNode(scope);
+    colorizeDiscount(scope, priceNode);
+    if (scope.querySelector('.pn-pf-block')) return;
     var price = extractPrice(priceNode, lsProduct);
     if (!price) return;
     var block = buildBlock(price);

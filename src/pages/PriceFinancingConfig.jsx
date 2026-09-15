@@ -21,6 +21,8 @@ const DEFAULT_CONFIG = {
     { months: 3, interestFree: true, interestRate: 0, minAmount: 0 },
   ],
   cartProgressBar: { enabled: false },
+  discountColorEnabled: false,
+  discountColor: '#e11d48',
 };
 
 const PREVIEW_PRICE = 25000;
@@ -155,6 +157,21 @@ function PriceFinancingConfig() {
               Página de producto
             </label>
           </div>
+
+          <div className="pf-block-title">Precio con descuento</div>
+          <label className="pf-check">
+            <input type="checkbox" checked={!!config.discountColorEnabled} onChange={e => handle('discountColorEnabled', e.target.checked)} />
+            Si el producto tiene descuento (precio tachado), pintar el precio de un color
+          </label>
+          {config.discountColorEnabled && (
+            <div className="form-group pf-discount-color-row">
+              <label>Color</label>
+              <div className="pf-color-row">
+                <input type="color" value={config.discountColor} onChange={e => handle('discountColor', e.target.value)} />
+                <input type="text" value={config.discountColor} onChange={e => handle('discountColor', e.target.value)} />
+              </div>
+            </div>
+          )}
 
           <div className="pf-block-title">Descuentos</div>
           <div className="form-row">
