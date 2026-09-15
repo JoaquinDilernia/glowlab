@@ -32,6 +32,7 @@ import StorefrontBlocksList from './pages/StorefrontBlocksList';
 import StorefrontBlockConfig from './pages/StorefrontBlockConfig';
 import PriceFinancingConfig from './pages/PriceFinancingConfig';
 import SearchConfig from './pages/SearchConfig';
+import CategoryCarouselConfig from './pages/CategoryCarouselConfig';
 import ComingSoonConfig from './pages/ComingSoonConfig';
 import VariantGroupsConfig from './pages/VariantGroupsConfig';
 import './App.css';
@@ -84,6 +85,7 @@ function App() {
           <Route path="/proximamente" element={<ComingSoonConfig />} />
           <Route path="/grupos-variantes" element={<VariantGroupsConfig />} />
           <Route path="/buscador-inteligente" element={<SearchConfig />} />
+          <Route path="/carrusel-categorias" element={<CategoryCarouselConfig />} />
         </Route>
       </Routes>
       <a

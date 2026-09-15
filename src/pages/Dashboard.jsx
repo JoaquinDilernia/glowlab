@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Palette, Rocket, ChevronRight, ShoppingBag, Search, Percent } from 'lucide-react';
+import { Palette, Rocket, ChevronRight, ShoppingBag, Search, Percent, LayoutGrid } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionBanner from '../components/SubscriptionBanner';
@@ -93,6 +93,14 @@ function Dashboard() {
       title: 'Buscador Inteligente Pro',
       description: 'Popup de búsqueda con tolerancia a errores de tipeo, banners con link, búsquedas recomendadas y un asistente de IA como respaldo cuando la búsqueda normal no encuentra nada.',
       path: '/buscador-inteligente',
+      large: true,
+      badge: '🔥 Nuevo'
+    },
+    {
+      icon: LayoutGrid,
+      title: 'Carrusel de Categorías',
+      description: 'Reemplazá el banner fijo de cada categoría por un carrusel de tarjetas con imagen, título y link, con diseño personalizable y adaptado a celular.',
+      path: '/carrusel-categorias',
       large: true,
       badge: '🔥 Nuevo'
     },
