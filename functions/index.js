@@ -161,9 +161,8 @@ const _SRV_BASE = process.env.API_BASE_URL || 'https://apipromonube-jlfopowzaq-u
 const SEARCH_SCRIPT_ID = 9847;
 
 // Id numérico del script "Carrusel de Categorías" en TiendaNube Partners
-// (GlowLab #23137 → Scripts). null hasta crearlo ahí — el endpoint de
-// instalación falla con un error claro de Tiendanube mientras tanto.
-const CATEGORY_CAROUSEL_SCRIPT_ID = null;
+// (GlowLab #23137 → Scripts).
+const CATEGORY_CAROUSEL_SCRIPT_ID = 10245;
 
 // ==========================================
 // SISTEMA DE SUSCRIPCIONES Y FEATURE FLAGS
