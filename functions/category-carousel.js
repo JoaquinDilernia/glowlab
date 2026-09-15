@@ -47,18 +47,24 @@ function normalizeUrl(url) {
   return "/" + trimmed;
 }
 
+// Clampea un valor numérico entre min y max, maneja NaN y valores no numéricos
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  return Math.min(max, Math.max(min, Number.isFinite(n) ? n : fallback));
+}
+
 // Reduce la config guardada (con ids/nombres internos de admin) a lo mínimo
 // que necesita el script del storefront, descartando carruseles sin
 // categorías target o sin ninguna tile con imagen cargada.
 function buildWidgetConfig(cfg) {
   const style = {
-    borderRadius: Number(cfg.style.borderRadius) || DEFAULT_CONFIG.style.borderRadius,
-    gap: Number(cfg.style.gap) || DEFAULT_CONFIG.style.gap,
+    borderRadius: clampNumber(cfg.style.borderRadius, 0, 40, DEFAULT_CONFIG.style.borderRadius),
+    gap: clampNumber(cfg.style.gap, 0, 48, DEFAULT_CONFIG.style.gap),
     titleFontFamily: cfg.style.titleFontFamily || DEFAULT_CONFIG.style.titleFontFamily,
     titleFontSize: cfg.style.titleFontSize || DEFAULT_CONFIG.style.titleFontSize,
     titleColor: cfg.style.titleColor || DEFAULT_CONFIG.style.titleColor,
-    desktopVisible: Math.min(8, Math.max(2, cfg.style.desktopVisible != null ? Number(cfg.style.desktopVisible) : DEFAULT_CONFIG.style.desktopVisible)),
-    mobileVisible: Math.min(4, Math.max(1, cfg.style.mobileVisible != null ? Number(cfg.style.mobileVisible) : DEFAULT_CONFIG.style.mobileVisible)),
+    desktopVisible: clampNumber(cfg.style.desktopVisible, 2, 8, DEFAULT_CONFIG.style.desktopVisible),
+    mobileVisible: clampNumber(cfg.style.mobileVisible, 1, 4, DEFAULT_CONFIG.style.mobileVisible),
   };
 
   const carousels = (Array.isArray(cfg.carousels) ? cfg.carousels : [])
@@ -216,7 +222,6 @@ function buildWidgetScript(store, cfg) {
 
   var CFG = ${JSON.stringify(cfg)};
   var ANCHOR_SELECTORS = ${JSON.stringify(selectorMap)};
-  var FONT_SIZES = ${JSON.stringify(FONT_SIZES_CSS)};
   var PRODUCT_CARD_SELECTORS = ['.js-item-product', '[data-product-id]', '.product-item', '.js-product-item'];
 
   function detectThemeCode() {

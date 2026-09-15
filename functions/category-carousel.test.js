@@ -66,6 +66,33 @@ test("buildWidgetConfig clampea desktopVisible y mobileVisible a rangos razonabl
   assert.equal(widgetConfig.style.mobileVisible, 1);
 });
 
+test("buildWidgetConfig rechaza valores no numéricos (NaN) y usa defaults", () => {
+  const cfg = mergeConfig({
+    style: {
+      desktopVisible: "abc",
+      mobileVisible: "xyz",
+      borderRadius: "invalid",
+      gap: "nope"
+    }
+  });
+  const widgetConfig = buildWidgetConfig(cfg);
+  assert.equal(Number.isFinite(widgetConfig.style.desktopVisible), true);
+  assert.equal(Number.isFinite(widgetConfig.style.mobileVisible), true);
+  assert.equal(Number.isFinite(widgetConfig.style.borderRadius), true);
+  assert.equal(Number.isFinite(widgetConfig.style.gap), true);
+  assert.equal(widgetConfig.style.desktopVisible, DEFAULT_CONFIG.style.desktopVisible);
+  assert.equal(widgetConfig.style.mobileVisible, DEFAULT_CONFIG.style.mobileVisible);
+  assert.equal(widgetConfig.style.borderRadius, DEFAULT_CONFIG.style.borderRadius);
+  assert.equal(widgetConfig.style.gap, DEFAULT_CONFIG.style.gap);
+});
+
+test("buildWidgetConfig acepta 0 como valor válido para borderRadius y gap", () => {
+  const cfg = mergeConfig({ style: { borderRadius: 0, gap: 0 } });
+  const widgetConfig = buildWidgetConfig(cfg);
+  assert.equal(widgetConfig.style.borderRadius, 0);
+  assert.equal(widgetConfig.style.gap, 0);
+});
+
 test("buildWidgetScript incluye el ancho de tarjeta calculado a partir de desktopVisible/gap/borderRadius", () => {
   const widgetConfig = buildWidgetConfig(mergeConfig({
     enabled: true,
