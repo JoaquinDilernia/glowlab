@@ -331,9 +331,15 @@ function buildWidgetScript(store, cfg) {
   var OLD_PRICE_SELECTORS = ['.js-compare-price-display', 'del', 's', 'strike', '.js-price-before', '.price-old', '.old-price', '.js-original-price'];
 
   function findOldPriceNode(scope) {
+    // Tiendanube deja el span del precio tachado en el HTML aunque el
+    // producto NO tenga descuento (con style="display:none") -- sin este
+    // chequeo de visibilidad, todos los productos se detectaban como "con
+    // descuento".
     for (var i = 0; i < OLD_PRICE_SELECTORS.length; i++) {
-      var el = scope.querySelector(OLD_PRICE_SELECTORS[i]);
-      if (el) return el;
+      var candidates = scope.querySelectorAll(OLD_PRICE_SELECTORS[i]);
+      for (var j = 0; j < candidates.length; j++) {
+        if (isVisible(candidates[j])) return candidates[j];
+      }
     }
     return null;
   }
