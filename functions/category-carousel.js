@@ -225,7 +225,7 @@ function buildWidgetScript(store, cfg) {
     `.pn-cc-arrow { position: absolute; top: 38%; transform: translateY(-50%); width: 36px; height: 36px; border-radius: 50%; border: 1px solid #eee; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,0.14); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; color: #333; z-index: 2; }`,
     `.pn-cc-arrow-prev { left: -14px; }`,
     `.pn-cc-arrow-next { right: -14px; }`,
-    `@media (max-width: 640px) { .pn-cc-tile { flex-basis: ${mobileTileWidth}; } .pn-cc-arrow { display: none; } }`,
+    `@media (max-width: 640px) { .pn-cc-tile { flex-basis: ${mobileTileWidth}; } .pn-cc-arrow { width: 26px; height: 26px; border: none; background: rgba(255,255,255,0.85); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); box-shadow: 0 2px 8px rgba(0,0,0,0.18); font-size: 13px; } .pn-cc-arrow-prev { left: -8px; } .pn-cc-arrow-next { right: -8px; } }`,
   ].join('\n');
 
   return `

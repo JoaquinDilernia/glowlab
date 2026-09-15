@@ -156,6 +156,13 @@ test("buildWidgetConfig clampea los márgenes a un rango razonable (0-100px)", (
   assert.equal(widgetConfig.style.marginRight, 40);
 });
 
+test("buildWidgetScript muestra las flechas en celular con un estilo fino (sin display:none, sin borde, más chicas)", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.doesNotMatch(script, /\.pn-cc-arrow \{ display: none/);
+  assert.match(script, /@media \(max-width: 640px\)[^]*?\.pn-cc-arrow \{ width: 26px; height: 26px; border: none/);
+});
+
 test("buildWidgetScript arma el heading del carrusel solo si carousel.heading vino con contenido", () => {
   const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
   const script = buildWidgetScript("123", widgetConfig);
