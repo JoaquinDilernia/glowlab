@@ -289,16 +289,24 @@ function buildWidgetScript(store, cfg) {
     return anchor;
   }
 
-  // Devuelve el elemento antes del cual insertar el carrusel: si el theme
-  // tiene gridSelector verificado, ese selector ya apunta al lugar correcto
-  // (curado a mano para ese theme); si no, se ubica la grilla vía heurística
-  // y se sube hasta arriba del título/breadcrumb de la categoría.
+  // Devuelve el elemento antes del cual insertar el carrusel:
+  // 1. Si el theme tiene gridSelector verificado, ese selector ya apunta al
+  //    lugar correcto (curado a mano para ese theme).
+  // 2. [data-store="page-title"] es un atributo de la plataforma Tiendanube
+  //    (no del theme) que marca la sección de breadcrumb + título de la
+  //    página -- confirmado contra una tienda real. Al ser de la plataforma
+  //    y no del theme, es razonable esperar que se repita en la mayoría de
+  //    los themes, así que se prueba antes que la heurística.
+  // 3. Si ninguna de las dos existe, se ubica la grilla vía heurística y se
+  //    sube hasta arriba del título/breadcrumb (ver findInsertionAnchor).
   function findAnchorTarget() {
     var sel = getAnchorSelector(detectThemeCode());
     if (sel && sel.gridSelector) {
       var el = document.querySelector(sel.gridSelector);
       if (el) return el;
     }
+    var pageTitle = document.querySelector('[data-store="page-title"]');
+    if (pageTitle) return pageTitle;
     var grid = findGridContainer();
     if (!grid) return null;
     return findInsertionAnchor(grid);

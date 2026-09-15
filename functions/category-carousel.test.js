@@ -194,3 +194,14 @@ test("buildWidgetScript sube desde la grilla arriba del breadcrumb/título de ca
   assert.match(script, /section\.parentElement !== document\.body/);
   assert.match(script, /anchor\.previousElementSibling\.tagName !== 'HEADER'/);
 });
+
+test("buildWidgetScript prueba [data-store=\"page-title\"] (atributo de plataforma, no de theme) antes de la heurística de header", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  const findAnchorBody = script.slice(script.indexOf("function findAnchorTarget"));
+  const pageTitleIdx = findAnchorBody.indexOf('[data-store="page-title"]');
+  const findGridCallIdx = findAnchorBody.indexOf("= findGridContainer()");
+  assert.ok(pageTitleIdx > -1, "debe buscar [data-store=\"page-title\"]");
+  assert.ok(findGridCallIdx > -1, "debe llamar a findGridContainer() como fallback");
+  assert.ok(pageTitleIdx < findGridCallIdx, "debe probarse ANTES de caer a la heurística de la grilla");
+});
