@@ -14,6 +14,7 @@ const DEFAULT_STYLE = {
   titleFontFamily: 'system-ui',
   titleFontSize: 'medium',
   titleColor: '#111111',
+  titleAlign: 'center',
   desktopVisible: 4,
   mobileVisible: 2,
 };
@@ -75,7 +76,7 @@ function CategoryCarouselConfig() {
   const handleStyle = (key, value) => setConfig(c => ({ ...c, style: { ...c.style, [key]: value } }));
 
   const addCarousel = () => {
-    setConfig(c => ({ ...c, carousels: [...c.carousels, { id: newId('cc'), name: '', categoryIds: [], tiles: [] }] }));
+    setConfig(c => ({ ...c, carousels: [...c.carousels, { id: newId('cc'), name: '', heading: '', categoryIds: [], tiles: [] }] }));
   };
   const patchCarousel = (i, patch) => {
     setConfig(c => ({ ...c, carousels: c.carousels.map((car, idx) => idx === i ? { ...car, ...patch } : car) }));
@@ -240,11 +241,21 @@ function CategoryCarouselConfig() {
               </select>
             </div>
           </div>
-          <div className="form-group">
-            <label>Color del título</label>
-            <div className="sc-color-row">
-              <input type="color" value={config.style.titleColor} onChange={e => handleStyle('titleColor', e.target.value)} />
-              <input type="text" value={config.style.titleColor} onChange={e => handleStyle('titleColor', e.target.value)} />
+          <div className="form-row">
+            <div className="form-group">
+              <label>Color del título</label>
+              <div className="sc-color-row">
+                <input type="color" value={config.style.titleColor} onChange={e => handleStyle('titleColor', e.target.value)} />
+                <input type="text" value={config.style.titleColor} onChange={e => handleStyle('titleColor', e.target.value)} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Alineación del título</label>
+              <select value={config.style.titleAlign} onChange={e => handleStyle('titleAlign', e.target.value)}>
+                <option value="left">Izquierda</option>
+                <option value="center">Centro</option>
+                <option value="right">Derecha</option>
+              </select>
             </div>
           </div>
 
@@ -261,6 +272,12 @@ function CategoryCarouselConfig() {
                   onChange={e => patchCarousel(ci, { name: e.target.value })} />
                 <button onClick={() => removeCarousel(ci)} className="ccc-btn-remove"><Trash2 size={16} /></button>
               </div>
+
+              <div className="ccc-carousel-head">
+                <input type="text" placeholder="Título visible en la tienda (opcional, ej: Sillas)" value={carousel.heading || ''}
+                  onChange={e => patchCarousel(ci, { heading: e.target.value })} />
+              </div>
+              <p className="ccc-hint" style={{ marginTop: -4, marginBottom: 10 }}>Si lo dejás vacío, no se muestra ningún título arriba de este carrusel.</p>
 
               <label className="ccc-hint" style={{ display: 'block', marginBottom: 6 }}>Categorías donde se muestra</label>
               <div className="ccc-cat-picker">
@@ -305,14 +322,21 @@ function CategoryCarouselConfig() {
               {previewTiles.length === 0 ? (
                 <div className="ccc-preview-empty">Cargá tarjetas en algún carrusel para ver la vista previa</div>
               ) : (
-                <div className="ccc-preview-track" style={{ gap: config.style.gap, fontFamily: config.style.titleFontFamily }}>
-                  {previewTiles.map((t, i) => (
-                    <a key={i} className="ccc-preview-tile" style={{ flex: `0 0 calc(${tileWidthPct}% - ${config.style.gap * (config.style.desktopVisible - 1) / config.style.desktopVisible}px)` }}>
-                      <img src={t.imageUrl} alt="" style={{ borderRadius: config.style.borderRadius }} />
-                      <div className="ccc-preview-tile-title" style={{ color: config.style.titleColor }}>{t.title}</div>
-                    </a>
-                  ))}
-                </div>
+                <>
+                  {previewCarousel.heading && (
+                    <div className="ccc-preview-heading" style={{ textAlign: config.style.titleAlign, color: config.style.titleColor, fontFamily: config.style.titleFontFamily }}>
+                      {previewCarousel.heading}
+                    </div>
+                  )}
+                  <div className="ccc-preview-track" style={{ gap: config.style.gap, fontFamily: config.style.titleFontFamily }}>
+                    {previewTiles.map((t, i) => (
+                      <a key={i} className="ccc-preview-tile" style={{ flex: `0 0 calc(${tileWidthPct}% - ${config.style.gap * (config.style.desktopVisible - 1) / config.style.desktopVisible}px)` }}>
+                        <img src={t.imageUrl} alt="" style={{ borderRadius: config.style.borderRadius }} />
+                        <div className="ccc-preview-tile-title" style={{ color: config.style.titleColor, textAlign: config.style.titleAlign }}>{t.title}</div>
+                      </a>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
             <div className="ccc-hint">

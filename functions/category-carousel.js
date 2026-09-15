@@ -18,11 +18,14 @@ const DEFAULT_CONFIG = {
     titleFontFamily: "system-ui",
     titleFontSize: "medium",
     titleColor: "#111111",
+    titleAlign: "center",
     desktopVisible: 4,
     mobileVisible: 2,
   },
   carousels: [],
 };
+
+const TITLE_ALIGNS = ["left", "center", "right"];
 
 function mergeConfig(stored) {
   const s = stored || {};
@@ -63,6 +66,7 @@ function buildWidgetConfig(cfg) {
     titleFontFamily: cfg.style.titleFontFamily || DEFAULT_CONFIG.style.titleFontFamily,
     titleFontSize: cfg.style.titleFontSize || DEFAULT_CONFIG.style.titleFontSize,
     titleColor: cfg.style.titleColor || DEFAULT_CONFIG.style.titleColor,
+    titleAlign: TITLE_ALIGNS.includes(cfg.style.titleAlign) ? cfg.style.titleAlign : DEFAULT_CONFIG.style.titleAlign,
     desktopVisible: clampNumber(cfg.style.desktopVisible, 2, 8, DEFAULT_CONFIG.style.desktopVisible),
     mobileVisible: clampNumber(cfg.style.mobileVisible, 1, 4, DEFAULT_CONFIG.style.mobileVisible),
   };
@@ -71,6 +75,7 @@ function buildWidgetConfig(cfg) {
     .filter((c) => c && Array.isArray(c.categoryIds) && c.categoryIds.length
       && Array.isArray(c.tiles) && c.tiles.some((t) => t && t.imageUrl))
     .map((c) => ({
+      heading: (c.heading || "").trim(),
       categoryIds: c.categoryIds.map(String),
       tiles: c.tiles
         .filter((t) => t && t.imageUrl)
@@ -186,24 +191,27 @@ let CATEGORY_CAROUSEL_SCRIPT_ID = null;
 function setCategoryCarouselScriptId(id) { CATEGORY_CAROUSEL_SCRIPT_ID = id; }
 
 const FONT_SIZES_CSS = { small: "13px", medium: "15px", large: "17px" };
+const HEADING_FONT_SIZES_CSS = { small: "16px", medium: "19px", large: "22px" };
 
 function buildWidgetScript(store, cfg) {
   const selectorMap = getClientSelectorMap();
   const st = cfg.style;
   const fontSize = FONT_SIZES_CSS[st.titleFontSize];
+  const headingFontSize = HEADING_FONT_SIZES_CSS[st.titleFontSize];
 
   // Pre-compute CSS values
   const tileWidth = `calc((100% - ${st.desktopVisible - 1} * ${st.gap}px) / ${st.desktopVisible})`;
   const mobileTileWidth = `calc((100% - ${st.mobileVisible - 1} * ${st.gap}px) / ${st.mobileVisible})`;
 
   const cssText = [
-    `.pn-cc { margin: 0 0 28px; font-family: ${st.titleFontFamily}, system-ui, sans-serif; }`,
+    `.pn-cc { width: 100%; box-sizing: border-box; margin: 0 0 28px; font-family: ${st.titleFontFamily}, system-ui, sans-serif; }`,
+    `.pn-cc-heading { margin: 0 0 14px; font-size: ${headingFontSize}; font-weight: 700; text-align: ${st.titleAlign}; color: ${st.titleColor}; }`,
     `.pn-cc-row { position: relative; }`,
     `.pn-cc-track { display: flex; gap: ${st.gap}px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -ms-overflow-style: none; }`,
     `.pn-cc-track::-webkit-scrollbar { display: none; }`,
     `.pn-cc-tile { flex: 0 0 ${tileWidth}; scroll-snap-align: start; text-decoration: none; color: inherit; }`,
     `.pn-cc-tile img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: ${st.borderRadius}px; display: block; background: #f0f0f0; }`,
-    `.pn-cc-tile-title { margin-top: 10px; text-align: center; font-size: ${fontSize}; font-weight: 600; color: ${st.titleColor}; }`,
+    `.pn-cc-tile-title { margin-top: 10px; text-align: ${st.titleAlign}; font-size: ${fontSize}; font-weight: 600; color: ${st.titleColor}; }`,
     `.pn-cc-arrow { position: absolute; top: 38%; transform: translateY(-50%); width: 36px; height: 36px; border-radius: 50%; border: 1px solid #eee; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,0.14); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; color: #333; z-index: 2; }`,
     `.pn-cc-arrow-prev { left: -14px; }`,
     `.pn-cc-arrow-next { right: -14px; }`,
@@ -292,6 +300,12 @@ function buildWidgetScript(store, cfg) {
   function buildCarousel(carousel) {
     var wrap = document.createElement('div');
     wrap.className = 'pn-cc';
+    if (carousel.heading) {
+      var heading = document.createElement('div');
+      heading.className = 'pn-cc-heading';
+      heading.textContent = carousel.heading;
+      wrap.appendChild(heading);
+    }
     var row = document.createElement('div');
     row.className = 'pn-cc-row';
     var track = document.createElement('div');

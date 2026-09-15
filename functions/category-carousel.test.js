@@ -93,6 +93,50 @@ test("buildWidgetConfig acepta 0 como valor válido para borderRadius y gap", ()
   assert.equal(widgetConfig.style.gap, 0);
 });
 
+test("buildWidgetConfig valida titleAlign contra los 3 valores permitidos y usa el default si viene otra cosa", () => {
+  assert.equal(buildWidgetConfig(mergeConfig({ style: { titleAlign: "left" } })).style.titleAlign, "left");
+  assert.equal(buildWidgetConfig(mergeConfig({ style: { titleAlign: "right" } })).style.titleAlign, "right");
+  assert.equal(buildWidgetConfig(mergeConfig({ style: { titleAlign: "justify" } })).style.titleAlign, DEFAULT_CONFIG.style.titleAlign);
+  assert.equal(buildWidgetConfig(mergeConfig({})).style.titleAlign, "center");
+});
+
+test("buildWidgetConfig incluye el heading de cada carrusel, recortado, vacío si no vino", () => {
+  const cfg = mergeConfig({
+    enabled: true,
+    carousels: [
+      { heading: "  Living  ", categoryIds: ["1"], tiles: [{ imageUrl: "a.jpg" }] },
+      { categoryIds: ["2"], tiles: [{ imageUrl: "b.jpg" }] },
+    ],
+  });
+  const widgetConfig = buildWidgetConfig(cfg);
+  assert.equal(widgetConfig.carousels[0].heading, "Living");
+  assert.equal(widgetConfig.carousels[1].heading, "");
+});
+
+test("buildWidgetScript refleja titleAlign en el CSS del título de tarjeta y del heading", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({
+    enabled: true,
+    style: { titleAlign: "left" },
+    carousels: [{ categoryIds: ["1"], tiles: [{ imageUrl: "a.jpg" }] }],
+  }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(script, /\.pn-cc-tile-title \{[^}]*text-align: left/);
+  assert.match(script, /\.pn-cc-heading \{[^}]*text-align: left/);
+});
+
+test("buildWidgetScript hace que el carrusel ocupe el 100% del ancho del contenedor (mismo ancho que el listado)", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(script, /\.pn-cc \{[^}]*width: 100%/);
+});
+
+test("buildWidgetScript arma el heading del carrusel solo si carousel.heading vino con contenido", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(script, /if \(carousel\.heading\)/);
+  assert.match(script, /heading\.className = 'pn-cc-heading'/);
+});
+
 test("buildWidgetScript incluye el ancho de tarjeta calculado a partir de desktopVisible/gap/borderRadius", () => {
   const widgetConfig = buildWidgetConfig(mergeConfig({
     enabled: true,
