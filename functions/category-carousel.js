@@ -222,7 +222,8 @@ function buildWidgetScript(store, cfg) {
 
   var CFG = ${JSON.stringify(cfg)};
   var ANCHOR_SELECTORS = ${JSON.stringify(selectorMap)};
-  var PRODUCT_CARD_SELECTORS = ['.js-item-product', '[data-product-id]', '.product-item', '.js-product-item'];
+  var PRODUCT_CARD_SELECTORS = ['[data-item-id]', '[data-product-id]', '.js-item-product', '.product-item', '.item-product'];
+  var PRODUCT_CARD_SELECTOR = PRODUCT_CARD_SELECTORS.join(',');
 
   function detectThemeCode() {
     try {
@@ -239,14 +240,31 @@ function buildWidgetScript(store, cfg) {
     return ANCHOR_SELECTORS.__default__;
   }
 
+  // Heurística sin selector verificado para el theme: en el markup típico de
+  // Tiendanube cada tarjeta está envuelta en su propia columna dentro de la
+  // grilla (ej. <div class="row"><div class="col-6"><div class="item
+  // js-item-product">...), así que el padre inmediato de UNA tarjeta es esa
+  // columna, no la grilla. Se sube por los ancestros hasta encontrar el que
+  // contiene 2 o más tarjetas -- ese sí es la grilla/listado real.
   function findGridContainer() {
+    var card = null;
     for (var i = 0; i < PRODUCT_CARD_SELECTORS.length; i++) {
-      var card = document.querySelector(PRODUCT_CARD_SELECTORS[i]);
-      if (card && card.parentElement) return card.parentElement;
+      card = document.querySelector(PRODUCT_CARD_SELECTORS[i]);
+      if (card) break;
+    }
+    if (!card) return null;
+
+    var ancestor = card.parentElement;
+    while (ancestor) {
+      if (ancestor.querySelectorAll(PRODUCT_CARD_SELECTOR).length >= 2) return ancestor;
+      ancestor = ancestor.parentElement;
     }
     return null;
   }
 
+  // Devuelve la grilla/listado de productos en sí (nunca una tarjeta ni su
+  // wrapper): si el theme tiene gridSelector verificado, ese selector ya
+  // apunta directo a la grilla; si no, findGridContainer() hace el walk-up.
   function findAnchorTarget() {
     var sel = getAnchorSelector(detectThemeCode());
     if (sel && sel.gridSelector) {
@@ -318,15 +336,30 @@ function buildWidgetScript(store, cfg) {
   }
 
   function init() {
+    // Idempotencia: __pnCategoryCarouselLoaded solo evita que el SCRIPT se
+    // cargue dos veces -- init() se vuelve a llamar en cada mutación del
+    // MutationObserver (grillas que se re-renderizan por lazy-load, filtros,
+    // orden, infinite scroll), así que hace falta este guard separado para
+    // no insertar el carrusel duplicado.
+    if (document.querySelector('.pn-cc')) return;
     if (!(window.LS && window.LS.category && window.LS.category.id)) return;
     var carousel = findCarouselForCategory(window.LS.category.id);
     if (!carousel) return;
 
-    var target = findAnchorTarget();
-    if (!target || !target.parentElement) return;
+    // findAnchorTarget() devuelve la grilla de productos en sí (no una
+    // tarjeta ni su wrapper de columna) -- el carrusel se inserta como
+    // hermano, inmediatamente antes de la grilla completa.
+    var grid = findAnchorTarget();
+    if (!grid || !grid.parentElement) return;
 
     injectStyles();
-    target.parentElement.insertBefore(buildCarousel(carousel), target);
+    grid.parentElement.insertBefore(buildCarousel(carousel), grid);
+  }
+
+  var debounceTimer = null;
+  function scheduleInit() {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(init, 100);
   }
 
   if (document.readyState === 'loading') {
@@ -334,6 +367,9 @@ function buildWidgetScript(store, cfg) {
   } else {
     init();
   }
+
+  var observer = new MutationObserver(scheduleInit);
+  observer.observe(document.body, { childList: true, subtree: true });
 })();
 `;
 }

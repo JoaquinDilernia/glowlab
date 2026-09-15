@@ -124,3 +124,21 @@ test("matchCarouselForCategory devuelve null si ningún carrusel targetea esa ca
   assert.equal(matchCarouselForCategory(carousels, "999"), null);
   assert.equal(matchCarouselForCategory([], "1"), null);
 });
+
+test("buildWidgetScript usa la misma lista PRODUCT_CARD_SELECTORS verificada en coming-soon.js", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(
+    script,
+    /PRODUCT_CARD_SELECTORS = \['\[data-item-id\]', '\[data-product-id\]', '\.js-item-product', '\.product-item', '\.item-product'\]/
+  );
+});
+
+test("buildWidgetScript inserta la grilla como hermano (findGridContainer sube hasta el contenedor con varias tarjetas) y agrega el MutationObserver de re-render", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(script, /ancestor\.querySelectorAll\(PRODUCT_CARD_SELECTOR\)\.length >= 2/);
+  assert.match(script, /grid\.parentElement\.insertBefore\(buildCarousel\(carousel\), grid\)/);
+  assert.match(script, /new MutationObserver\(scheduleInit\)/);
+  assert.match(script, /document\.querySelector\('\.pn-cc'\)/);
+});
