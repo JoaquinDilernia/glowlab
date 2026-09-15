@@ -128,6 +128,13 @@ function PriceFinancingConfig() {
     ? [...progressPlans].sort((a, b) => a.minAmount - b.minAmount)[0]
     : null;
 
+  // Mismo criterio que el widget: el plan de más cuotas cuyo mínimo el
+  // precio de ejemplo alcanza a cubrir -- se muestra uno solo, no todos.
+  const bestPlan = [...config.installmentPlans]
+    .filter(p => p.months)
+    .sort((a, b) => b.months - a.months)
+    .find(p => PREVIEW_PRICE >= (p.minAmount || 0)) || null;
+
   return (
     <div className="page-container pf-page">
       <div className="pf-topbar">
@@ -272,6 +279,7 @@ function PriceFinancingConfig() {
             Planes de cuotas
             <button onClick={addPlan} className="pf-btn-add"><Plus size={14} /> Agregar plan</button>
           </div>
+          <p className="pf-hint">En el precio del producto se muestra un solo plan: el de más cuotas cuyo "Monto mín." el precio de ese producto alcanza a cubrir (ej: 3 sin mínimo, 6 desde $300.000, 12 desde $900.000 → un producto de $1.000.000 muestra solo 12 cuotas).</p>
 
           <div className="pf-plans">
             {config.installmentPlans.map((plan, i) => (
@@ -335,13 +343,13 @@ function PriceFinancingConfig() {
                     ${fmt(cashPrice)} {config.cashLabel} <span className="pf-pill">{config.cashDiscountPercent}% OFF</span>
                   </div>
                 )}
-                {config.installmentPlans.map((plan, i) => plan.months ? (
-                  <div key={i} className="pf-preview-line pf-preview-installments" style={{ color: config.blockInstallmentsColor }}>
-                    {plan.interestFree
-                      ? `Hasta ${plan.months} ${config.installmentsFreeLabel} $${fmt(PREVIEW_PRICE / plan.months)}`
-                      : `${plan.months} ${config.installmentsPaidLabel} $${fmt((PREVIEW_PRICE / plan.months) * (1 + (plan.interestRate || 0) / 100))}`}
+                {bestPlan && (
+                  <div className="pf-preview-line pf-preview-installments" style={{ color: config.blockInstallmentsColor }}>
+                    {bestPlan.interestFree
+                      ? `Hasta ${bestPlan.months} ${config.installmentsFreeLabel} $${fmt(PREVIEW_PRICE / bestPlan.months)}`
+                      : `${bestPlan.months} ${config.installmentsPaidLabel} $${fmt((PREVIEW_PRICE / bestPlan.months) * (1 + (bestPlan.interestRate || 0) / 100))}`}
                   </div>
-                ) : null)}
+                )}
                 {config.customMessage && (
                   <div className="pf-preview-line pf-preview-message">{config.customMessage}</div>
                 )}

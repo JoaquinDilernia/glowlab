@@ -281,17 +281,27 @@ function buildWidgetScript(store, cfg) {
       var cashPrice = price * (1 - cashPct / 100);
       lines.push('<div class="pn-pf-line pn-pf-discount">$' + fmt(cashPrice) + ' ' + CFG.cashLabel + ' (' + cashPct + '% OFF)</div>');
     }
-    (CFG.installmentPlans || []).forEach(function(plan) {
-      if (!plan || !plan.months) return;
-      var perMonth = price / plan.months;
-      if (plan.interestFree) {
-        lines.push('<div class="pn-pf-line pn-pf-installments">Hasta ' + plan.months + ' ' + CFG.installmentsFreeLabel + ' $' + fmt(perMonth) + '</div>');
+    // Se muestra un solo plan: el de más cuotas cuyo "monto mínimo" el
+    // precio de este producto alcanza a cubrir (12 si llega, sino 6, sino
+    // 3, según los mínimos configurados) -- no se apilan todos los planes.
+    var bestPlan = null;
+    (CFG.installmentPlans || [])
+      .filter(function(p) { return p && p.months; })
+      .sort(function(a, b) { return b.months - a.months; })
+      .some(function(p) {
+        if (price >= (p.minAmount || 0)) { bestPlan = p; return true; }
+        return false;
+      });
+    if (bestPlan) {
+      var perMonth = price / bestPlan.months;
+      if (bestPlan.interestFree) {
+        lines.push('<div class="pn-pf-line pn-pf-installments">Hasta ' + bestPlan.months + ' ' + CFG.installmentsFreeLabel + ' $' + fmt(perMonth) + '</div>');
       } else {
-        var rate = Number(plan.interestRate) || 0;
+        var rate = Number(bestPlan.interestRate) || 0;
         var withInterest = perMonth * (1 + rate / 100);
-        lines.push('<div class="pn-pf-line pn-pf-installments">' + plan.months + ' ' + CFG.installmentsPaidLabel + ' $' + fmt(withInterest) + '</div>');
+        lines.push('<div class="pn-pf-line pn-pf-installments">' + bestPlan.months + ' ' + CFG.installmentsPaidLabel + ' $' + fmt(withInterest) + '</div>');
       }
-    });
+    }
     if (CFG.customMessage) {
       lines.push('<div class="pn-pf-line pn-pf-message">' + CFG.customMessage + '</div>');
     }
