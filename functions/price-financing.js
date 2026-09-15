@@ -35,7 +35,26 @@ const DEFAULT_CONFIG = {
   cartProgressBar: { enabled: false },
   discountColorEnabled: false,
   discountColor: "#e11d48",
+  blockFontFamily: "inherit",
+  blockFontSize: 13,
+  blockDiscountColor: "#16a34a",
+  blockDiscountBold: true,
+  blockInstallmentsColor: "#444444",
 };
+
+const BLOCK_FONT_FAMILIES = [
+  "inherit", "system-ui", "'Poppins', sans-serif", "'Inter', sans-serif",
+  "'Playfair Display', serif", "'Space Grotesk', sans-serif", "'Georgia', serif",
+];
+
+function isHexColor(value) {
+  return typeof value === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value);
+}
+
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  return Math.min(max, Math.max(min, Number.isFinite(n) ? n : fallback));
+}
 
 function registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, HOSTING_URL }) {
   // GET /api/price-financing-config?storeId=X - config para el admin
@@ -105,7 +124,12 @@ function registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, H
         installmentPlans: Array.isArray(cfg.installmentPlans) ? cfg.installmentPlans : [],
         cartProgressBar: { enabled: !!(cfg.cartProgressBar && cfg.cartProgressBar.enabled) },
         discountColorEnabled: !!cfg.discountColorEnabled,
-        discountColor: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(cfg.discountColor || "") ? cfg.discountColor : DEFAULT_CONFIG.discountColor,
+        discountColor: isHexColor(cfg.discountColor) ? cfg.discountColor : DEFAULT_CONFIG.discountColor,
+        blockFontFamily: BLOCK_FONT_FAMILIES.includes(cfg.blockFontFamily) ? cfg.blockFontFamily : DEFAULT_CONFIG.blockFontFamily,
+        blockFontSize: clampNumber(cfg.blockFontSize, 10, 20, DEFAULT_CONFIG.blockFontSize),
+        blockDiscountColor: isHexColor(cfg.blockDiscountColor) ? cfg.blockDiscountColor : DEFAULT_CONFIG.blockDiscountColor,
+        blockDiscountBold: cfg.blockDiscountBold !== false,
+        blockInstallmentsColor: isHexColor(cfg.blockInstallmentsColor) ? cfg.blockInstallmentsColor : DEFAULT_CONFIG.blockInstallmentsColor,
       };
 
       res.send(buildWidgetScript(store, widgetConfig));
@@ -172,16 +196,17 @@ function buildWidgetScript(store, cfg) {
     if (document.getElementById('pn-pf-styles')) return;
     var s = document.createElement('style');
     s.id = 'pn-pf-styles';
+    var blockFontFamily = CFG.blockFontFamily === 'inherit' ? 'inherit' : CFG.blockFontFamily + ', inherit';
     s.textContent = [
-      '.pn-pf-block, .pn-pf-block * { box-sizing: border-box !important; font-family: inherit; }',
-      '.pn-pf-block { margin: 6px 0 !important; font-size: 13px !important; line-height: 1.4 !important; }',
+      '.pn-pf-block, .pn-pf-block * { box-sizing: border-box !important; font-family: ' + blockFontFamily + '; }',
+      '.pn-pf-block { margin: 6px 0 !important; font-size: ' + CFG.blockFontSize + 'px !important; line-height: 1.4 !important; }',
       '.pn-pf-block .pn-pf-line { margin: 2px 0 !important; }',
-      '.pn-pf-block .pn-pf-discount { color: #16a34a !important; font-weight: 600 !important; }',
-      '.pn-pf-block .pn-pf-installments { color: #444 !important; }',
-      '.pn-pf-block .pn-pf-message { color: #777 !important; font-size: 12px !important; }',
-      '.pn-pf-progress { margin: 10px 0 !important; font-size: 13px !important; }',
+      '.pn-pf-block .pn-pf-discount { color: ' + CFG.blockDiscountColor + ' !important; font-weight: ' + (CFG.blockDiscountBold ? 600 : 400) + ' !important; }',
+      '.pn-pf-block .pn-pf-installments { color: ' + CFG.blockInstallmentsColor + ' !important; }',
+      '.pn-pf-block .pn-pf-message { color: #777 !important; font-size: ' + Math.max(10, CFG.blockFontSize - 1) + 'px !important; }',
+      '.pn-pf-progress { margin: 10px 0 !important; font-size: ' + CFG.blockFontSize + 'px !important; }',
       '.pn-pf-progress-bar { height: 6px !important; border-radius: 999px !important; background: #eee !important; overflow: hidden !important; margin-top: 4px !important; }',
-      '.pn-pf-progress-fill { height: 100% !important; background: #16a34a !important; }',
+      '.pn-pf-progress-fill { height: 100% !important; background: ' + CFG.blockDiscountColor + ' !important; }',
     ].join('');
     document.head.appendChild(s);
   }

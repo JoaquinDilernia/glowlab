@@ -23,7 +23,22 @@ const DEFAULT_CONFIG = {
   cartProgressBar: { enabled: false },
   discountColorEnabled: false,
   discountColor: '#e11d48',
+  blockFontFamily: 'inherit',
+  blockFontSize: 13,
+  blockDiscountColor: '#16a34a',
+  blockDiscountBold: true,
+  blockInstallmentsColor: '#444444',
 };
+
+const BLOCK_FONT_OPTIONS = [
+  { value: 'inherit', label: 'Igual que la tienda (por defecto)' },
+  { value: 'system-ui', label: 'System (nativa)' },
+  { value: "'Poppins', sans-serif", label: 'Poppins' },
+  { value: "'Inter', sans-serif", label: 'Inter' },
+  { value: "'Playfair Display', serif", label: 'Playfair Display' },
+  { value: "'Space Grotesk', sans-serif", label: 'Space Grotesk' },
+  { value: "'Georgia', serif", label: 'Georgia' },
+];
 
 const PREVIEW_PRICE = 25000;
 
@@ -158,6 +173,41 @@ function PriceFinancingConfig() {
             </label>
           </div>
 
+          <div className="pf-block-title">Diseño del texto (descuento y cuotas)</div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Tipografía</label>
+              <select value={config.blockFontFamily} onChange={e => handle('blockFontFamily', e.target.value)}>
+                {BLOCK_FONT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Tamaño (px)</label>
+              <input type="number" min={10} max={20} value={config.blockFontSize}
+                onChange={e => handle('blockFontSize', Math.min(20, Math.max(10, Number(e.target.value) || 10)))} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Color línea de descuento (efectivo/transferencia)</label>
+              <div className="pf-color-row">
+                <input type="color" value={config.blockDiscountColor} onChange={e => handle('blockDiscountColor', e.target.value)} />
+                <input type="text" value={config.blockDiscountColor} onChange={e => handle('blockDiscountColor', e.target.value)} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Color línea de cuotas</label>
+              <div className="pf-color-row">
+                <input type="color" value={config.blockInstallmentsColor} onChange={e => handle('blockInstallmentsColor', e.target.value)} />
+                <input type="text" value={config.blockInstallmentsColor} onChange={e => handle('blockInstallmentsColor', e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <label className="pf-check">
+            <input type="checkbox" checked={!!config.blockDiscountBold} onChange={e => handle('blockDiscountBold', e.target.checked)} />
+            Negrita en la línea de descuento
+          </label>
+
           <div className="pf-block-title">Precio con descuento</div>
           <label className="pf-check">
             <input type="checkbox" checked={!!config.discountColorEnabled} onChange={e => handle('discountColorEnabled', e.target.checked)} />
@@ -274,19 +324,19 @@ function PriceFinancingConfig() {
               <div className="pf-preview-name">Producto de ejemplo</div>
               <div className="pf-preview-price">${fmt(PREVIEW_PRICE)}</div>
 
-              <div className="pf-preview-block">
+              <div className="pf-preview-block" style={{ fontFamily: config.blockFontFamily === 'inherit' ? undefined : config.blockFontFamily, fontSize: config.blockFontSize }}>
                 {transferPrice !== null && (
-                  <div className="pf-preview-line pf-preview-discount">
+                  <div className="pf-preview-line pf-preview-discount" style={{ color: config.blockDiscountColor, fontWeight: config.blockDiscountBold ? 600 : 400 }}>
                     ${fmt(transferPrice)} {config.transferLabel} <span className="pf-pill">{config.transferDiscountPercent}% OFF</span>
                   </div>
                 )}
                 {cashPrice !== null && (
-                  <div className="pf-preview-line pf-preview-discount">
+                  <div className="pf-preview-line pf-preview-discount" style={{ color: config.blockDiscountColor, fontWeight: config.blockDiscountBold ? 600 : 400 }}>
                     ${fmt(cashPrice)} {config.cashLabel} <span className="pf-pill">{config.cashDiscountPercent}% OFF</span>
                   </div>
                 )}
                 {config.installmentPlans.map((plan, i) => plan.months ? (
-                  <div key={i} className="pf-preview-line pf-preview-installments">
+                  <div key={i} className="pf-preview-line pf-preview-installments" style={{ color: config.blockInstallmentsColor }}>
                     {plan.interestFree
                       ? `Hasta ${plan.months} ${config.installmentsFreeLabel} $${fmt(PREVIEW_PRICE / plan.months)}`
                       : `${plan.months} ${config.installmentsPaidLabel} $${fmt((PREVIEW_PRICE / plan.months) * (1 + (plan.interestRate || 0) / 100))}`}
