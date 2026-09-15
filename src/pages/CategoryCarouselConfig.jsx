@@ -17,6 +17,10 @@ const DEFAULT_STYLE = {
   titleAlign: 'center',
   desktopVisible: 4,
   mobileVisible: 2,
+  marginTop: 0,
+  marginBottom: 28,
+  marginLeft: 0,
+  marginRight: 0,
 };
 
 const DEFAULT_CONFIG = { enabled: false, style: DEFAULT_STYLE, carousels: [] };
@@ -221,8 +225,32 @@ function CategoryCarouselConfig() {
             </div>
             <div className="form-group">
               <label>Imágenes visibles — celular</label>
-              <input type="number" min={1} max={4} value={config.style.mobileVisible}
-                onChange={e => handleStyle('mobileVisible', Math.min(4, Math.max(1, Number(e.target.value) || 1)))} />
+              <input type="number" min={1} max={6} value={config.style.mobileVisible}
+                onChange={e => handleStyle('mobileVisible', Math.min(6, Math.max(1, Number(e.target.value) || 1)))} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Margen superior (px)</label>
+              <input type="number" min={0} max={100} value={config.style.marginTop}
+                onChange={e => handleStyle('marginTop', Math.min(100, Math.max(0, Number(e.target.value) || 0)))} />
+            </div>
+            <div className="form-group">
+              <label>Margen inferior (px)</label>
+              <input type="number" min={0} max={100} value={config.style.marginBottom}
+                onChange={e => handleStyle('marginBottom', Math.min(100, Math.max(0, Number(e.target.value) || 0)))} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Margen izquierdo (px)</label>
+              <input type="number" min={0} max={100} value={config.style.marginLeft}
+                onChange={e => handleStyle('marginLeft', Math.min(100, Math.max(0, Number(e.target.value) || 0)))} />
+            </div>
+            <div className="form-group">
+              <label>Margen derecho (px)</label>
+              <input type="number" min={0} max={100} value={config.style.marginRight}
+                onChange={e => handleStyle('marginRight', Math.min(100, Math.max(0, Number(e.target.value) || 0)))} />
             </div>
           </div>
           <div className="form-row">
@@ -322,7 +350,12 @@ function CategoryCarouselConfig() {
               {previewTiles.length === 0 ? (
                 <div className="ccc-preview-empty">Cargá tarjetas en algún carrusel para ver la vista previa</div>
               ) : (
-                <>
+                <div style={{
+                  marginTop: config.style.marginTop,
+                  marginBottom: config.style.marginBottom,
+                  marginLeft: config.style.marginLeft,
+                  marginRight: config.style.marginRight,
+                }}>
                   {previewCarousel.heading && (
                     <div className="ccc-preview-heading" style={{ textAlign: config.style.titleAlign, color: config.style.titleColor, fontFamily: config.style.titleFontFamily }}>
                       {previewCarousel.heading}
@@ -336,7 +369,7 @@ function CategoryCarouselConfig() {
                       </a>
                     ))}
                   </div>
-                </>
+                </div>
               )}
             </div>
             <div className="ccc-hint">

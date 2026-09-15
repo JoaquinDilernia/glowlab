@@ -66,6 +66,11 @@ test("buildWidgetConfig clampea desktopVisible y mobileVisible a rangos razonabl
   assert.equal(widgetConfig.style.mobileVisible, 1);
 });
 
+test("buildWidgetConfig permite hasta 6 tarjetas visibles en celular", () => {
+  assert.equal(buildWidgetConfig(mergeConfig({ style: { mobileVisible: 6 } })).style.mobileVisible, 6);
+  assert.equal(buildWidgetConfig(mergeConfig({ style: { mobileVisible: 99 } })).style.mobileVisible, 6);
+});
+
 test("buildWidgetConfig rechaza valores no numéricos (NaN) y usa defaults", () => {
   const cfg = mergeConfig({
     style: {
@@ -124,10 +129,31 @@ test("buildWidgetScript refleja titleAlign en el CSS del título de tarjeta y de
   assert.match(script, /\.pn-cc-heading \{[^}]*text-align: left/);
 });
 
-test("buildWidgetScript hace que el carrusel ocupe el 100% del ancho del contenedor (mismo ancho que el listado)", () => {
+test("buildWidgetScript hace que el carrusel ocupe el ancho del contenedor (mismo ancho que el listado) cuando no hay márgenes laterales", () => {
   const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
   const script = buildWidgetScript("123", widgetConfig);
-  assert.match(script, /\.pn-cc \{[^}]*width: 100%/);
+  assert.match(script, /\.pn-cc \{[^}]*width: calc\(100% - 0px - 0px\)/);
+});
+
+test("buildWidgetScript resta los márgenes laterales configurados del ancho, para no desbordar el contenedor", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({
+    enabled: true,
+    style: { marginLeft: 15, marginRight: 30, marginTop: 10, marginBottom: 20 },
+    carousels: [],
+  }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(script, /\.pn-cc \{[^}]*width: calc\(100% - 15px - 30px\)/);
+  assert.match(script, /\.pn-cc \{[^}]*margin: 10px 30px 20px 15px/);
+});
+
+test("buildWidgetConfig clampea los márgenes a un rango razonable (0-100px)", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({
+    style: { marginTop: -5, marginBottom: 500, marginLeft: "abc", marginRight: 40 },
+  }));
+  assert.equal(widgetConfig.style.marginTop, 0);
+  assert.equal(widgetConfig.style.marginBottom, 100);
+  assert.equal(widgetConfig.style.marginLeft, DEFAULT_CONFIG.style.marginLeft);
+  assert.equal(widgetConfig.style.marginRight, 40);
 });
 
 test("buildWidgetScript arma el heading del carrusel solo si carousel.heading vino con contenido", () => {

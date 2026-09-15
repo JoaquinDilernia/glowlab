@@ -21,6 +21,10 @@ const DEFAULT_CONFIG = {
     titleAlign: "center",
     desktopVisible: 4,
     mobileVisible: 2,
+    marginTop: 0,
+    marginBottom: 28,
+    marginLeft: 0,
+    marginRight: 0,
   },
   carousels: [],
 };
@@ -68,7 +72,11 @@ function buildWidgetConfig(cfg) {
     titleColor: cfg.style.titleColor || DEFAULT_CONFIG.style.titleColor,
     titleAlign: TITLE_ALIGNS.includes(cfg.style.titleAlign) ? cfg.style.titleAlign : DEFAULT_CONFIG.style.titleAlign,
     desktopVisible: clampNumber(cfg.style.desktopVisible, 2, 8, DEFAULT_CONFIG.style.desktopVisible),
-    mobileVisible: clampNumber(cfg.style.mobileVisible, 1, 4, DEFAULT_CONFIG.style.mobileVisible),
+    mobileVisible: clampNumber(cfg.style.mobileVisible, 1, 6, DEFAULT_CONFIG.style.mobileVisible),
+    marginTop: clampNumber(cfg.style.marginTop, 0, 100, DEFAULT_CONFIG.style.marginTop),
+    marginBottom: clampNumber(cfg.style.marginBottom, 0, 100, DEFAULT_CONFIG.style.marginBottom),
+    marginLeft: clampNumber(cfg.style.marginLeft, 0, 100, DEFAULT_CONFIG.style.marginLeft),
+    marginRight: clampNumber(cfg.style.marginRight, 0, 100, DEFAULT_CONFIG.style.marginRight),
   };
 
   const carousels = (Array.isArray(cfg.carousels) ? cfg.carousels : [])
@@ -203,8 +211,10 @@ function buildWidgetScript(store, cfg) {
   const tileWidth = `calc((100% - ${st.desktopVisible - 1} * ${st.gap}px) / ${st.desktopVisible})`;
   const mobileTileWidth = `calc((100% - ${st.mobileVisible - 1} * ${st.gap}px) / ${st.mobileVisible})`;
 
+  const ccWidth = `calc(100% - ${st.marginLeft}px - ${st.marginRight}px)`;
+
   const cssText = [
-    `.pn-cc { width: 100%; box-sizing: border-box; margin: 0 0 28px; font-family: ${st.titleFontFamily}, system-ui, sans-serif; }`,
+    `.pn-cc { width: ${ccWidth}; box-sizing: border-box; margin: ${st.marginTop}px ${st.marginRight}px ${st.marginBottom}px ${st.marginLeft}px; font-family: ${st.titleFontFamily}, system-ui, sans-serif; }`,
     `.pn-cc-heading { margin: 0 0 14px; font-size: ${headingFontSize}; font-weight: 700; text-align: ${st.titleAlign}; color: ${st.titleColor}; }`,
     `.pn-cc-row { position: relative; }`,
     `.pn-cc-track { display: flex; gap: ${st.gap}px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -ms-overflow-style: none; }`,
