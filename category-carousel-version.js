@@ -16,7 +16,7 @@
     if (bodyStore) {
       return bodyStore;
     }
-    console.warn('PromoNube Buscador: no se pudo detectar el storeId');
+    console.warn('PromoNube Carrusel de Categorias: no se pudo detectar el storeId');
     return null;
   }
 
