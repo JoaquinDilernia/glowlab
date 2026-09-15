@@ -288,8 +288,8 @@ function buildWidgetScript(store, cfg) {
     var s = document.createElement('style');
     s.id = 'pn-search-styles';
     s.textContent = [
-      '.pn-search-overlay { position: fixed; inset: 0; background: rgba(20,20,20,0.55); backdrop-filter: blur(3px); z-index: 999999; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; opacity: 0; transition: opacity 0.18s ease; font-family: ' + CFG.fontFamily + ', system-ui, sans-serif; }',
-      '.pn-search-overlay.pn-open { opacity: 1; }',
+      '.pn-search-overlay { position: fixed; inset: 0; background: rgba(20,20,20,0.55); backdrop-filter: blur(3px); z-index: 999999; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; opacity: 0; pointer-events: none; transition: opacity 0.18s ease; font-family: ' + CFG.fontFamily + ', system-ui, sans-serif; }',
+      '.pn-search-overlay.pn-open { opacity: 1; pointer-events: auto; }',
       '.pn-search-panel { background: #fff; width: 100%; max-width: 620px; border-radius: 16px; box-shadow: 0 24px 64px rgba(0,0,0,0.28); overflow: hidden; transform: translateY(-12px); transition: transform 0.18s ease; }',
       '.pn-search-overlay.pn-open .pn-search-panel { transform: translateY(0); }',
       '.pn-search-head { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid #eee; }',
@@ -520,4 +520,4 @@ function buildWidgetScript(store, cfg) {
 `;
 }
 
-module.exports = { registerSearchRoutes, setSearchScriptId };
+module.exports = { registerSearchRoutes, setSearchScriptId, buildWidgetScript };
