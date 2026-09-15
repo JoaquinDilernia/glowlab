@@ -333,8 +333,11 @@ function buildWidgetScript(store, cfg) {
   function scrollByPage(track, dir) {
     var tile = track.querySelector('.pn-cc-tile');
     if (!tile) return;
+    // Mismo corte que el media query de CSS: en celular hay que avanzar de
+    // a mobileVisible tarjetas por click, no de a desktopVisible.
+    var visible = window.innerWidth <= 640 ? CFG.style.mobileVisible : CFG.style.desktopVisible;
     var tileWidth = tile.getBoundingClientRect().width + CFG.style.gap;
-    track.scrollBy({ left: dir * tileWidth * CFG.style.desktopVisible, behavior: 'smooth' });
+    track.scrollBy({ left: dir * tileWidth * visible, behavior: 'smooth' });
   }
 
   function buildCarousel(carousel) {
@@ -360,7 +363,11 @@ function buildWidgetScript(store, cfg) {
     });
     row.appendChild(track);
 
-    if (carousel.tiles.length > CFG.style.desktopVisible) {
+    // Se crean si hay overflow en CUALQUIERA de los dos breakpoints -- si
+    // solo se mirara desktopVisible, un carrusel que entra justo en desktop
+    // pero desborda en celular (mobileVisible más chico) se quedaría sin
+    // flechas ahí, aunque el CSS mobile ya las muestre.
+    if (carousel.tiles.length > Math.min(CFG.style.desktopVisible, CFG.style.mobileVisible)) {
       var prev = document.createElement('button');
       prev.className = 'pn-cc-arrow pn-cc-arrow-prev';
       prev.setAttribute('aria-label', 'Anterior');

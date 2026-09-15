@@ -163,6 +163,18 @@ test("buildWidgetScript muestra las flechas en celular con un estilo fino (sin d
   assert.match(script, /@media \(max-width: 640px\)[^]*?\.pn-cc-arrow \{ width: 26px; height: 26px; border: none/);
 });
 
+test("buildWidgetScript crea las flechas si hay overflow en desktop O en celular (no solo en desktop)", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(script, /carousel\.tiles\.length > Math\.min\(CFG\.style\.desktopVisible, CFG\.style\.mobileVisible\)/);
+});
+
+test("buildWidgetScript avanza por click según mobileVisible en celular, no siempre desktopVisible", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(script, /window\.innerWidth <= 640 \? CFG\.style\.mobileVisible : CFG\.style\.desktopVisible/);
+});
+
 test("buildWidgetScript arma el heading del carrusel solo si carousel.heading vino con contenido", () => {
   const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
   const script = buildWidgetScript("123", widgetConfig);
