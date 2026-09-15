@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Search, Eye, Plus, Trash2, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, Search, Eye, Plus, Trash2, Image as ImageIcon, Sparkles, Play } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
 import { useImageUpload } from '../hooks/useImageUpload';
@@ -65,6 +65,7 @@ function SearchConfig() {
   const [saving, setSaving] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [previewQuery, setPreviewQuery] = useState('');
+  const [tryOpen, setTryOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -151,6 +152,83 @@ function SearchConfig() {
     : PREVIEW_PRODUCTS;
   const bannersWithImage = config.banners.filter(b => b.imageUrl);
   const hasFeatured = config.featuredSearches.filter(f => f.label).length > 0;
+
+  const renderPreviewPanel = (showClose) => (
+    <div className={`sc-preview-panel sc-tpl-${config.template}`} style={{ fontFamily: config.fontFamily }}>
+      {config.template === 'grid' && bannersWithImage.length > 0 && (
+        <div className="sc-preview-side">
+          {bannersWithImage.map((b, i) => <img key={i} src={b.imageUrl} alt="" />)}
+        </div>
+      )}
+      <div className="sc-preview-main">
+        <div className="sc-preview-head">
+          <input
+            className="sc-preview-input"
+            style={{ fontSize: fontSizeMap[config.fontSize] }}
+            placeholder={config.title}
+            value={previewQuery}
+            onChange={e => setPreviewQuery(e.target.value)}
+          />
+          {showClose && (
+            <button className="sc-preview-close" aria-label="Cerrar" onClick={() => setTryOpen(false)}>&times;</button>
+          )}
+        </div>
+        <div className="sc-preview-body">
+          {previewQuery ? (
+            previewFiltered.length ? (
+              config.template === 'grid' ? (
+                <div className="sc-preview-results-grid">
+                  {previewFiltered.map((p, i) => (
+                    <div key={i} className="sc-preview-result-card">
+                      <div className="sc-preview-thumb sc-preview-thumb-sq" />
+                      <div className="sc-preview-result-name">{p.name}</div>
+                      <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
+                      {transferPricePreview(p.price)}
+                    </div>
+                  ))}
+                </div>
+              ) : previewFiltered.map((p, i) => (
+                <div key={i} className="sc-preview-result">
+                  <div className="sc-preview-thumb" />
+                  <div>
+                    <div className="sc-preview-result-name">{p.name}</div>
+                    <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
+                    {transferPricePreview(p.price)}
+                  </div>
+                </div>
+              ))
+            ) : <div className="sc-preview-empty">Sin resultados</div>
+          ) : (
+            <>
+              {config.template === 'minimal' && bannersWithImage.length > 0 && (
+                <>
+                  <div className="sc-preview-section-title">Destacado</div>
+                  <div className="sc-preview-banners">
+                    {bannersWithImage.map((b, i) => (
+                      <img key={i} src={b.imageUrl} alt="" />
+                    ))}
+                  </div>
+                </>
+              )}
+              {hasFeatured && (
+                <>
+                  <div className="sc-preview-section-title">Búsquedas recomendadas</div>
+                  <div className="sc-preview-featured">
+                    {config.featuredSearches.filter(f => f.label).map((f, i) => (
+                      <span key={i}>{f.label}</span>
+                    ))}
+                  </div>
+                </>
+              )}
+              {!hasFeatured && !(config.template === 'minimal' && bannersWithImage.length > 0) && !(config.template === 'grid' && bannersWithImage.length > 0) && (
+                <div className="sc-preview-empty">Escribí algo arriba para ver resultados de ejemplo</div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="page-container sc-page">
@@ -306,7 +384,10 @@ function SearchConfig() {
         {/* Preview */}
         <div className="sc-preview-col">
           <div className="sc-preview-sticky">
-            <div className="sc-preview-label"><Eye size={15} /> Vista previa {config.template === 'compact' && <span className="sc-preview-tag">dropdown anclado</span>}</div>
+            <div className="sc-preview-label-row">
+              <div className="sc-preview-label"><Eye size={15} /> Vista previa {config.template === 'compact' && <span className="sc-preview-tag">dropdown anclado</span>}</div>
+              <button className="sc-btn-try" onClick={() => setTryOpen(true)}><Play size={13} /> Probar</button>
+            </div>
 
             {config.template === 'compact' && (
               <div className="sc-preview-compact-header">
@@ -315,77 +396,24 @@ function SearchConfig() {
               </div>
             )}
 
-            <div className={`sc-preview-panel sc-tpl-${config.template}`} style={{ fontFamily: config.fontFamily }}>
-              {config.template === 'grid' && bannersWithImage.length > 0 && (
-                <div className="sc-preview-side">
-                  {bannersWithImage.map((b, i) => <img key={i} src={b.imageUrl} alt="" />)}
-                </div>
-              )}
-              <div className="sc-preview-main">
-                <div className="sc-preview-head">
-                  <input
-                    className="sc-preview-input"
-                    style={{ fontSize: fontSizeMap[config.fontSize] }}
-                    placeholder={config.title}
-                    value={previewQuery}
-                    onChange={e => setPreviewQuery(e.target.value)}
-                  />
-                </div>
-                <div className="sc-preview-body">
-                  {previewQuery ? (
-                    previewFiltered.length ? (
-                      config.template === 'grid' ? (
-                        <div className="sc-preview-results-grid">
-                          {previewFiltered.map((p, i) => (
-                            <div key={i} className="sc-preview-result-card">
-                              <div className="sc-preview-thumb sc-preview-thumb-sq" />
-                              <div className="sc-preview-result-name">{p.name}</div>
-                              <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
-                              {transferPricePreview(p.price)}
-                            </div>
-                          ))}
-                        </div>
-                      ) : previewFiltered.map((p, i) => (
-                        <div key={i} className="sc-preview-result">
-                          <div className="sc-preview-thumb" />
-                          <div>
-                            <div className="sc-preview-result-name">{p.name}</div>
-                            <div className="sc-preview-result-price" style={{ color: config.primaryColor }}>${fmt(p.price)}</div>
-                            {transferPricePreview(p.price)}
-                          </div>
-                        </div>
-                      ))
-                    ) : <div className="sc-preview-empty">Sin resultados</div>
-                  ) : (
-                    <>
-                      {config.template === 'minimal' && bannersWithImage.length > 0 && (
-                        <>
-                          <div className="sc-preview-section-title">Destacado</div>
-                          <div className="sc-preview-banners">
-                            {bannersWithImage.map((b, i) => (
-                              <img key={i} src={b.imageUrl} alt="" />
-                            ))}
-                          </div>
-                        </>
-                      )}
-                      {hasFeatured && (
-                        <>
-                          <div className="sc-preview-section-title">Búsquedas recomendadas</div>
-                          <div className="sc-preview-featured">
-                            {config.featuredSearches.filter(f => f.label).map((f, i) => (
-                              <span key={i}>{f.label}</span>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                      {!hasFeatured && !(config.template === 'minimal' && bannersWithImage.length > 0) && !(config.template === 'grid' && bannersWithImage.length > 0) && (
-                        <div className="sc-preview-empty">Escribí algo arriba para ver resultados de ejemplo</div>
-                      )}
-                    </>
+            {renderPreviewPanel(false)}
+
+            {tryOpen && (
+              <div
+                className={`sc-try-overlay ${config.template === 'compact' ? 'sc-try-compact' : ''}`}
+                onClick={() => setTryOpen(false)}
+              >
+                <div className={config.template === 'compact' ? 'sc-try-compact-box' : ''} onClick={e => e.stopPropagation()}>
+                  {config.template === 'compact' && (
+                    <div className="sc-preview-compact-header">
+                      <span>Tu tienda</span>
+                      <span className="sc-preview-compact-icon"><Search size={13} /></span>
+                    </div>
                   )}
+                  {renderPreviewPanel(true)}
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="sc-help">
               <strong>Para activarlo:</strong> guardá los cambios. El módulo se activa solo en tu tienda y se actualiza cada vez que guardás cambios acá.
