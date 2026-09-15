@@ -160,6 +160,11 @@ const _SRV_BASE = process.env.API_BASE_URL || 'https://apipromonube-jlfopowzaq-u
 // (GlowLab #23137 → Scripts). Se completa después de crearlo ahí.
 const SEARCH_SCRIPT_ID = 9847;
 
+// Id numérico del script "Carrusel de Categorías" en TiendaNube Partners
+// (GlowLab #23137 → Scripts). null hasta crearlo ahí — el endpoint de
+// instalación falla con un error claro de Tiendanube mientras tanto.
+const CATEGORY_CAROUSEL_SCRIPT_ID = null;
+
 // ==========================================
 // SISTEMA DE SUSCRIPCIONES Y FEATURE FLAGS
 // ==========================================
@@ -775,6 +780,12 @@ registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
 // Grupos de Variantes por SKU - agrupa productos de Alto Rancho por SKU (piloto)
 const { registerVariantGroupsRoutes } = require('./variant-groups');
 registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive });
+
+// Carrusel de Categorías - reemplaza el banner fijo nativo de Tiendanube por
+// un carrusel de tarjetas configurable, targeteado por categoría
+const { registerCategoryCarouselRoutes, setCategoryCarouselScriptId } = require('./category-carousel');
+registerCategoryCarouselRoutes(app, { db, FieldValue, checkStoreActive });
+setCategoryCarouselScriptId(CATEGORY_CAROUSEL_SCRIPT_ID);
 
 // ============================================
 // CONFIGURACI�N OAUTH TIENDANUBE
