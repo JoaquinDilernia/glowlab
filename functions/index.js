@@ -7,7 +7,7 @@ const crypto = require("crypto");
 const sgMail = require('@sendgrid/mail');
 const Busboy = require('busboy');
 const multer = require('multer');
-const { MercadoPagoConfig, PreApproval } = require('mercadopago');
+const { MercadoPagoConfig, PreApproval, Payment } = require('mercadopago');
 const { evaluateAccess, SUBSCRIPTION_PRICE_ARS } = require('./subscriptionAccess');
 const { getClientSelectorMap } = require('./theme-menu-selectors');
 
@@ -890,12 +890,21 @@ app.get("/auth/callback", async (req, res) => {
     // Instalar templates predeterminados para nueva tienda
     await installDefaultTemplates(storeId);
 
-    // Instalacion nueva: crear trial de 7 dias sin pedir tarjeta.
-    // Si la tienda ya tenia una suscripcion (reinstalacion), se respeta tal cual esta.
+    // Instalacion nueva o reinstalacion: dar un trial de 7 dias si la tienda
+    // no tiene acceso vigente y nunca pago. Antes esto se salteaba con solo
+    // que existiera un documento de suscripcion previo, asi que una tienda
+    // que reinstalaba despues de que su trial venciera quedaba bloqueada para
+    // siempre sin un trial nuevo (bug reportado: el trial de 7 dias no se
+    // estaba aplicando en la practica). No toca tiendas que ya pagaron
+    // alguna vez (mpPreapprovalId) ni las que ya tienen acceso vigente
+    // (trial/cortesia activos, gratis permanente o suscripcion activa).
     const subscriptionRef = db.collection("stores").doc(storeId).collection("subscription").doc("current");
-    const existingSubscription = await subscriptionRef.get();
+    const existingSubscriptionSnap = await subscriptionRef.get();
+    const existingSubscriptionData = existingSubscriptionSnap.exists ? existingSubscriptionSnap.data() : null;
+    const currentAccess = evaluateAccess(existingSubscriptionData);
+    const neverPaid = !existingSubscriptionData?.mpPreapprovalId;
 
-    if (!existingSubscription.exists) {
+    if (!currentAccess.hasAccess && neverPaid) {
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + 7);
 
@@ -908,13 +917,14 @@ app.get("/auth/callback", async (req, res) => {
         freeForever: false,
         courtesyUntil: null,
         modules: buildFullModulesObject(),
-        createdAt: new Date().toISOString(),
+        createdAt: existingSubscriptionData?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
 
-      console.log(`Trial de 7 dias creado para: ${storeId}`);
+      invalidateConfigCache(storeId);
+      console.log(`Trial de 7 dias (re)otorgado para: ${storeId}`);
     } else {
-      console.log(`Store ${storeId} ya tenia suscripcion, no se modifica`);
+      console.log(`Store ${storeId} ya tiene acceso vigente o historial de pago, no se modifica`);
     }
 
     // Verificar si ya existe un usuario para esta tienda
@@ -4665,6 +4675,36 @@ app.post('/api/admin/grant-courtesy-month', requireAdminKey, async (req, res) =>
     res.json({ success: true, message: 'Mes de cortesia otorgado', courtesyUntil: courtesyUntil.toISOString() });
   } catch (error) {
     console.error('Error en grant-courtesy-month:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/grant-trial-days - Otorgar manualmente N dias de trial
+// (usado por el selector 7 / 30 dias del panel de admin).
+app.post('/api/admin/grant-trial-days', requireAdminKey, async (req, res) => {
+  try {
+    const { storeId, days } = req.body;
+    const numDays = Number(days);
+    if (!storeId || !Number.isFinite(numDays) || numDays <= 0) {
+      return res.status(400).json({ success: false, error: 'storeId y days (numero positivo) son requeridos' });
+    }
+
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + numDays);
+
+    const subscriptionRef = db.collection('stores').doc(storeId.toString()).collection('subscription').doc('current');
+    await subscriptionRef.set({
+      status: 'trialing',
+      trialEndsAt: trialEndsAt.toISOString(),
+      courtesyUntil: null,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    invalidateConfigCache(storeId.toString());
+
+    res.json({ success: true, message: `Trial de ${numDays} dias otorgado`, trialEndsAt: trialEndsAt.toISOString() });
+  } catch (error) {
+    console.error('Error en grant-trial-days:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -15480,6 +15520,50 @@ app.post('/api/mp/webhook', async (req, res) => {
     // primera vez que se dispare un webhook real y ajustar esta lista si hace falta.
     const PREAPPROVAL_TYPES = ['preapproval', 'subscription_preapproval'];
 
+    // Cada cobro recurrente de la suscripcion llega como un webhook tipo
+    // "payment" separado del "preapproval" (que solo cubre el alta/pausa/
+    // cancelacion). Sin esto nunca se registra un pago individual.
+    // NOTA: igual que arriba, confirmar contra logs reales de Railway apenas
+    // entre el primer pago real y ajustar los nombres de campo si MP los manda distinto.
+    if (type === 'payment' && data.id) {
+      const payment = new Payment(mpClient);
+      const paymentData = await payment.get({ id: data.id });
+
+      let paymentStoreId = null;
+      try {
+        const parsedRef = JSON.parse(paymentData.external_reference || '{}');
+        paymentStoreId = parsedRef.storeId || null;
+      } catch (parseErr) {
+        console.error('No se pudo parsear external_reference del pago:', paymentData.external_reference);
+      }
+
+      await db.collection('promonube_payments').add({
+        storeId: paymentStoreId,
+        paymentId: paymentData.id,
+        mpPreapprovalId: paymentData.point_of_interaction?.transaction_data?.subscription_id || null,
+        status: paymentData.status,
+        statusDetail: paymentData.status_detail || null,
+        amount: paymentData.transaction_amount || null,
+        currency: paymentData.currency_id || null,
+        createdAt: FieldValue.serverTimestamp(),
+        approvedAt: paymentData.date_approved ? new Date(paymentData.date_approved) : null
+      });
+
+      if (paymentStoreId && paymentData.status === 'approved') {
+        const subscriptionRef = db.collection('stores').doc(paymentStoreId).collection('subscription').doc('current');
+        await subscriptionRef.set({
+          status: 'active',
+          mpStatus: 'authorized',
+          lastPaymentAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        invalidateConfigCache(paymentStoreId);
+      }
+
+      console.log(`Pago MP registrado (${paymentData.status}) para store ${paymentStoreId || 'desconocido'}: ${paymentData.id}`);
+      return;
+    }
+
     if (!PREAPPROVAL_TYPES.includes(type) || !data.id) {
       return;
     }
@@ -15512,6 +15596,21 @@ app.post('/api/mp/webhook', async (req, res) => {
         updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
       invalidateConfigCache(storeId);
+
+      // Deja registrada el alta de la suscripcion como primer "pago" para que
+      // se vea en el panel de admin desde el minuto uno, aunque el primer
+      // cobro recurrente recien llegue via webhook tipo "payment" mas adelante.
+      await db.collection('promonube_payments').add({
+        storeId,
+        paymentId: null,
+        mpPreapprovalId: preapprovalData.id,
+        status: 'authorized',
+        amount: preapprovalData.auto_recurring?.transaction_amount || SUBSCRIPTION_PRICE_ARS,
+        currency: preapprovalData.auto_recurring?.currency_id || 'ARS',
+        createdAt: FieldValue.serverTimestamp(),
+        approvedAt: FieldValue.serverTimestamp()
+      });
+
       console.log(`Suscripcion autorizada para store ${storeId}`);
     } else if (preapprovalData.status === 'paused' || preapprovalData.status === 'cancelled') {
       await subscriptionRef.set({
@@ -15604,11 +15703,19 @@ app.get('/api/admin/stores', requireAdminKey, async (req, res) => {
       stores.push({
         storeId: storeId,
         storeName: storeData.name || storeData.storeName || 'Sin nombre',
+        installedAt: toIso(storeData.installedAt),
         subscription,
         detectedTheme: storeData.detectedTheme || null,
         phone: storeData.phone || null
       });
     }
+
+    // Instalaciones mas nuevas primero.
+    stores.sort((a, b) => {
+      const aTime = a.installedAt ? new Date(a.installedAt).getTime() : 0;
+      const bTime = b.installedAt ? new Date(b.installedAt).getTime() : 0;
+      return bTime - aTime;
+    });
 
     res.json({ success: true, stores });
   } catch (error) {
