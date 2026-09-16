@@ -13,6 +13,7 @@ function AdminPanel() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [stores, setStores] = useState([]);
   const [uninstalls, setUninstalls] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('stores');
   const [processingStore, setProcessingStore] = useState(null);
@@ -24,6 +25,7 @@ function AdminPanel() {
     if (isAuthenticated) {
       loadStores();
       loadUninstalls();
+      loadPayments();
     }
   }, [isAuthenticated]);
 
@@ -65,6 +67,19 @@ function AdminPanel() {
     }
   };
 
+  const loadPayments = async () => {
+    try {
+      const response = await apiRequest('/api/admin/payments', {
+        headers: { 'x-admin-key': adminKey }
+      });
+      if (response.success) {
+        setPayments(response.payments);
+      }
+    } catch (error) {
+      console.error('Error loading payments:', error);
+    }
+  };
+
   const setFreeForever = async (storeId, freeForever) => {
     const verb = freeForever ? 'marcar como gratis permanente' : 'quitar el estado de gratis permanente de';
     if (!confirm(`¿Confirmás ${verb} la tienda ${storeId}?`)) return;
@@ -90,25 +105,25 @@ function AdminPanel() {
     }
   };
 
-  const grantCourtesyMonth = async (storeId) => {
-    if (!confirm(`¿Dar un mes de cortesía a la tienda ${storeId}?`)) return;
+  const grantTrialDays = async (storeId, days) => {
+    if (!confirm(`¿Dar ${days} días de prueba a la tienda ${storeId}?`)) return;
 
     setProcessingStore(storeId);
     try {
-      const response = await apiRequest('/api/admin/grant-courtesy-month', {
+      const response = await apiRequest('/api/admin/grant-trial-days', {
         method: 'POST',
         headers: { 'x-admin-key': adminKey },
-        body: JSON.stringify({ storeId })
+        body: JSON.stringify({ storeId, days })
       });
 
       if (response.success) {
-        toast.success(`Cortesía otorgada hasta ${new Date(response.courtesyUntil).toLocaleDateString()}`);
+        toast.success(`${days} días otorgados, vence el ${new Date(response.trialEndsAt).toLocaleDateString()}`);
         loadStores();
       } else {
         toast.error('Error: ' + response.error);
       }
     } catch (error) {
-      toast.error(error?.message || 'Error otorgando cortesía');
+      toast.error(error?.message || 'Error otorgando días de prueba');
     } finally {
       setProcessingStore(null);
     }
@@ -269,18 +284,25 @@ function AdminPanel() {
           style={{padding:'8px 12px', borderRadius:'8px', border:'1px solid rgba(102,126,234,0.4)', background:'rgba(255,255,255,0.08)', color:'#fff', width:'180px', outline:'none'}}
         />
         <button
+          onClick={() => { if (quickStoreId) grantTrialDays(quickStoreId, 7); }}
+          disabled={!quickStoreId || processingStore === quickStoreId}
+          style={{padding:'8px 20px', borderRadius:'8px', background:'linear-gradient(135deg,#667eea,#764ba2)', color:'#fff', border:'none', cursor:'pointer', fontWeight:'600', opacity: !quickStoreId ? 0.5 : 1}}
+        >
+          🎁 7 días
+        </button>
+        <button
+          onClick={() => { if (quickStoreId) grantTrialDays(quickStoreId, 30); }}
+          disabled={!quickStoreId || processingStore === quickStoreId}
+          style={{padding:'8px 20px', borderRadius:'8px', background:'linear-gradient(135deg,#667eea,#764ba2)', color:'#fff', border:'none', cursor:'pointer', fontWeight:'600', opacity: !quickStoreId ? 0.5 : 1}}
+        >
+          🎉 30 días
+        </button>
+        <button
           onClick={() => { if (quickStoreId) setFreeForever(quickStoreId, true); }}
           disabled={!quickStoreId || processingStore === quickStoreId}
           style={{padding:'8px 20px', borderRadius:'8px', background:'linear-gradient(135deg,#10B981,#059669)', color:'#fff', border:'none', cursor:'pointer', fontWeight:'600', opacity: !quickStoreId ? 0.5 : 1}}
         >
           💚 Gratis permanente
-        </button>
-        <button
-          onClick={() => { if (quickStoreId) grantCourtesyMonth(quickStoreId); }}
-          disabled={!quickStoreId || processingStore === quickStoreId}
-          style={{padding:'8px 20px', borderRadius:'8px', background:'linear-gradient(135deg,#667eea,#764ba2)', color:'#fff', border:'none', cursor:'pointer', fontWeight:'600', opacity: !quickStoreId ? 0.5 : 1}}
-        >
-          🎉 Mes de cortesía
         </button>
         <button
           onClick={resetAllTrials}
@@ -314,6 +336,13 @@ function AdminPanel() {
         >
           <Palette size={18} />
           Temas ({themeStats.knownThemes.length + (themeStats.undetectedCount > 0 ? 1 : 0)})
+        </button>
+        <button
+          className={`tab ${activeTab === 'payments' ? 'active' : ''}`}
+          onClick={() => setActiveTab('payments')}
+        >
+          <TrendingUp size={18} />
+          Pagos ({payments.length})
         </button>
       </div>
 
@@ -390,7 +419,7 @@ function AdminPanel() {
                       </div>
                     </td>
                     <td>
-                      {sub.createdAt ? new Date(sub.createdAt).toLocaleDateString('es-AR') : '-'}
+                      {store.installedAt ? new Date(store.installedAt).toLocaleDateString('es-AR') : '-'}
                     </td>
                     <td>
                       {untilDate ? new Date(untilDate).toLocaleDateString() : '-'}
@@ -412,13 +441,27 @@ function AdminPanel() {
                     </td>
                     <td>
                       <div className="actions-cell">
+                        <button
+                          onClick={() => grantTrialDays(store.storeId, 7)}
+                          disabled={processingStore === store.storeId}
+                          className="action-select"
+                        >
+                          🎁 7 días
+                        </button>
+                        <button
+                          onClick={() => grantTrialDays(store.storeId, 30)}
+                          disabled={processingStore === store.storeId}
+                          className="action-select"
+                        >
+                          🎉 30 días
+                        </button>
                         {!sub.freeForever ? (
                           <button
                             onClick={() => setFreeForever(store.storeId, true)}
                             disabled={processingStore === store.storeId}
                             className="action-select"
                           >
-                            💚 Marcar gratis
+                            💚 Gratis
                           </button>
                         ) : (
                           <button
@@ -429,13 +472,6 @@ function AdminPanel() {
                             Quitar gratis
                           </button>
                         )}
-                        <button
-                          onClick={() => grantCourtesyMonth(store.storeId)}
-                          disabled={processingStore === store.storeId}
-                          className="action-select"
-                        >
-                          🎉 Cortesía
-                        </button>
                       </div>
                     </td>
                   </tr>
@@ -501,6 +537,71 @@ function AdminPanel() {
             <div className="empty-state">
               <XCircle size={48} />
               <p>No hay desinstalaciones registradas</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Payments Table */}
+      {activeTab === 'payments' && (
+        <div className="table-container">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>FECHA</th>
+                <th>TIENDA</th>
+                <th>MONTO</th>
+                <th>ESTADO</th>
+                <th>ID DE PAGO</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments
+                .filter(p =>
+                  !searchTerm ||
+                  stores.find(s => s.storeId === p.storeId)?.storeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  p.storeId?.toString().includes(searchTerm)
+                )
+                .map((payment) => {
+                  const storeName = stores.find(s => s.storeId === payment.storeId)?.storeName;
+                  const statusLabel = {
+                    approved: '✅ Aprobado',
+                    authorized: '✅ Autorizado',
+                    pending: '⏳ Pendiente',
+                    in_process: '⏳ En proceso',
+                    rejected: '❌ Rechazado',
+                    cancelled: '❌ Cancelado'
+                  }[payment.status] || payment.status || '-';
+
+                  return (
+                    <tr key={payment.id}>
+                      <td>
+                        {payment.approvedAt || payment.createdAt
+                          ? new Date(payment.approvedAt || payment.createdAt).toLocaleDateString('es-AR')
+                          : '-'}
+                      </td>
+                      <td className="store-name">
+                        {storeName || 'Tienda desconocida'}
+                        <br />
+                        <small style={{color: '#999'}}>ID: {payment.storeId || '-'}</small>
+                      </td>
+                      <td>
+                        {payment.amount ? `$${Number(payment.amount).toLocaleString('es-AR')} ${payment.currency || 'ARS'}` : '-'}
+                      </td>
+                      <td>{statusLabel}</td>
+                      <td style={{fontSize: '0.85em', color: '#999'}}>
+                        {payment.paymentId || payment.mpPreapprovalId || payment.id}
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+
+          {payments.length === 0 && (
+            <div className="empty-state">
+              <TrendingUp size={48} />
+              <p>Todavía no hay pagos registrados</p>
             </div>
           )}
         </div>
