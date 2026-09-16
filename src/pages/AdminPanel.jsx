@@ -372,7 +372,6 @@ function AdminPanel() {
                 <th>STORE ID</th>
                 <th>PLAN</th>
                 <th>ESTADO</th>
-                <th>MÓDULOS</th>
                 <th>FECHA ACTIVACIÓN</th>
                 <th>EXPIRA</th>
                 <th>WHATSAPP</th>
@@ -390,7 +389,6 @@ function AdminPanel() {
                   blocked: '❌ Bloqueado',
                   past_due: '⚠️ Pago pendiente'
                 }[sub.status] || sub.status || '-');
-                const modules = sub.modules || {};
                 const untilDate = isCourtesyActive ? sub.courtesyUntil
                   : sub.status === 'trialing' ? sub.trialEndsAt
                   : sub.currentPeriodEnd;
@@ -408,15 +406,6 @@ function AdminPanel() {
                       <span className={`status-badge ${sub.freeForever || isCourtesyActive || sub.status === 'active' || sub.status === 'trialing' ? 'active' : 'inactive'}`}>
                         {sub.freeForever ? '✅ Gratis permanente' : statusLabel}
                       </span>
-                    </td>
-                    <td className="modules-cell">
-                      <div className="modules-list">
-                        {modules.coupons && <span className="module-tag">coupons</span>}
-                        {modules.giftcards && <span className="module-tag">giftcards</span>}
-                        {modules.spinWheel && <span className="module-tag">spinWheel</span>}
-                        {modules.countdown && <span className="module-tag">countdown</span>}
-                        {modules.style && <span className="module-tag">style</span>}
-                      </div>
                     </td>
                     <td>
                       {store.installedAt ? new Date(store.installedAt).toLocaleDateString('es-AR') : '-'}
