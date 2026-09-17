@@ -395,7 +395,11 @@ function buildWidgetScript(store, cfg) {
     if (!plans.length) return;
     var cart = window.LS && window.LS.cart;
     if (!cart) return;
-    var total = Number(cart.total) || 0;
+    // LS.cart no tiene "total": el campo real es "subtotal", en centavos
+    // (verificado contra Alto Rancho: $169.990 -> subtotal 16999000). Sin
+    // este ajuste "total" quedaba siempre en 0 y la barra mostraba el monto
+    // mínimo completo del plan en vez de lo que realmente falta.
+    var total = (Number(cart.subtotal) || 0) / 100;
     plans.sort(function(a, b) { return a.minAmount - b.minAmount; });
     var next = null;
     for (var i = 0; i < plans.length; i++) {
