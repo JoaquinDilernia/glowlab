@@ -413,6 +413,14 @@ function buildWidgetScript(store, cfg) {
     // este ajuste "total" quedaba siempre en 0 y la barra mostraba el monto
     // mínimo completo del plan en vez de lo que realmente falta.
     var total = (Number(cart.subtotal) || 0) / 100;
+    if (total <= 0) {
+      // cart.items a veces queda con entradas fantasma justo después de
+      // vaciar el carrito (subtotal ya en 0 pero items.length todavía > 0)
+      // -- no tiene sentido invitar a sumar cuotas sin interés a un carrito
+      // vacío.
+      if (existing) existing.remove();
+      return;
+    }
     plans.sort(function(a, b) { return a.minAmount - b.minAmount; });
     var next = null;
     for (var i = 0; i < plans.length; i++) {
