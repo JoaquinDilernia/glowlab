@@ -403,7 +403,15 @@ function buildWidgetScript(store, cfg) {
     }
     if (!next) return;
 
-    var container = document.querySelector('[data-cart-total], .cart-total, .js-cart-total, .cart-summary, #cart, .cart');
+    // '#cart'/'.cart' matcheaban el ícono del carrito (símbolo SVG oculto) o
+    // el botón "Agregar al carrito" (ambos tienen clase "cart" en el theme
+    // ipanema) antes de llegar al drawer real -- la barra se insertaba en un
+    // nodo invisible. '.js-ajax-cart-list' es la lista real de ítems dentro
+    // del modal de carrito estándar de Tiendanube (#modal-cart), verificado
+    // contra Alto Rancho -- se inserta justo debajo de esa lista.
+    var anchor = document.querySelector('#modal-cart .js-ajax-cart-list, .js-ajax-cart-list, [data-cart-total], .cart-summary, .cart-total, .js-cart-total');
+    if (!anchor) return;
+    var container = anchor.parentElement;
     if (!container || container.querySelector('.pn-pf-progress')) return;
 
     var remaining = next.minAmount - total;
@@ -412,7 +420,7 @@ function buildWidgetScript(store, cfg) {
     bar.className = 'pn-pf-progress';
     bar.innerHTML = 'Te faltan $' + fmt(remaining) + ' para acceder a ' + next.months + ' cuotas sin interés' +
       '<div class="pn-pf-progress-bar"><div class="pn-pf-progress-fill" style="width:' + pct + '%"></div></div>';
-    container.insertBefore(bar, container.firstChild);
+    container.insertBefore(bar, anchor.nextSibling);
   }
 
   function run() {
