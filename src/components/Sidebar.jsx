@@ -1,13 +1,15 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Palette, LogOut, X, MapPin, MessageCircle,
-  ShoppingBag, Percent, Search, Rocket, Layers, LayoutGrid
+  ShoppingBag, Percent, Search, Rocket, Layers, LayoutGrid, Zap
 } from 'lucide-react';
 import { useSubscription } from '../hooks/useSubscription';
 import './Sidebar.css';
 
 // Simplificado a pedido del usuario (2026-09-02): solo los módulos activos hoy.
-// El resto (Vidriera Shoppable, Flash Sale, Banner Home, Barra ML, Countdowns,
+// Flash Sale se reactivó el 2026-09-17 tras revisión (backend y frontend
+// completos desde 2026-06-26, solo estaba oculto del nav).
+// El resto (Vidriera Shoppable, Banner Home, Barra ML, Countdowns,
 // Badges, Ruleta, Popups, Integraciones) queda oculto del nav — no se borró
 // nada, las rutas siguen andando, se van a retrabajar desde cero más adelante.
 const BASE_NAV_ITEMS = [
@@ -17,6 +19,7 @@ const BASE_NAV_ITEMS = [
   { path: '/buscador-inteligente', icon: Search, label: 'Buscador Inteligente Pro' },
   { path: '/carrusel-categorias', icon: LayoutGrid, label: 'Carrusel de Categorías' },
   { path: '/precios-cuotas', icon: Percent, label: 'Precios y Cuotas' },
+  { path: '/flash-sale', icon: Zap, label: 'Flash Sale' },
   { path: '/proximamente', icon: Rocket, label: 'Próximamente' },
   { path: '/shop-the-look',  icon: ShoppingBag,   label: 'Shop the Look' },
 ];
