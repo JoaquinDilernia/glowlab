@@ -391,10 +391,23 @@ function buildWidgetScript(store, cfg) {
 
   function runCartProgress() {
     if (!CFG.cartProgressBar || !CFG.cartProgressBar.enabled) return;
+    var existing = document.querySelector('.pn-pf-progress');
     var plans = (CFG.installmentPlans || []).filter(function(p) { return p && p.minAmount > 0; });
-    if (!plans.length) return;
     var cart = window.LS && window.LS.cart;
-    if (!cart) return;
+
+    // '#cart'/'.cart' matcheaban el ícono del carrito (símbolo SVG oculto) o
+    // el botón "Agregar al carrito" (ambos tienen clase "cart" en el theme
+    // ipanema) antes de llegar al drawer real -- la barra se insertaba en un
+    // nodo invisible. '.js-ajax-cart-list' es la lista real de ítems dentro
+    // del modal de carrito estándar de Tiendanube (#modal-cart), verificado
+    // contra Alto Rancho -- se inserta justo debajo de esa lista.
+    var anchor = document.querySelector('#modal-cart .js-ajax-cart-list, .js-ajax-cart-list, [data-cart-total], .cart-summary, .cart-total, .js-cart-total');
+
+    if (!plans.length || !cart || !anchor) {
+      if (existing) existing.remove();
+      return;
+    }
+
     // LS.cart no tiene "total": el campo real es "subtotal", en centavos
     // (verificado contra Alto Rancho: $169.990 -> subtotal 16999000). Sin
     // este ajuste "total" quedaba siempre en 0 y la barra mostraba el monto
@@ -405,25 +418,29 @@ function buildWidgetScript(store, cfg) {
     for (var i = 0; i < plans.length; i++) {
       if (plans[i].minAmount > total) { next = plans[i]; break; }
     }
-    if (!next) return;
-
-    // '#cart'/'.cart' matcheaban el ícono del carrito (símbolo SVG oculto) o
-    // el botón "Agregar al carrito" (ambos tienen clase "cart" en el theme
-    // ipanema) antes de llegar al drawer real -- la barra se insertaba en un
-    // nodo invisible. '.js-ajax-cart-list' es la lista real de ítems dentro
-    // del modal de carrito estándar de Tiendanube (#modal-cart), verificado
-    // contra Alto Rancho -- se inserta justo debajo de esa lista.
-    var anchor = document.querySelector('#modal-cart .js-ajax-cart-list, .js-ajax-cart-list, [data-cart-total], .cart-summary, .cart-total, .js-cart-total');
-    if (!anchor) return;
-    var container = anchor.parentElement;
-    if (!container || container.querySelector('.pn-pf-progress')) return;
+    if (!next) {
+      if (existing) existing.remove();
+      return;
+    }
 
     var remaining = next.minAmount - total;
     var pct = Math.min(100, Math.round((total / next.minAmount) * 100));
+    var html = 'Te faltan $' + fmt(remaining) + ' para acceder a ' + next.months + ' cuotas sin interés' +
+      '<div class="pn-pf-progress-bar"><div class="pn-pf-progress-fill" style="width:' + pct + '%"></div></div>';
+
+    // La barra vieja se quedaba con los números de la primera inserción y
+    // nunca se actualizaba al cambiar el carrito (guard "ya existe, no
+    // toco nada"). Ahora se actualiza el contenido en cada corrida en vez
+    // de solo chequear si ya existe.
+    if (existing) {
+      existing.innerHTML = html;
+      return;
+    }
+    var container = anchor.parentElement;
+    if (!container) return;
     var bar = document.createElement('div');
     bar.className = 'pn-pf-progress';
-    bar.innerHTML = 'Te faltan $' + fmt(remaining) + ' para acceder a ' + next.months + ' cuotas sin interés' +
-      '<div class="pn-pf-progress-bar"><div class="pn-pf-progress-fill" style="width:' + pct + '%"></div></div>';
+    bar.innerHTML = html;
     container.insertBefore(bar, anchor.nextSibling);
   }
 
