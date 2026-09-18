@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, LayoutGrid, Eye, Plus, Trash2, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Save, LayoutGrid, Eye, Plus, Trash2, Image as ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
 import { useImageUpload } from '../hooks/useImageUpload';
@@ -48,6 +48,7 @@ function CategoryCarouselConfig() {
   const [saving, setSaving] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [catRows, setCatRows] = useState([]);
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
 
   useEffect(() => {
     (async () => {
@@ -80,7 +81,16 @@ function CategoryCarouselConfig() {
   const handleStyle = (key, value) => setConfig(c => ({ ...c, style: { ...c.style, [key]: value } }));
 
   const addCarousel = () => {
-    setConfig(c => ({ ...c, carousels: [...c.carousels, { id: newId('cc'), name: '', heading: '', categoryIds: [], tiles: [] }] }));
+    const id = newId('cc');
+    setConfig(c => ({ ...c, carousels: [...c.carousels, { id, name: '', heading: '', categoryIds: [], tiles: [] }] }));
+    setExpandedIds(prev => new Set(prev).add(id));
+  };
+  const toggleExpanded = (id) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   };
   const patchCarousel = (i, patch) => {
     setConfig(c => ({ ...c, carousels: c.carousels.map((car, idx) => idx === i ? { ...car, ...patch } : car) }));
@@ -123,6 +133,19 @@ function CategoryCarouselConfig() {
       carousels: c.carousels.map((car, ci) => ci !== carouselIndex ? car : {
         ...car,
         tiles: car.tiles.filter((_, ti) => ti !== tileIndex),
+      }),
+    }));
+  };
+  const moveTile = (carouselIndex, tileIndex, direction) => {
+    setConfig(c => ({
+      ...c,
+      carousels: c.carousels.map((car, ci) => {
+        if (ci !== carouselIndex) return car;
+        const target = tileIndex + direction;
+        if (target < 0 || target >= car.tiles.length) return car;
+        const tiles = [...car.tiles];
+        [tiles[tileIndex], tiles[target]] = [tiles[target], tiles[tileIndex]];
+        return { ...car, tiles };
       }),
     }));
   };
@@ -293,53 +316,76 @@ function CategoryCarouselConfig() {
           </div>
           <p className="ccc-hint">Cada carrusel tiene sus propias categorías destino y sus propias tarjetas. El diseño de arriba se aplica a todos por igual.</p>
 
-          {config.carousels.map((carousel, ci) => (
-            <div key={carousel.id} className="ccc-carousel-card">
-              <div className="ccc-carousel-head">
-                <input type="text" placeholder="Nombre interno (ej: Living)" value={carousel.name}
-                  onChange={e => patchCarousel(ci, { name: e.target.value })} />
-                <button onClick={() => removeCarousel(ci)} className="ccc-btn-remove"><Trash2 size={16} /></button>
-              </div>
+          {config.carousels.map((carousel, ci) => {
+            const isExpanded = expandedIds.has(carousel.id);
+            return (
+              <div key={carousel.id} className="ccc-carousel-card">
+                <button type="button" className="ccc-carousel-summary" onClick={() => toggleExpanded(carousel.id)}>
+                  {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  <span className="ccc-carousel-summary-name">{carousel.name || 'Sin nombre'}</span>
+                  <span className="ccc-carousel-summary-meta">
+                    {carousel.categoryIds.length} categoría{carousel.categoryIds.length === 1 ? '' : 's'} · {carousel.tiles.length} tarjeta{carousel.tiles.length === 1 ? '' : 's'}
+                  </span>
+                </button>
 
-              <div className="ccc-carousel-head">
-                <input type="text" placeholder="Título visible en la tienda (opcional, ej: Sillas)" value={carousel.heading || ''}
-                  onChange={e => patchCarousel(ci, { heading: e.target.value })} />
-              </div>
-              <p className="ccc-hint" style={{ marginTop: -4, marginBottom: 10 }}>Si lo dejás vacío, no se muestra ningún título arriba de este carrusel.</p>
+                {isExpanded && (
+                  <div className="ccc-carousel-body">
+                    <div className="ccc-carousel-head">
+                      <input type="text" placeholder="Nombre interno (ej: Living)" value={carousel.name}
+                        onChange={e => patchCarousel(ci, { name: e.target.value })} />
+                      <button onClick={() => removeCarousel(ci)} className="ccc-btn-remove"><Trash2 size={16} /></button>
+                    </div>
 
-              <label className="ccc-hint" style={{ display: 'block', marginBottom: 6 }}>Categorías donde se muestra</label>
-              <div className="ccc-cat-picker">
-                {catRows.length === 0 && <p className="ccc-hint">No se pudieron cargar las categorías de la tienda.</p>}
-                {catRows.map(row => (
-                  <label key={row.id} className="ccc-cat-row" style={{ paddingLeft: row.depth * 16 }}>
-                    <input type="checkbox" checked={carousel.categoryIds.includes(row.id)}
-                      onChange={() => toggleCategory(ci, row.id)} />
-                    {row.name}
-                  </label>
-                ))}
-              </div>
+                    <div className="ccc-carousel-head">
+                      <input type="text" placeholder="Título visible en la tienda (opcional, ej: Sillas)" value={carousel.heading || ''}
+                        onChange={e => patchCarousel(ci, { heading: e.target.value })} />
+                    </div>
+                    <p className="ccc-hint" style={{ marginTop: -4, marginBottom: 10 }}>Si lo dejás vacío, no se muestra ningún título arriba de este carrusel.</p>
 
-              <div className="ccc-block-title-row" style={{ marginTop: 0 }}>
-                <label className="ccc-hint" style={{ margin: 0 }}>Tarjetas</label>
-                <button onClick={() => addTile(ci)} className="ccc-btn-add"><Plus size={14} /> Agregar tarjeta</button>
-              </div>
-              {carousel.tiles.map((tile, ti) => (
-                <div key={tile.id} className="ccc-tile-card">
-                  <button className="ccc-tile-thumb" onClick={() => pickTileImage(ci, ti)} disabled={uploading}>
-                    {tile.imageUrl ? <img src={tile.imageUrl} alt="" /> : <ImageIcon size={16} />}
-                  </button>
-                  <div className="ccc-tile-fields">
-                    <input type="text" placeholder="Título (ej: Sillas)" value={tile.title}
-                      onChange={e => patchTile(ci, ti, { title: e.target.value })} />
-                    <input type="text" placeholder="URL (ej: /categorias/sillas)" value={tile.url}
-                      onChange={e => patchTile(ci, ti, { url: e.target.value })} />
+                    <label className="ccc-hint" style={{ display: 'block', marginBottom: 6 }}>Categorías donde se muestra</label>
+                    <div className="ccc-cat-picker">
+                      {catRows.length === 0 && <p className="ccc-hint">No se pudieron cargar las categorías de la tienda.</p>}
+                      {catRows.map(row => (
+                        <label key={row.id} className="ccc-cat-row" style={{ paddingLeft: row.depth * 16 }}>
+                          <input type="checkbox" checked={carousel.categoryIds.includes(row.id)}
+                            onChange={() => toggleCategory(ci, row.id)} />
+                          {row.name}
+                        </label>
+                      ))}
+                    </div>
+
+                    <div className="ccc-block-title-row" style={{ marginTop: 0 }}>
+                      <label className="ccc-hint" style={{ margin: 0 }}>Tarjetas</label>
+                      <button onClick={() => addTile(ci)} className="ccc-btn-add"><Plus size={14} /> Agregar tarjeta</button>
+                    </div>
+                    {carousel.tiles.map((tile, ti) => (
+                      <div key={tile.id} className="ccc-tile-card">
+                        <div className="ccc-tile-reorder">
+                          <button type="button" className="ccc-btn-move" onClick={() => moveTile(ci, ti, -1)} disabled={ti === 0} aria-label="Mover arriba">
+                            <ChevronUp size={14} />
+                          </button>
+                          <button type="button" className="ccc-btn-move" onClick={() => moveTile(ci, ti, 1)} disabled={ti === carousel.tiles.length - 1} aria-label="Mover abajo">
+                            <ChevronDown size={14} />
+                          </button>
+                        </div>
+                        <button className="ccc-tile-thumb" onClick={() => pickTileImage(ci, ti)} disabled={uploading}>
+                          {tile.imageUrl ? <img src={tile.imageUrl} alt="" /> : <ImageIcon size={16} />}
+                        </button>
+                        <div className="ccc-tile-fields">
+                          <input type="text" placeholder="Título (ej: Sillas)" value={tile.title}
+                            onChange={e => patchTile(ci, ti, { title: e.target.value })} />
+                          <input type="text" placeholder="URL (ej: /categorias/sillas)" value={tile.url}
+                            onChange={e => patchTile(ci, ti, { url: e.target.value })} />
+                        </div>
+                        <button onClick={() => removeTile(ci, ti)} className="ccc-btn-remove"><Trash2 size={16} /></button>
+                      </div>
+                    ))}
+                    {carousel.tiles.length === 0 && <p className="ccc-hint">Sin tarjetas todavía.</p>}
                   </div>
-                  <button onClick={() => removeTile(ci, ti)} className="ccc-btn-remove"><Trash2 size={16} /></button>
-                </div>
-              ))}
-              {carousel.tiles.length === 0 && <p className="ccc-hint">Sin tarjetas todavía.</p>}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
           {config.carousels.length === 0 && <p className="ccc-hint">Sin carruseles todavía. Agregá uno para empezar.</p>}
         </div>
 

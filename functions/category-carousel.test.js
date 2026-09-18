@@ -159,14 +159,30 @@ test("buildWidgetConfig clampea los márgenes a un rango razonable (0-100px)", (
 test("buildWidgetScript muestra las flechas en celular con un estilo fino (sin display:none, sin borde, más chicas)", () => {
   const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
   const script = buildWidgetScript("123", widgetConfig);
-  assert.doesNotMatch(script, /\.pn-cc-arrow \{ display: none/);
+  assert.doesNotMatch(script, /^\.pn-cc-arrow \{ display: none/m);
   assert.match(script, /@media \(max-width: 640px\)[^]*?\.pn-cc-arrow \{ width: 26px; height: 26px; border: none/);
 });
 
-test("buildWidgetScript crea las flechas si hay overflow en desktop O en celular (no solo en desktop)", () => {
+test("buildWidgetScript calcula el overflow de desktop y de celular por separado (no con Math.min)", () => {
   const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
   const script = buildWidgetScript("123", widgetConfig);
-  assert.match(script, /carousel\.tiles\.length > Math\.min\(CFG\.style\.desktopVisible, CFG\.style\.mobileVisible\)/);
+  assert.match(script, /overflowsDesktop = carousel\.tiles\.length > CFG\.style\.desktopVisible/);
+  assert.match(script, /overflowsMobile = carousel\.tiles\.length > CFG\.style\.mobileVisible/);
+  assert.doesNotMatch(script, /Math\.min\(CFG\.style\.desktopVisible/);
+});
+
+test("buildWidgetScript oculta las flechas en desktop vía CSS cuando ahí no desborda pero en celular sí", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(script, /if \(!overflowsDesktop\) row\.classList\.add\('pn-cc-hide-arrows-desktop'\)/);
+  assert.match(script, /\.pn-cc-row\.pn-cc-hide-arrows-desktop \.pn-cc-arrow \{ display: none; \}/);
+});
+
+test("buildWidgetScript oculta las flechas en celular vía CSS cuando ahí no desborda pero en desktop sí", () => {
+  const widgetConfig = buildWidgetConfig(mergeConfig({ enabled: true, carousels: [] }));
+  const script = buildWidgetScript("123", widgetConfig);
+  assert.match(script, /if \(!overflowsMobile\) row\.classList\.add\('pn-cc-hide-arrows-mobile'\)/);
+  assert.match(script, /@media \(max-width: 640px\)[^]*?\.pn-cc-row\.pn-cc-hide-arrows-mobile \.pn-cc-arrow \{ display: none; \}/);
 });
 
 test("buildWidgetScript avanza por click según mobileVisible en celular, no siempre desktopVisible", () => {

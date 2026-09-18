@@ -225,7 +225,8 @@ function buildWidgetScript(store, cfg) {
     `.pn-cc-arrow { position: absolute; top: 38%; transform: translateY(-50%); width: 36px; height: 36px; border-radius: 50%; border: 1px solid #eee; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,0.14); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; color: #333; z-index: 2; }`,
     `.pn-cc-arrow-prev { left: -14px; }`,
     `.pn-cc-arrow-next { right: -14px; }`,
-    `@media (max-width: 640px) { .pn-cc-tile { flex-basis: ${mobileTileWidth}; } .pn-cc-arrow { width: 26px; height: 26px; border: none; background: rgba(255,255,255,0.85); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); box-shadow: 0 2px 8px rgba(0,0,0,0.18); font-size: 13px; } .pn-cc-arrow-prev { left: -8px; } .pn-cc-arrow-next { right: -8px; } }`,
+    `.pn-cc-row.pn-cc-hide-arrows-desktop .pn-cc-arrow { display: none; }`,
+    `@media (max-width: 640px) { .pn-cc-tile { flex-basis: ${mobileTileWidth}; } .pn-cc-arrow { width: 26px; height: 26px; border: none; background: rgba(255,255,255,0.85); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); box-shadow: 0 2px 8px rgba(0,0,0,0.18); font-size: 13px; } .pn-cc-arrow-prev { left: -8px; } .pn-cc-arrow-next { right: -8px; } .pn-cc-row.pn-cc-hide-arrows-desktop .pn-cc-arrow { display: flex; } .pn-cc-row.pn-cc-hide-arrows-mobile .pn-cc-arrow { display: none; } }`,
   ].join('\n');
 
   return `
@@ -363,11 +364,15 @@ function buildWidgetScript(store, cfg) {
     });
     row.appendChild(track);
 
-    // Se crean si hay overflow en CUALQUIERA de los dos breakpoints -- si
-    // solo se mirara desktopVisible, un carrusel que entra justo en desktop
-    // pero desborda en celular (mobileVisible más chico) se quedaría sin
-    // flechas ahí, aunque el CSS mobile ya las muestre.
-    if (carousel.tiles.length > Math.min(CFG.style.desktopVisible, CFG.style.mobileVisible)) {
+    // Cada breakpoint decide sus propias flechas por separado: si configurás
+    // 5 tarjetas visibles en desktop y cargás justo 5, no hay overflow ahí y
+    // no deben aparecer, aunque en mobile (con menos visibles) sí desborde y
+    // corresponda mostrarlas ahí -- y viceversa.
+    var overflowsDesktop = carousel.tiles.length > CFG.style.desktopVisible;
+    var overflowsMobile = carousel.tiles.length > CFG.style.mobileVisible;
+    if (overflowsDesktop || overflowsMobile) {
+      if (!overflowsDesktop) row.classList.add('pn-cc-hide-arrows-desktop');
+      if (!overflowsMobile) row.classList.add('pn-cc-hide-arrows-mobile');
       var prev = document.createElement('button');
       prev.className = 'pn-cc-arrow pn-cc-arrow-prev';
       prev.setAttribute('aria-label', 'Anterior');

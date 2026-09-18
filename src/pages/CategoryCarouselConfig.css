@@ -129,6 +129,23 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
+.ccc-carousel-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--gl-text-primary, inherit);
+  cursor: pointer;
+  text-align: left;
+}
+.ccc-carousel-summary-name { font-weight: 600; font-size: 14px; }
+.ccc-carousel-summary-meta { margin-left: auto; font-size: 12px; color: var(--gl-text-muted); }
+
+.ccc-carousel-body { margin-top: 14px; }
+
 .ccc-carousel-head {
   display: flex;
   gap: 10px;
@@ -136,6 +153,29 @@
   margin-bottom: 12px;
 }
 .ccc-carousel-head input[type="text"] { flex: 1; }
+
+.ccc-tile-reorder {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ccc-btn-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid var(--gl-border-input);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--gl-text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+.ccc-btn-move:hover:not(:disabled) { background: rgba(0, 217, 255, 0.1); border-color: rgba(0, 217, 255, 0.4); }
+.ccc-btn-move:disabled { opacity: 0.3; cursor: not-allowed; }
 
 .ccc-cat-picker {
   max-height: 160px;
