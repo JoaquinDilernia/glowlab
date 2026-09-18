@@ -311,6 +311,28 @@ test("fetchAllStoreProducts - producto sin variantes da sku vacio", async () => 
   assert.equal(products[0].sku, "");
 });
 
+test("fetchAllStoreProducts - excluye productos ocultos (published: false)", async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => [
+      { ...fakeProduct("1", "BCV136PT", "Silla Rey Rojo"), published: true },
+      { ...fakeProduct("2", "BCV136NT", "Silla Rey Natural"), published: false },
+    ],
+  });
+  const products = await fetchAllStoreProducts({ storeId: "111", accessToken: "tok", fetchImpl });
+  assert.equal(products.length, 1);
+  assert.equal(products[0].productId, "1");
+});
+
+test("fetchAllStoreProducts - producto sin campo published se incluye (default visible)", async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => [fakeProduct("1", "BCV136PT", "Silla Rey Rojo")],
+  });
+  const products = await fetchAllStoreProducts({ storeId: "111", accessToken: "tok", fetchImpl });
+  assert.equal(products.length, 1);
+});
+
 test("fetchAllStoreProducts - respuesta no-ok lanza error", async () => {
   const fetchImpl = async () => ({ ok: false, status: 500 });
   await assert.rejects(() => fetchAllStoreProducts({ storeId: "111", accessToken: "tok", fetchImpl }));

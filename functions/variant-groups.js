@@ -164,7 +164,7 @@ async function fetchAllStoreProducts({ storeId, accessToken, fetchImpl }) {
 
   while (page <= MAX_PAGES) {
     const res = await doFetch(
-      `${TN_V1}/${storeId}/products?page=${page}&per_page=${PRODUCTS_PER_PAGE}&fields=id,name,images,variants,canonical_url`,
+      `${TN_V1}/${storeId}/products?page=${page}&per_page=${PRODUCTS_PER_PAGE}&fields=id,name,images,variants,canonical_url,published`,
       { headers }
     );
     if (!res.ok) {
@@ -176,6 +176,7 @@ async function fetchAllStoreProducts({ storeId, accessToken, fetchImpl }) {
     if (!Array.isArray(items) || items.length === 0) break;
 
     for (const product of items) {
+      if (product.published === false) continue;
       const variant = Array.isArray(product.variants) ? product.variants[0] : null;
       const name =
         typeof product.name === "object"
