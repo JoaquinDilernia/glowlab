@@ -21,6 +21,7 @@ const DEFAULT_CONFIG = {
     { months: 3, interestFree: true, interestRate: 0, minAmount: 0 },
   ],
   cartProgressBar: { enabled: false },
+  discountThresholdBar: { enabled: false, minAmount: 600000, discountPercent: 10 },
   discountColorEnabled: false,
   discountColor: '#e11d48',
   blockFontFamily: 'inherit',
@@ -320,6 +321,27 @@ function PriceFinancingConfig() {
             Mostrar barra de progreso hacia el próximo plan sin interés
           </label>
           <p className="pf-hint">Se activa solo si algún plan tiene un "Monto mínimo" mayor a 0.</p>
+
+          <label className="pf-check" style={{ marginTop: 16 }}>
+            <input type="checkbox" checked={!!config.discountThresholdBar?.enabled}
+              onChange={e => handle('discountThresholdBar', { ...config.discountThresholdBar, enabled: e.target.checked })} />
+            Mostrar barra de progreso hacia un descuento por monto
+          </label>
+          <p className="pf-hint">Ej: "10% OFF superando $600.000". El descuento se configura en TiendaNube (promoción o cupón) -- esta barra solo muestra el avance para incentivar a sumar productos.</p>
+          {config.discountThresholdBar?.enabled && (
+            <div className="pf-plan-fields" style={{ marginTop: 8 }}>
+              <div className="form-group pf-plan-field-md">
+                <label>Monto mín. carrito</label>
+                <input type="number" min="0" value={config.discountThresholdBar.minAmount || 0}
+                  onChange={e => handle('discountThresholdBar', { ...config.discountThresholdBar, minAmount: Number(e.target.value) })} />
+              </div>
+              <div className="form-group pf-plan-field-sm">
+                <label>% descuento</label>
+                <input type="number" min="0" max="100" value={config.discountThresholdBar.discountPercent || 0}
+                  onChange={e => handle('discountThresholdBar', { ...config.discountThresholdBar, discountPercent: Number(e.target.value) })} />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Preview */}
@@ -363,6 +385,16 @@ function PriceFinancingConfig() {
                   Te faltan ${fmt(nextPlan.minAmount * 0.4)} para acceder a {nextPlan.months} cuotas sin interés
                 </div>
                 <div className="pf-progress-bar"><div className="pf-progress-fill" style={{ width: '60%' }} /></div>
+              </div>
+            )}
+
+            {config.discountThresholdBar?.enabled && config.discountThresholdBar.minAmount > 0 && (
+              <div className="pf-preview-card pf-preview-cart">
+                <div className="pf-preview-name">Carrito</div>
+                <div className="pf-preview-line" style={{ marginTop: 6 }}>
+                  Te faltan ${fmt(config.discountThresholdBar.minAmount * 0.4)} para tu {config.discountThresholdBar.discountPercent}% OFF
+                </div>
+                <div className="pf-progress-bar"><div className="pf-progress-fill" style={{ width: '40%' }} /></div>
               </div>
             )}
 

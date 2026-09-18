@@ -33,6 +33,7 @@ const DEFAULT_CONFIG = {
   customMessage: "",
   installmentPlans: [],
   cartProgressBar: { enabled: false },
+  discountThresholdBar: { enabled: false, minAmount: 0, discountPercent: 0 },
   discountColorEnabled: false,
   discountColor: "#e11d48",
   blockFontFamily: "inherit",
@@ -123,6 +124,11 @@ function registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, H
         customMessage: cfg.customMessage || "",
         installmentPlans: Array.isArray(cfg.installmentPlans) ? cfg.installmentPlans : [],
         cartProgressBar: { enabled: !!(cfg.cartProgressBar && cfg.cartProgressBar.enabled) },
+        discountThresholdBar: {
+          enabled: !!(cfg.discountThresholdBar && cfg.discountThresholdBar.enabled),
+          minAmount: Math.max(0, Number(cfg.discountThresholdBar && cfg.discountThresholdBar.minAmount) || 0),
+          discountPercent: clampNumber(cfg.discountThresholdBar && cfg.discountThresholdBar.discountPercent, 0, 100, 0),
+        },
         discountColorEnabled: !!cfg.discountColorEnabled,
         discountColor: isHexColor(cfg.discountColor) ? cfg.discountColor : DEFAULT_CONFIG.discountColor,
         blockFontFamily: BLOCK_FONT_FAMILIES.includes(cfg.blockFontFamily) ? cfg.blockFontFamily : DEFAULT_CONFIG.blockFontFamily,
@@ -207,6 +213,8 @@ function buildWidgetScript(store, cfg) {
       '.pn-pf-progress { margin: 10px 0 !important; font-size: ' + CFG.blockFontSize + 'px !important; }',
       '.pn-pf-progress-bar { height: 6px !important; border-radius: 999px !important; background: #eee !important; overflow: hidden !important; margin-top: 4px !important; }',
       '.pn-pf-progress-fill { height: 100% !important; background: ' + CFG.blockDiscountColor + ' !important; }',
+      '.pn-pf-discount-progress { margin: 8px 0 10px !important; font-size: ' + CFG.blockFontSize + 'px !important; }',
+      '.pn-pf-discount-progress.pn-pf-discount-reached { color: ' + CFG.blockDiscountColor + ' !important; font-weight: 600 !important; }',
     ].join('');
     document.head.appendChild(s);
   }
@@ -391,28 +399,116 @@ function buildWidgetScript(store, cfg) {
 
   function runCartProgress() {
     if (!CFG.cartProgressBar || !CFG.cartProgressBar.enabled) return;
+    var existing = document.querySelector('.pn-pf-progress');
     var plans = (CFG.installmentPlans || []).filter(function(p) { return p && p.minAmount > 0; });
-    if (!plans.length) return;
     var cart = window.LS && window.LS.cart;
-    if (!cart) return;
-    var total = Number(cart.total) || 0;
+
+    // '#cart'/'.cart' matcheaban el ícono del carrito (símbolo SVG oculto) o
+    // el botón "Agregar al carrito" (ambos tienen clase "cart" en el theme
+    // ipanema) antes de llegar al drawer real -- la barra se insertaba en un
+    // nodo invisible. '.js-ajax-cart-list' es la lista real de ítems dentro
+    // del modal de carrito estándar de Tiendanube (#modal-cart), verificado
+    // contra Alto Rancho -- se inserta justo debajo de esa lista.
+    var anchor = document.querySelector('#modal-cart .js-ajax-cart-list, .js-ajax-cart-list, [data-cart-total], .cart-summary, .cart-total, .js-cart-total');
+
+    if (!plans.length || !cart || !anchor) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    // LS.cart no tiene "total": el campo real es "subtotal", en centavos
+    // (verificado contra Alto Rancho: $169.990 -> subtotal 16999000). Sin
+    // este ajuste "total" quedaba siempre en 0 y la barra mostraba el monto
+    // mínimo completo del plan en vez de lo que realmente falta.
+    var total = (Number(cart.subtotal) || 0) / 100;
+    if (total <= 0) {
+      // cart.items a veces queda con entradas fantasma justo después de
+      // vaciar el carrito (subtotal ya en 0 pero items.length todavía > 0)
+      // -- no tiene sentido invitar a sumar cuotas sin interés a un carrito
+      // vacío.
+      if (existing) existing.remove();
+      return;
+    }
     plans.sort(function(a, b) { return a.minAmount - b.minAmount; });
     var next = null;
     for (var i = 0; i < plans.length; i++) {
       if (plans[i].minAmount > total) { next = plans[i]; break; }
     }
-    if (!next) return;
-
-    var container = document.querySelector('[data-cart-total], .cart-total, .js-cart-total, .cart-summary, #cart, .cart');
-    if (!container || container.querySelector('.pn-pf-progress')) return;
+    if (!next) {
+      if (existing) existing.remove();
+      return;
+    }
 
     var remaining = next.minAmount - total;
     var pct = Math.min(100, Math.round((total / next.minAmount) * 100));
+    var html = 'Te faltan $' + fmt(remaining) + ' para acceder a ' + next.months + ' cuotas sin interés' +
+      '<div class="pn-pf-progress-bar"><div class="pn-pf-progress-fill" style="width:' + pct + '%"></div></div>';
+
+    // La barra vieja se quedaba con los números de la primera inserción y
+    // nunca se actualizaba al cambiar el carrito (guard "ya existe, no
+    // toco nada"). Ahora se actualiza el contenido en cada corrida en vez
+    // de solo chequear si ya existe.
+    if (existing) {
+      existing.innerHTML = html;
+      return;
+    }
+    var container = anchor.parentElement;
+    if (!container) return;
     var bar = document.createElement('div');
     bar.className = 'pn-pf-progress';
-    bar.innerHTML = 'Te faltan $' + fmt(remaining) + ' para acceder a ' + next.months + ' cuotas sin interés' +
-      '<div class="pn-pf-progress-bar"><div class="pn-pf-progress-fill" style="width:' + pct + '%"></div></div>';
-    container.insertBefore(bar, container.firstChild);
+    bar.innerHTML = html;
+    container.insertBefore(bar, anchor.nextSibling);
+  }
+
+  // Barra de progreso hacia un descuento por monto (ej: "10% OFF superando
+  // $600.000"). El descuento en sí se configura en TiendaNube (promoción o
+  // cupón) -- este módulo solo muestra el avance hacia ese monto para
+  // incentivar a sumar productos. Se inserta debajo de la barra de cuotas
+  // sin interés (pn-pf-progress) si está presente, o debajo del resumen del
+  // carrito si no -- reutiliza el mismo anchor-finding que runCartProgress.
+  function runDiscountThresholdBar() {
+    var cfg = CFG.discountThresholdBar;
+    var existing = document.querySelector('.pn-pf-discount-progress');
+    var cart = window.LS && window.LS.cart;
+
+    if (!cfg || !cfg.enabled || !cfg.minAmount || !cart) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    var installmentsBar = document.querySelector('.pn-pf-progress');
+    var anchor = installmentsBar || document.querySelector('#modal-cart .js-ajax-cart-list, .js-ajax-cart-list, [data-cart-total], .cart-summary, .cart-total, .js-cart-total');
+    if (!anchor) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    var total = (Number(cart.subtotal) || 0) / 100;
+    if (total <= 0) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    var reached = total >= cfg.minAmount;
+    var pct = Math.min(100, Math.round((total / cfg.minAmount) * 100));
+    var html = reached
+      ? '¡Ya tenés tu ' + cfg.discountPercent + '% OFF aplicado!' +
+        '<div class="pn-pf-progress-bar"><div class="pn-pf-progress-fill" style="width:100%"></div></div>'
+      : 'Te faltan $' + fmt(cfg.minAmount - total) + ' para tu ' + cfg.discountPercent + '% OFF' +
+        '<div class="pn-pf-progress-bar"><div class="pn-pf-progress-fill" style="width:' + pct + '%"></div></div>';
+    var className = 'pn-pf-discount-progress' + (reached ? ' pn-pf-discount-reached' : '');
+
+    if (existing) {
+      existing.className = className;
+      existing.innerHTML = html;
+      return;
+    }
+    var container = anchor.parentElement;
+    if (!container) return;
+    var bar = document.createElement('div');
+    bar.className = className;
+    bar.innerHTML = html;
+    container.insertBefore(bar, anchor.nextSibling);
   }
 
   function run() {
@@ -421,7 +517,7 @@ function buildWidgetScript(store, cfg) {
     var isCart = !!(window.LS && window.LS.cart);
     if (isPDP) runPDP();
     else runListing();
-    if (isCart) runCartProgress();
+    if (isCart) { runCartProgress(); runDiscountThresholdBar(); }
   }
 
   var debounceTimer = null;
