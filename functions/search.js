@@ -293,7 +293,7 @@ function buildWidgetScript(store, cfg) {
       '.pn-search-panel { background: #fff; width: 100%; max-width: 620px; border-radius: 16px; box-shadow: 0 24px 64px rgba(0,0,0,0.28); overflow: hidden; transform: translateY(-12px); transition: transform 0.18s ease; }',
       '.pn-search-overlay.pn-open .pn-search-panel { transform: translateY(0); }',
       '.pn-search-head { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid #eee; }',
-      '.pn-search-input { flex: 1; border: none; outline: none; font-size: ' + FONT_SIZES[CFG.fontSize] + '; color: #111; }',
+      '.pn-search-input { flex: 1; border: none; outline: none; font-family: inherit; font-size: ' + FONT_SIZES[CFG.fontSize] + '; color: #111; }',
       '.pn-search-close { border: none; background: transparent; cursor: pointer; color: #999; font-size: 20px; line-height: 1; padding: 4px; }',
       '.pn-search-body { max-height: 60vh; overflow-y: auto; padding: 8px 20px 20px; }',
       '.pn-search-section-title { font-size: 15px; font-weight: 700; color: #171717; margin: 20px 0 10px; padding-bottom: 10px; border-bottom: 1px solid #eee; }',
