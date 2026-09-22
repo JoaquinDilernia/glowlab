@@ -7,7 +7,6 @@ const crypto = require("crypto");
 const sgMail = require('@sendgrid/mail');
 const Busboy = require('busboy');
 const multer = require('multer');
-const sharp = require('sharp');
 const { MercadoPagoConfig, PreApproval, Payment } = require('mercadopago');
 const { evaluateAccess, SUBSCRIPTION_PRICE_ARS } = require('./subscriptionAccess');
 const { getClientSelectorMap } = require('./theme-menu-selectors');
@@ -15299,49 +15298,23 @@ app.post("/api/upload-image-base64", async (req, res) => {
     
     const mimeType = matches[1];
     const base64Data = matches[2];
-    let buffer = Buffer.from(base64Data, 'base64');
-    let outputMime = mimeType;
-
-    console.log(`?? File: ${fileName}, Size original: ${buffer.length} bytes, Type: ${mimeType}`);
-
-    // Estas imagenes son banners/tarjetas de vidriera (category-carousel,
-    // shop-the-look), nunca se muestran a mas de ~1200px de ancho. Sin
-    // redimensionar, llegaban fotos de celular de varios MB para un banner
-    // que se ve a 300x200 - eso es lo que factura el egress en cada
-    // pageview de la tienda, no solo la falta de cache (que ya estaba OK).
-    // gif/svg quedan como estan: sharp no las achica sin perder la animacion
-    // o son vectoriales y ya son chicas.
-    if (mimeType !== 'image/gif' && mimeType !== 'image/svg+xml') {
-      try {
-        const resized = await sharp(buffer)
-          .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
-          .webp({ quality: 80 })
-          .toBuffer();
-        if (resized.length < buffer.length) {
-          buffer = resized;
-          outputMime = 'image/webp';
-        }
-      } catch (e) {
-        console.error('?? No se pudo comprimir, se sube el original:', e.message);
-      }
-    }
-
-    console.log(`?? Size final: ${buffer.length} bytes, Type: ${outputMime}`);
-
-    // Crear path unico
+    const buffer = Buffer.from(base64Data, 'base64');
+    
+    console.log(`?? File: ${fileName}, Size: ${buffer.length} bytes, Type: ${mimeType}`);
+    
+    // Crear path �nico
     const timestamp = Date.now();
-    const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_')
-      .replace(/\.[a-zA-Z0-9]+$/, outputMime === 'image/webp' ? '.webp' : '$&');
+    const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filePath = `${folder || 'images'}/${storeId}/${timestamp}-${sanitizedName}`;
-
+    
     console.log(`?? Uploading to: ${filePath}`);
-
+    
     // Subir a Storage
     const fileUpload = bucket.file(filePath);
-
+    
     await fileUpload.save(buffer, {
       metadata: {
-        contentType: outputMime,
+        contentType: mimeType,
         // Estas imagenes se sirven en storefronts de clientes en cada pageview;
         // sin esto, trafico alto factura egress de Storage en cada carga.
         cacheControl: 'public, max-age=604800'
