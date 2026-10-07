@@ -368,9 +368,9 @@ const TN_2025 = "https://api.tiendanube.com/2025-03";
 // Script "Grupos de Variantes" registrado en Partners (Aplicaciones -> GlowLab #23137 -> Scripts).
 const VARIANT_GROUPS_SCRIPT_ID = 10101;
 
-// Piloto: solo Alto Rancho y la tienda demo.
+// Piloto: solo Alto Rancho (minorista + mayorista) y la tienda demo.
 // TODO: quitar allowlist cuando se libere a todas las tiendas.
-const ALLOWED_STORE_IDS = ["2547699", "6854698"];
+const ALLOWED_STORE_IDS = ["2547699", "5320806", "6854698"];
 
 const DEFAULT_CONFIG = {
   enabled: false,

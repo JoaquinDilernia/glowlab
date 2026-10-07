@@ -8,7 +8,7 @@ import './VariantGroupsConfig.css';
 
 // Piloto: solo estas dos tiendas ven el modulo (ver Sidebar.jsx STORE_EXCLUSIVE_ITEMS).
 // TODO: quitar este guard cuando se libere a todas las tiendas.
-const ALLOWED_STORE_IDS = ['2547699', '6854698'];
+const ALLOWED_STORE_IDS = ['2547699', '5320806', '6854698'];
 
 const DEFAULT_CONFIG = {
   enabled: false,
