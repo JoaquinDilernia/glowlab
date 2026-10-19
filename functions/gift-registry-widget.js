@@ -56,7 +56,22 @@ const STYLES = [
   ".pn-gr-pdp select { width: 100% !important; margin-bottom: 8px !important; border: 1px solid #d9d3cb !important; border-radius: 5px !important; padding: 9px 10px !important; font-size: 14px !important; background: #fff !important; color: #353434 !important; }",
   ".pn-gr-pdp-ok { font-size: 13px !important; margin: 8px 0 0 !important; color: #4f7a4a !important; }",
   ".pn-gr-pdp-ok a { color: #353434 !important; text-decoration: underline !important; margin-left: 4px !important; }",
-  "@media (max-width: 640px) { .pn-gr-form { grid-template-columns: 1fr !important; } .pn-gr h2 { font-size: 22px !important; } .pn-gr-cover { height: 160px !important; } }",
+  ".pn-gr-notice { background: #f3efe9 !important; border-radius: 8px !important; padding: 12px 14px !important; font-size: 13px !important; margin: 14px 0 !important; }",
+  ".pn-gr-grid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important; gap: 16px !important; margin-top: 18px !important; }",
+  ".pn-gr-gcard { border: 1px solid #e7e2db !important; border-radius: 8px !important; overflow: hidden !important; background: #fff !important; display: flex !important; flex-direction: column !important; }",
+  ".pn-gr-gcard.is-done { opacity: 0.5 !important; }",
+  ".pn-gr-gimg { aspect-ratio: 1 / 1 !important; background-color: #f6f4f1 !important; background-position: center !important; background-size: cover !important; background-repeat: no-repeat !important; }",
+  ".pn-gr-gbody { padding: 12px !important; display: flex !important; flex-direction: column !important; gap: 6px !important; flex: 1 !important; }",
+  ".pn-gr-gbody strong { font-size: 14px !important; font-weight: 500 !important; line-height: 1.3 !important; }",
+  ".pn-gr-gbody .pn-gr-btn { margin-top: auto !important; }",
+  ".pn-gr-gprice { font-size: 15px !important; font-weight: 600 !important; }",
+  ".pn-gr-done { margin-top: auto !important; font-size: 13px !important; font-weight: 600 !important; color: #4f7a4a !important; }",
+  ".pn-gr-modal-bg { position: fixed !important; inset: 0 !important; z-index: 100001 !important; background: rgba(0,0,0,0.45) !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 16px !important; }",
+  ".pn-gr-modal { background: #fff !important; border-radius: 10px !important; padding: 22px !important; width: 100% !important; max-width: 480px !important; max-height: 92vh !important; overflow-y: auto !important; }",
+  ".pn-gr-modal h3 { margin: 0 0 4px !important; }",
+  ".pn-gr-results { display: flex !important; flex-direction: column !important; gap: 6px !important; margin-top: 10px !important; }",
+  ".pn-gr-result { text-align: left !important; background: #faf8f5 !important; border: 1px solid #e7e2db !important; border-radius: 5px !important; padding: 10px 12px !important; font-size: 14px !important; cursor: pointer !important; color: #353434 !important; }",
+  "@media (max-width: 640px) { .pn-gr-form { grid-template-columns: 1fr !important; } .pn-gr h2 { font-size: 22px !important; } .pn-gr-cover { height: 160px !important; } .pn-gr-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; } }",
 ].join("");
 
 // ---------------------------------------------------------------------------
@@ -214,7 +229,8 @@ function clientMain(CFG) {
 
     var guest = el("div", "pn-gr-card");
     add(guest, el("h3", null, "Soy invitado"),
-      el("p", "pn-gr-muted", "Entrá con el link o el QR que te pasaron los anfitriones."));
+      el("p", "pn-gr-muted", "Entrá con el link o el QR que te pasaron, o buscá la lista:"));
+    renderSearch(guest);
     cards.appendChild(guest);
     r.appendChild(cards);
   }
@@ -603,10 +619,142 @@ function clientMain(CFG) {
     });
   }
 
+  // --- invitados -----------------------------------------------------------------
+
+  var GUEST_NOTICE = {
+    couple_address: function (list) {
+      return "El regalo se envía a " + list.title + ". En el checkout no cambies la dirección de entrega; en facturación podés cargar tus datos.";
+    },
+    store_pickup: function () { return "Al pagar elegí retiro en el local: la tienda les entrega todos los regalos juntos."; },
+    guest_choice: function () { return "Al pagar elegí cómo recibirlo: envío o retiro en el local."; },
+  };
+
   function renderGuestRoute(slug) {
+    loading();
+    api("GET", "/api/gr/public/" + encodeURIComponent(slug))
+      .then(function (res) { renderGuest(res.list); })
+      .catch(function (e) {
+        var r = screen();
+        add(r, el("h2", null, "Lista no disponible"), el("p", "pn-gr-muted", e.message),
+          button("Buscar otra lista", "pn-gr-btn pn-gr-btn--ghost", function () { go(""); }));
+      });
+  }
+
+  function renderGuest(list) {
     var r = screen();
-    add(r, el("h2", null, "Lista de regalos"), el("p", "pn-gr-muted", "Estamos preparando esta lista. Volvé a entrar en un ratito."));
-    if (window.console) console.info("[Lista de regalos] vista de invitado pendiente:", slug);
+    if (list.coverImage) { var c = el("div", "pn-gr-cover"); bg(c, list.coverImage); r.appendChild(c); }
+    add(r, el("h2", null, list.title));
+    add(r, el("span", "pn-gr-chip", EVENTS[list.eventType] || "Evento"), el("span", "pn-gr-chip", formatDate(list.eventDate)));
+    if (list.message) add(r, el("p", null, list.message));
+    var notice = el("p", "pn-gr-notice", (GUEST_NOTICE[list.deliveryMode] || GUEST_NOTICE.guest_choice)(list));
+    r.appendChild(notice);
+
+    var grid = el("div", "pn-gr-grid");
+    if (!list.items.length) add(r, el("p", "pn-gr-muted", "Todavía no hay regalos en esta lista."));
+    list.items.forEach(function (item) {
+      var done = item.available === 0;
+      var card = el("div", "pn-gr-gcard" + (done ? " is-done" : ""));
+      var img = el("div", "pn-gr-gimg");
+      bg(img, item.image);
+      var body = el("div", "pn-gr-gbody");
+      add(body, el("strong", null, item.name), el("span", "pn-gr-gprice", money(item.price)));
+      if (!done && item.quantity > 1) add(body, el("span", "pn-gr-muted", "Quedan " + item.available + " de " + item.quantity));
+      add(body, done
+        ? el("span", "pn-gr-done", "¡Ya lo regalaron!")
+        : button("Lo regalo yo", "pn-gr-btn pn-gr-btn--block", function () { openGiftModal(list, item); }));
+      add(card, img, body);
+      grid.appendChild(card);
+    });
+    r.appendChild(grid);
+  }
+
+  function addToCart(res, slug) {
+    var body = "add_to_cart=" + encodeURIComponent(res.productId) +
+      "&variant_id=" + encodeURIComponent(res.variantId) +
+      "&quantity=" + encodeURIComponent(res.quantity) +
+      "&" + encodeURIComponent("properties[lista]") + "=" + encodeURIComponent(slug) +
+      "&" + encodeURIComponent("properties[regalo]") + "=" + encodeURIComponent(res.giftId);
+    return fetch("/comprar/", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" },
+      body: body,
+    }).then(function (r) { return r.json(); }).then(function (json) {
+      if (!json || json.success === false) throw new Error("No pudimos agregarlo al carrito. Probá de nuevo.");
+    });
+  }
+
+  function openGiftModal(list, item) {
+    var overlay = el("div", "pn-gr-modal-bg");
+    var modal = el("div", "pn-gr-modal pn-gr");
+    var close = function () { overlay.remove(); };
+    overlay.addEventListener("click", function (e) { if (e.target === overlay) close(); });
+
+    add(modal, el("h3", null, "Vas a regalar: " + item.name));
+    var form = el("div", "pn-gr-form");
+    var name = field("Tu nombre", "text", "");
+    var email = field("Tu email", "email", "");
+    var qty = item.available > 1 ? field("Cantidad (quedan " + item.available + ")", "number", "1") : null;
+    if (qty) { qty.input.min = 1; qty.input.max = item.available; }
+    var msg = field("Mensaje para " + list.title + " (opcional)", null, "", "textarea");
+    msg.input.rows = 3;
+    msg.input.maxLength = 500;
+    [name, email, msg].forEach(function (f) { f.wrap.classList.add("pn-gr-full"); });
+    var error = el("p", "pn-gr-error pn-gr-full");
+    var hours = el("p", "pn-gr-muted pn-gr-full",
+      "Te lo reservamos mientras pagás. Si no completás el pago, en unas horas vuelve a quedar disponible para otro invitado.");
+
+    var go2 = button(list.deliveryMode === "guest_choice" ? "Agregar al carrito y pagar" : "Ir a pagar", "pn-gr-btn", function () {
+      error.textContent = "";
+      go2.disabled = true;
+      go2.textContent = "Preparando…";
+      api("POST", "/api/gr/public/" + encodeURIComponent(list.slug) + "/reserve", {
+        itemId: item.itemId,
+        guestName: name.input.value.trim(),
+        guestEmail: email.input.value.trim(),
+        message: msg.input.value.trim(),
+        quantity: qty ? parseInt(qty.input.value, 10) || 1 : 1,
+      }).then(function (res) {
+        if (res.mode === "draft") { window.location.href = res.checkoutUrl; return; }
+        return addToCart(res, list.slug).then(function () { window.location.href = "/comprar/"; });
+      }).catch(function (e) {
+        error.textContent = e.message;
+        go2.disabled = false;
+        go2.textContent = "Probar de nuevo";
+        if (e.status === 409) renderGuestRoute(list.slug);
+      });
+    });
+    var actions = el("div", "pn-gr-actions pn-gr-full");
+    add(actions, go2, button("Cancelar", "pn-gr-btn pn-gr-btn--ghost", close));
+    add(form, name.wrap, email.wrap, qty && qty.wrap, msg.wrap, hours, error, actions);
+    add(modal, el("p", "pn-gr-notice", (GUEST_NOTICE[list.deliveryMode] || GUEST_NOTICE.guest_choice)(list)), form);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    name.input.focus();
+  }
+
+  function renderSearch(container) {
+    var wrap = el("div", "pn-gr-share");
+    var input = document.createElement("input");
+    input.placeholder = "Buscá por nombre (ej: Sofi y Juan)";
+    var results = el("div", "pn-gr-results");
+    var timer = null;
+    var search = function () {
+      var q = input.value.trim();
+      results.innerHTML = "";
+      if (q.length < 2) return;
+      api("GET", "/api/gr/search?q=" + encodeURIComponent(q)).then(function (res) {
+        results.innerHTML = "";
+        if (!res.lists.length) { add(results, el("p", "pn-gr-muted", "No encontramos listas con ese nombre.")); return; }
+        res.lists.forEach(function (l) {
+          var b = button(l.title + " · " + formatDate(l.eventDate), "pn-gr-result", function () { go("lista=" + encodeURIComponent(l.slug)); });
+          results.appendChild(b);
+        });
+      }).catch(function () {});
+    };
+    input.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(search, 350); });
+    add(wrap, input);
+    add(container, wrap, results);
   }
 
   function route() {
