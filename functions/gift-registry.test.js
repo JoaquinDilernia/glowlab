@@ -19,6 +19,12 @@ const {
   requestCode,
   verifyCode,
   getSession,
+  isOwner,
+  mergeListEdit,
+  addItemToList,
+  updateItemQuantity,
+  giftsCsv,
+  createRateLimiter,
 } = require("./gift-registry");
 
 const NOW = Date.UTC(2026, 9, 19, 12, 0, 0);
@@ -292,4 +298,67 @@ test("requestCode - rate limit y email invalido", async () => {
     assert.equal((await requestCode({ db, storeId: "1", email: "a@mail.com", sendEmail, now: NOW + i })).ok, true);
   }
   assert.equal((await requestCode({ db, storeId: "1", email: "a@mail.com", sendEmail, now: NOW + 10 })).ok, false);
+});
+
+// --- panel de novios -------------------------------------------------------
+
+test("isOwner - compara el email en minusculas", () => {
+  assert.equal(isOwner(list, "SOFI@mail.com"), true);
+  assert.equal(isOwner(list, "otro@mail.com"), false);
+  assert.equal(isOwner(list, ""), false);
+});
+
+test("mergeListEdit - edita datos y no permite sacarse de la lista", () => {
+  const ok = mergeListEdit(list, { title: "Sofi y Juan 2027", eventDate: "2027-01-10" }, { editorEmail: "sofi@mail.com" });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.value.title, "Sofi y Juan 2027");
+  assert.equal(ok.value.owners[0].email, "sofi@mail.com");
+
+  const out = mergeListEdit(list, { owners: [{ name: "Juan", email: "juan@mail.com" }] }, { editorEmail: "sofi@mail.com" });
+  assert.equal(out.ok, false);
+});
+
+test("addItemToList - suma cantidad si la variante ya esta", () => {
+  const value = { productId: "100", variantId: "1000", name: "Copa", image: "", price: 1200, quantity: 2 };
+  const r = addItemToList(list.items, value, { now: NOW, newId: () => "nuevo" });
+  assert.equal(r.items.length, 2);
+  assert.equal(r.items[0].quantity, 8);
+  assert.equal(r.items[0].price, 1200);
+
+  const r2 = addItemToList(list.items, { ...value, variantId: "3000" }, { now: NOW, newId: () => "nuevo" });
+  assert.equal(r2.items.length, 3);
+  assert.equal(r2.item.itemId, "nuevo");
+});
+
+test("updateItemQuantity - no baja por debajo de lo regalado o reservado", () => {
+  const gifts = [
+    { itemId: "i1", quantity: 2, status: "paid" },
+    { itemId: "i1", quantity: 1, status: "reserved", reservedUntil: NOW + HOUR },
+  ];
+  assert.equal(updateItemQuantity(list.items, "i1", 2, gifts, NOW).ok, false);
+  assert.equal(updateItemQuantity(list.items, "i1", 3, gifts, NOW).ok, true);
+  assert.equal(updateItemQuantity(list.items, "i1", 0, gifts, NOW).ok, false);
+  const removed = updateItemQuantity(list.items, "i2", 0, gifts, NOW);
+  assert.equal(removed.ok, true);
+  assert.equal(removed.items.length, 1);
+  assert.equal(updateItemQuantity(list.items, "nope", 1, gifts, NOW).status, 404);
+});
+
+test("giftsCsv - solo regalos confirmados y celdas seguras", () => {
+  const csv = giftsCsv(list, [
+    { itemId: "i1", quantity: 1, status: "paid", guestName: "=HYPERLINK(x)", message: "Felicidades; besos", paidAt: NOW },
+    { itemId: "i2", quantity: 1, status: "reserved", guestName: "Nadie" },
+  ]);
+  const lines = csv.split("\r\n");
+  assert.equal(lines.length, 2);
+  assert.match(lines[1], /^'=HYPERLINK\(x\);Copa;1;"Felicidades; besos";2026-10-19$/);
+});
+
+test("createRateLimiter - corta al llegar al maximo y libera con el tiempo", () => {
+  const allow = createRateLimiter({ max: 2, windowMs: 1000 });
+  assert.equal(allow("ip", 0), true);
+  assert.equal(allow("ip", 10), true);
+  assert.equal(allow("ip", 20), false);
+  assert.equal(allow("otra", 20), true);
+  assert.equal(allow("ip", 1500), true);
 });

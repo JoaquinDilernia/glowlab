@@ -450,6 +450,103 @@ async function getSession(db, storeId, authHeader, now = Date.now()) {
 }
 
 // ---------------------------------------------------------------------------
+// Panel de los novios: reglas puras
+// ---------------------------------------------------------------------------
+
+function isOwner(list, email) {
+  const e = str(email).toLowerCase();
+  return !!e && (list.owners || []).some((o) => o.email === e);
+}
+
+// Edicion de los datos de la lista: quien edita tiene que seguir siendo owner.
+function mergeListEdit(list, input, { allowedModes, editorEmail }) {
+  const src = input && typeof input === "object" ? input : {};
+  const merged = { ...list, ...src };
+  if (!Array.isArray(src.owners)) merged.owners = list.owners;
+  const v = validateListInput(merged, { allowedModes });
+  if (v.ok && !isOwner(v.value, editorEmail)) {
+    return { ok: false, errors: ["No podés sacarte de la lista."], value: null };
+  }
+  return v;
+}
+
+// Si la variante ya esta en la lista, suma cantidad en vez de duplicarla.
+function addItemToList(items, value, { now, newId }) {
+  const current = items || [];
+  const existing = current.find((i) => i.variantId === value.variantId);
+  if (existing) {
+    const quantity = Math.min(100, existing.quantity + value.quantity);
+    const next = current.map((i) => (i === existing ? { ...i, quantity, price: value.price } : i));
+    return { ok: true, items: next, item: { ...existing, quantity, price: value.price } };
+  }
+  if (current.length >= MAX_ITEMS_PER_LIST) return { ok: false, message: "La lista llegó al máximo de productos." };
+  const item = { itemId: newId(), ...value, addedAt: now };
+  return { ok: true, items: [...current, item], item };
+}
+
+// No se puede bajar por debajo de lo regalado o reservado (ni quitar el item).
+function updateItemQuantity(items, itemId, quantity, gifts, now) {
+  const item = (items || []).find((i) => i.itemId === itemId);
+  if (!item) return { ok: false, status: 404, message: "Producto no encontrado en la lista." };
+  const a = itemAvailability(item, gifts, now);
+  const committed = a.gifted + a.reserved;
+  if (quantity === 0) {
+    if (committed > 0) return { ok: false, status: 409, message: "Ya se lo regalaron: no se puede quitar." };
+    return { ok: true, items: items.filter((i) => i.itemId !== itemId) };
+  }
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+    return { ok: false, status: 400, message: "Cantidad inválida." };
+  }
+  if (quantity < committed) {
+    return { ok: false, status: 409, message: `Ya regalaron ${committed}: no podés pedir menos.` };
+  }
+  return { ok: true, items: items.map((i) => (i.itemId === itemId ? { ...i, quantity } : i)) };
+}
+
+function csvCell(v) {
+  const s = String(v == null ? "" : v);
+  // Prefijo ' para que Excel no ejecute formulas (=, +, -, @).
+  const safe = /^[=+\-@]/.test(s) ? `'${s}` : s;
+  return /[",\n;]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
+// Regalos recibidos, para agradecer. Separador ; porque Excel en es-AR lo espera.
+function giftsCsv(list, gifts) {
+  const names = new Map((list.items || []).map((i) => [i.itemId, i.name]));
+  const rows = (gifts || [])
+    .filter(isGifted)
+    .sort((a, b) => (Number(a.paidAt) || 0) - (Number(b.paidAt) || 0))
+    .map((g) => [
+      g.guestName,
+      names.get(g.itemId) || "",
+      g.quantity,
+      g.message,
+      g.paidAt ? new Date(Number(g.paidAt)).toISOString().slice(0, 10) : "",
+    ]);
+  return [["Invitado", "Regalo", "Cantidad", "Mensaje", "Fecha"], ...rows]
+    .map((r) => r.map(csvCell).join(";"))
+    .join("\r\n");
+}
+
+// Rate limit en memoria (por instancia): suficiente para frenar abuso de /auth.
+function createRateLimiter({ max, windowMs }) {
+  const hits = new Map();
+  return function allow(key, now = Date.now()) {
+    const recent = (hits.get(key) || []).filter((t) => now - t < windowMs);
+    if (recent.length >= max) {
+      hits.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    hits.set(key, recent);
+    if (hits.size > 5000) {
+      for (const [k, v] of hits) if (!v.some((t) => now - t < windowMs)) hits.delete(k);
+    }
+    return true;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Firestore / Tiendanube
 // ---------------------------------------------------------------------------
 
@@ -736,6 +833,197 @@ function registerGiftRegistryRoutes(app, { db, FieldValue, checkStoreActive, sen
       res.status(500).json({ success: false, message: error.message });
     }
   });
+
+  registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail, guard, getListForStore });
+}
+
+// ---------------------------------------------------------------------------
+// Rutas de los novios (storefront, /api/gr/*)
+// ---------------------------------------------------------------------------
+
+function clientIp(req) {
+  return str(req.headers["x-forwarded-for"]).split(",")[0].trim() || req.ip || "";
+}
+
+function registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail, guard, getListForStore }) {
+  const authLimiter = createRateLimiter({ max: 20, windowMs: 10 * 60 * 1000 });
+
+  // Tienda habilitada + modulo activo. Devuelve la config o null (ya respondio).
+  async function storefrontGuard(storeId, res) {
+    if (!guard(storeId, res)) return null;
+    const config = await loadConfig(db, storeId);
+    if (!config.enabled) {
+      res.status(403).json({ success: false, message: "La lista de regalos no está activa." });
+      return null;
+    }
+    return config;
+  }
+
+  // Sesion + lista propia. Devuelve { session, found, config } o null.
+  async function ownerGuard(req, res, storeId) {
+    const config = await storefrontGuard(storeId, res);
+    if (!config) return null;
+    const session = await getSession(db, storeId, req.headers.authorization);
+    if (!session) {
+      res.status(401).json({ success: false, message: "Tu sesión venció. Volvé a ingresar." });
+      return null;
+    }
+    if (!req.params.id) return { session, config };
+    const found = await getListForStore(storeId, req.params.id);
+    if (!found || !isOwner(found.list, session.email)) {
+      res.status(404).json({ success: false, message: "Lista no encontrada" });
+      return null;
+    }
+    return { session, config, found };
+  }
+
+  const fail = (res, error, tag) => {
+    console.error(`[GiftRegistry ${tag}]`, error);
+    res.status(500).json({ success: false, message: "Algo salió mal. Probá de nuevo." });
+  };
+
+  app.post("/api/gr/auth/request-code", async (req, res) => {
+    const { store, email } = req.body || {};
+    if (!authLimiter(clientIp(req))) return res.status(429).json({ success: false, message: "Demasiados intentos. Probá en unos minutos." });
+    try {
+      if (!(await storefrontGuard(store, res))) return;
+      const info = await getStoreInfo(db, store);
+      const r = await requestCode({ db, storeId: store, email, storeName: info && info.storeName, sendEmail });
+      if (!r.ok) return res.status(400).json({ success: false, message: r.message });
+      res.json({ success: true });
+    } catch (error) {
+      fail(res, error, "request-code");
+    }
+  });
+
+  app.post("/api/gr/auth/verify", async (req, res) => {
+    const { store, email, code } = req.body || {};
+    if (!authLimiter(clientIp(req))) return res.status(429).json({ success: false, message: "Demasiados intentos. Probá en unos minutos." });
+    try {
+      if (!(await storefrontGuard(store, res))) return;
+      const r = await verifyCode({ db, storeId: store, email, code });
+      if (!r.ok) return res.status(400).json({ success: false, message: r.message });
+      res.json({ success: true, token: r.token, email: str(email).toLowerCase() });
+    } catch (error) {
+      fail(res, error, "verify");
+    }
+  });
+
+  // GET /api/gr/me?store=X - listas donde el email de la sesion es owner
+  app.get("/api/gr/me", async (req, res) => {
+    const store = req.query.store;
+    try {
+      const ctx = await ownerGuard(req, res, store);
+      if (!ctx) return;
+      const snap = await db.collection(LISTS_COLLECTION).where("storeId", "==", String(store)).get();
+      const now = Date.now();
+      const mine = snap.docs.map((d) => ({ ref: d.ref, list: { id: d.id, ...d.data() } }))
+        .filter(({ list }) => isOwner(list, ctx.session.email));
+      const lists = await Promise.all(mine.map(async ({ ref, list }) => ownerListView(list, await loadGifts(ref), now)));
+      lists.sort((a, b) => String(a.eventDate).localeCompare(String(b.eventDate)));
+      res.json({
+        success: true,
+        email: ctx.session.email,
+        lists,
+        config: { allowedModes: ctx.config.allowedModes, pagePath: ctx.config.pagePath },
+      });
+    } catch (error) {
+      fail(res, error, "me");
+    }
+  });
+
+  app.post("/api/gr/lists", async (req, res) => {
+    const { store, list } = req.body || {};
+    try {
+      const ctx = await ownerGuard(req, res, store);
+      if (!ctx) return;
+      if (!(await checkStoreActive(store))) return res.status(403).json({ success: false, message: "La lista de regalos no está disponible." });
+      const input = { ...(list || {}) };
+      const others = (Array.isArray(input.owners) ? input.owners : []).filter((o) => str(o && o.email).toLowerCase() !== ctx.session.email);
+      const me = (Array.isArray(input.owners) ? input.owners : []).find((o) => str(o && o.email).toLowerCase() === ctx.session.email);
+      input.owners = [{ name: str(me && me.name) || str(input.ownerName), email: ctx.session.email }, ...others].slice(0, 2);
+      const v = validateListInput(input, { allowedModes: ctx.config.allowedModes });
+      if (!v.ok) return res.status(400).json({ success: false, message: v.errors.join(" ") });
+      const created = await createList({ db, FieldValue, storeId: store, value: v.value, createdBy: "couple" });
+      res.json({ success: true, list: ownerListView(created, [], Date.now()) });
+    } catch (error) {
+      fail(res, error, "create");
+    }
+  });
+
+  app.patch("/api/gr/lists/:id", async (req, res) => {
+    const { store, list } = req.body || {};
+    try {
+      const ctx = await ownerGuard(req, res, store);
+      if (!ctx) return;
+      const v = mergeListEdit(ctx.found.list, list, { allowedModes: ctx.config.allowedModes, editorEmail: ctx.session.email });
+      if (!v.ok) return res.status(400).json({ success: false, message: v.errors.join(" ") });
+      await ctx.found.ref.update({ ...v.value, updatedAt: FieldValue.serverTimestamp() });
+      const gifts = await loadGifts(ctx.found.ref);
+      res.json({ success: true, list: ownerListView({ ...ctx.found.list, ...v.value }, gifts, Date.now()) });
+    } catch (error) {
+      fail(res, error, "edit");
+    }
+  });
+
+  app.post("/api/gr/lists/:id/items", async (req, res) => {
+    const { store, item } = req.body || {};
+    try {
+      const ctx = await ownerGuard(req, res, store);
+      if (!ctx) return;
+      if (ctx.found.list.status !== "active") return res.status(409).json({ success: false, message: "La lista está cerrada." });
+      const v = validateItemInput(item);
+      if (!v.ok) return res.status(400).json({ success: false, message: "Producto inválido." });
+      const r = addItemToList(ctx.found.list.items, v.value, { now: Date.now(), newId: () => crypto.randomBytes(6).toString("hex") });
+      if (!r.ok) return res.status(409).json({ success: false, message: r.message });
+      await ctx.found.ref.update({ items: r.items, updatedAt: FieldValue.serverTimestamp() });
+      res.json({ success: true, item: r.item });
+    } catch (error) {
+      fail(res, error, "add-item");
+    }
+  });
+
+  async function changeQuantity(req, res, quantity) {
+    const store = (req.body && req.body.store) || req.query.store;
+    const ctx = await ownerGuard(req, res, store);
+    if (!ctx) return;
+    const gifts = await loadGifts(ctx.found.ref);
+    const now = Date.now();
+    const r = updateItemQuantity(ctx.found.list.items, req.params.itemId, quantity, gifts, now);
+    if (!r.ok) return res.status(r.status).json({ success: false, message: r.message });
+    await ctx.found.ref.update({ items: r.items, updatedAt: FieldValue.serverTimestamp() });
+    res.json({ success: true, list: ownerListView({ ...ctx.found.list, items: r.items }, gifts, now) });
+  }
+
+  app.patch("/api/gr/lists/:id/items/:itemId", async (req, res) => {
+    try {
+      await changeQuantity(req, res, Number(req.body && req.body.quantity));
+    } catch (error) {
+      fail(res, error, "qty");
+    }
+  });
+
+  app.delete("/api/gr/lists/:id/items/:itemId", async (req, res) => {
+    try {
+      await changeQuantity(req, res, 0);
+    } catch (error) {
+      fail(res, error, "remove-item");
+    }
+  });
+
+  // GET /api/gr/lists/:id/export.csv?store=X - con Authorization (se descarga via fetch + blob)
+  app.get("/api/gr/lists/:id/export.csv", async (req, res) => {
+    try {
+      const ctx = await ownerGuard(req, res, req.query.store);
+      if (!ctx) return;
+      const csv = giftsCsv(ctx.found.list, await loadGifts(ctx.found.ref));
+      res.set("Content-Type", "text/csv; charset=utf-8");
+      res.set("Content-Disposition", `attachment; filename="regalos-${ctx.found.list.slug}.csv"`);
+      res.send("﻿" + csv);
+    } catch (error) {
+      fail(res, error, "export");
+    }
+  });
 }
 
 module.exports = {
@@ -761,5 +1049,11 @@ module.exports = {
   requestCode,
   verifyCode,
   getSession,
+  isOwner,
+  mergeListEdit,
+  addItemToList,
+  updateItemQuantity,
+  giftsCsv,
+  createRateLimiter,
   registerGiftRegistryRoutes,
 };
