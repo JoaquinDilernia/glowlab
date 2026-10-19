@@ -14,6 +14,8 @@ const COLOR_DICTIONARY = {
   "hueso": "#e9e1d0",
   "marfil": "#f2ead8",
   "crema": "#efe4cc",
+  "crudo": "#ece3cf",
+  "perlado": "#e8e4dc",
   "gris": "#8c8c8c",
   "gris claro": "#c6c6c6",
   "gris oscuro": "#4a4a4a",
@@ -46,6 +48,10 @@ const COLOR_DICTIONARY = {
   "mocha": "#a47864",
   "terracota": "#b4593b",
   "ladrillo": "#9c4a32",
+  "habano": "#7a5230",
+  "canela": "#a0643a",
+  "rattan": "#c49a5c",
+  "carey": "#5a3a22",
   // metales
   "plateado": "#c0c0c0",
   "plata": "#c0c0c0",
@@ -58,6 +64,7 @@ const COLOR_DICTIONARY = {
   "cobre": "#b5703f",
   // rojos
   "rojo": "#b3261e",
+  "tomate": "#c8402c",
   "bordo": "#6d1a24",
   "vino": "#6b1f2a",
   "malbec": "#5b1a2e",
@@ -67,6 +74,8 @@ const COLOR_DICTIONARY = {
   // amarillos y naranjas
   "naranja": "#e07a2e",
   "mostaza": "#c9a227",
+  "ocre": "#c08a2c",
+  "ambar": "#c47f1a",
   "amarillo": "#e8c547",
   "maiz": "#e6c25a",
   // verdes
@@ -87,6 +96,7 @@ const COLOR_DICTIONARY = {
   "azul profundo": "#1c2f5a",
   "azul aero": "#7cb9e8",
   "turquesa": "#3fb8af",
+  "petroleo": "#1f4d5a",
   "violeta": "#6a4c93",
   "lila": "#b9a3d1",
   "transparente": "#e6eef1",
