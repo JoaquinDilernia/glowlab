@@ -781,6 +781,10 @@ registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
 const { registerVariantGroupsRoutes } = require('./variant-groups');
 registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive });
 
+// Combos - descuento por combos de productos/grupos via Discounts API (piloto Alto Rancho)
+const { registerCombosRoutes } = require('./combos');
+registerCombosRoutes(app, { db, FieldValue, checkStoreActive });
+
 // Carrusel de Categorías - reemplaza el banner fijo nativo de Tiendanube por
 // un carrusel de tarjetas configurable, targeteado por categoría
 const { registerCategoryCarouselRoutes, setCategoryCarouselScriptId } = require('./category-carousel');

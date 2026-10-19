@@ -35,6 +35,7 @@ import SearchConfig from './pages/SearchConfig';
 import CategoryCarouselConfig from './pages/CategoryCarouselConfig';
 import ComingSoonConfig from './pages/ComingSoonConfig';
 import VariantGroupsConfig from './pages/VariantGroupsConfig';
+import CombosConfig from './pages/CombosConfig';
 import './App.css';
 
 function App() {
@@ -84,6 +85,7 @@ function App() {
           <Route path="/precios-cuotas" element={<PriceFinancingConfig />} />
           <Route path="/proximamente" element={<ComingSoonConfig />} />
           <Route path="/grupos-variantes" element={<VariantGroupsConfig />} />
+          <Route path="/combos" element={<CombosConfig />} />
           <Route path="/buscador-inteligente" element={<SearchConfig />} />
           <Route path="/carrusel-categorias" element={<CategoryCarouselConfig />} />
         </Route>

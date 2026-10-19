@@ -6,6 +6,7 @@ const {
   sanitizePalette,
   collectDetectedColors,
 } = require("./variant-colors");
+const { isCombosEnabled, buildLoaderSnippet } = require("./combos");
 
 const SKU_SUFFIX_LENGTH = 2;
 const MIN_GROUP_KEY_LENGTH = 3;
@@ -615,12 +616,15 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
       if (!(await checkStoreActive(store))) {
         return res.send("// Grupos de Variantes: plan inactivo");
       }
+      // Combos no tiene script propio en Partners: se carga desde este.
+      const combosLoader = (await isCombosEnabled(db, store)) ? buildLoaderSnippet(store) : "";
       const doc = await db.collection(COLLECTION).doc(String(store)).get();
       const cfg = doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG;
       if (cfg.enabled === false) {
-        return res.send("// Grupos de Variantes: deshabilitado");
+        return res.send("// Grupos de Variantes: deshabilitado" + combosLoader);
       }
       res.send(
+        combosLoader +
         buildWidgetScript(store, {
           showOnListing: cfg.showOnListing !== false,
           showOnPDP: cfg.showOnPDP !== false,
