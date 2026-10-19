@@ -25,6 +25,8 @@ const {
   updateItemQuantity,
   giftsCsv,
   createRateLimiter,
+  validateGuestInput,
+  searchLists,
 } = require("./gift-registry");
 
 const NOW = Date.UTC(2026, 9, 19, 12, 0, 0);
@@ -221,6 +223,11 @@ test("matchOrderToGift - fallback por email + producto dentro de 72 h", () => {
   assert.deepEqual(matchOrderToGift(viejo, candidates, NOW), []);
 });
 
+test("matchOrderToGift - borrador pagado con otro id: cae al email + producto", () => {
+  const order = { id: 999, contact_email: "a@mail.com", products: [{ product_id: 100 }] };
+  assert.deepEqual(matchOrderToGift(order, candidates, NOW), [{ giftId: "g1", listId: "L1" }]);
+});
+
 test("matchOrderToGift - un gift ya pagado no se vuelve a matchear", () => {
   assert.deepEqual(matchOrderToGift({ id: 777, products: [] }, candidates, NOW), []);
 });
@@ -361,4 +368,28 @@ test("createRateLimiter - corta al llegar al maximo y libera con el tiempo", () 
   assert.equal(allow("ip", 20), false);
   assert.equal(allow("otra", 20), true);
   assert.equal(allow("ip", 1500), true);
+});
+
+// --- invitados -------------------------------------------------------------
+
+test("validateGuestInput - normaliza y valida", () => {
+  const ok = validateGuestInput({ itemId: "i1", guestName: " Tía Marta ", guestEmail: "Marta@Mail.com", message: "¡Felicidades!" });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.value, { itemId: "i1", guestName: "Tía Marta", guestEmail: "marta@mail.com", message: "¡Felicidades!", quantity: 1 });
+  const bad = validateGuestInput({ guestName: "M", guestEmail: "x", quantity: 0 });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.errors.length, 3);
+});
+
+test("searchLists - solo publicas y activas, sin acentos, con limite", () => {
+  const lists = [
+    { slug: "a", title: "Sofía y Juan", public: true, status: "active", eventDate: "2026-12-01" },
+    { slug: "b", title: "Sofi y Leo", public: false, status: "active", eventDate: "2026-11-01" },
+    { slug: "c", title: "Sofi y Tomás", public: true, status: "closed", eventDate: "2026-11-01" },
+    { slug: "d", title: "Baby shower de Sofi", public: true, status: "active", eventDate: "2026-11-15" },
+  ];
+  assert.deepEqual(searchLists(lists, "SOFI").map((l) => l.slug), ["d", "a"]);
+  assert.deepEqual(searchLists(lists, "sofia y").map((l) => l.slug), ["a"]);
+  assert.deepEqual(searchLists(lists, "s"), []);
+  assert.equal(searchLists(lists, "sofi", 1).length, 1);
 });

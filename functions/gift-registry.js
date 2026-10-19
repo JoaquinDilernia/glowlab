@@ -331,8 +331,9 @@ function matchOrderToGift(order, candidates, now) {
 
   const email = str(order.contact_email).toLowerCase();
   const productIds = new Set((order.products || []).map((p) => String(p.product_id)));
+  // Incluye borradores: no esta confirmado que el pedido pagado conserve el id
+  // del borrador, y el email del borrador es el del invitado.
   const byEmail = pending.filter((c) =>
-    !c.draftOrderId &&
     email && str(c.guestEmail).toLowerCase() === email &&
     productIds.has(String(c.productId)) &&
     now - Number(c.createdAt) <= EMAIL_MATCH_WINDOW_MS
@@ -529,6 +530,40 @@ function giftsCsv(list, gifts) {
     .join("\r\n");
 }
 
+// ---------------------------------------------------------------------------
+// Invitados: reglas puras
+// ---------------------------------------------------------------------------
+
+function validateGuestInput(input) {
+  const src = input && typeof input === "object" ? input : {};
+  const errors = [];
+  const guestName = str(src.guestName).slice(0, 80);
+  const guestEmail = str(src.guestEmail).toLowerCase();
+  const message = str(src.message);
+  const quantity = Number(src.quantity == null ? 1 : src.quantity);
+  if (guestName.length < 2) errors.push("Contanos tu nombre.");
+  if (!EMAIL_PATTERN.test(guestEmail)) errors.push("Revisá tu email.");
+  if (message.length > 500) errors.push("El mensaje puede tener hasta 500 caracteres.");
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) errors.push("Cantidad inválida.");
+  return {
+    ok: errors.length === 0,
+    errors,
+    value: { itemId: str(src.itemId), guestName, guestEmail, message, quantity },
+  };
+}
+
+// Buscador de la tienda: solo listas publicas y activas, por nombre.
+function searchLists(lists, q, limit = 10) {
+  const needle = slugify(q).replace(/-/g, " ");
+  if (needle.length < 2) return [];
+  return (lists || [])
+    .filter((l) => l.public === true && l.status === "active")
+    .filter((l) => slugify(l.title).replace(/-/g, " ").includes(needle))
+    .sort((a, b) => String(a.eventDate).localeCompare(String(b.eventDate)))
+    .slice(0, limit)
+    .map((l) => ({ slug: l.slug, title: l.title, eventType: l.eventType, eventDate: l.eventDate }));
+}
+
 // Rate limit en memoria (por instancia): suficiente para frenar abuso de /auth.
 function createRateLimiter({ max, windowMs }) {
   const hits = new Map();
@@ -578,6 +613,37 @@ async function getStoreInfo(db, storeId) {
     } catch (_) { /* sin URL: el mail sale sin link */ }
   }
   return { accessToken: d.accessToken, storeName: d.storeName || "", baseUrl: baseUrl.replace(/\/+$/, "") };
+}
+
+function tnHeaders(accessToken) {
+  return { Authentication: `bearer ${accessToken}`, "User-Agent": TN_UA, "Content-Type": "application/json" };
+}
+
+async function createDraftOrder({ storeId, accessToken, payload }) {
+  const res = await fetch(`${TN_V1}/${storeId}/draft_orders`, {
+    method: "POST",
+    headers: tnHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`TN POST draft_orders: ${res.status} ${(await res.text()).slice(0, 300)}`);
+  const draft = await res.json();
+  if (!draft.checkout_url) throw new Error("TN draft_orders sin checkout_url");
+  return { id: draft.id, checkoutUrl: draft.checkout_url };
+}
+
+// Cancela el borrador (el link de pago deja de funcionar). 404 = ya no existe.
+async function cancelDraftOrder({ storeId, accessToken, draftOrderId }) {
+  const res = await fetch(`${TN_V1}/${storeId}/draft_orders/${draftOrderId}`, {
+    method: "DELETE",
+    headers: tnHeaders(accessToken),
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`TN DELETE draft_orders/${draftOrderId}: ${res.status}`);
+}
+
+async function fetchOrder({ storeId, accessToken, orderId }) {
+  const res = await fetch(`${TN_V1}/${storeId}/orders/${orderId}`, { headers: tnHeaders(accessToken) });
+  if (!res.ok) throw new Error(`TN GET orders/${orderId}: ${res.status}`);
+  return res.json();
 }
 
 async function ensureOrderWebhook({ storeId, accessToken }) {
@@ -836,6 +902,7 @@ function registerGiftRegistryRoutes(app, { db, FieldValue, checkStoreActive, sen
   });
 
   registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail, guard, getListForStore });
+  registerOrderWebhook(app, { db });
 }
 
 // Loader que se agrega al script de Grupos de Variantes (ya instalado en la
@@ -1062,6 +1129,219 @@ function registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail
       fail(res, error, "export");
     }
   });
+
+  registerGuestRoutes(app, { db, storefrontGuard, fail });
+}
+
+// ---------------------------------------------------------------------------
+// Invitados (storefront, /api/gr/public/*), webhook de pago y reservas
+// ---------------------------------------------------------------------------
+
+async function findListBySlug(db, storeId, slug) {
+  const snap = await db.collection(LISTS_COLLECTION)
+    .where("storeId", "==", String(storeId))
+    .where("slug", "==", str(slug))
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  const doc = snap.docs[0];
+  return { ref: doc.ref, list: { id: doc.id, ...doc.data() } };
+}
+
+function registerGuestRoutes(app, { db, storefrontGuard, fail }) {
+  const reserveLimiter = createRateLimiter({ max: 10, windowMs: 10 * 60 * 1000 });
+
+  // GET /api/gr/public/:slug?store=X
+  app.get("/api/gr/public/:slug", async (req, res) => {
+    const { store } = req.query;
+    try {
+      if (!(await storefrontGuard(store, res))) return;
+      const found = await findListBySlug(db, store, req.params.slug);
+      if (!found || found.list.status !== "active") {
+        return res.status(404).json({ success: false, message: "No encontramos esta lista o ya está cerrada." });
+      }
+      res.json({ success: true, list: publicListView(found.list, await loadGifts(found.ref), Date.now()) });
+    } catch (error) {
+      fail(res, error, "public");
+    }
+  });
+
+  // GET /api/gr/search?store=X&q=texto
+  app.get("/api/gr/search", async (req, res) => {
+    const { store, q } = req.query;
+    try {
+      if (!(await storefrontGuard(store, res))) return;
+      const snap = await db.collection(LISTS_COLLECTION)
+        .where("storeId", "==", String(store))
+        .select("slug", "title", "eventType", "eventDate", "public", "status")
+        .get();
+      res.json({ success: true, lists: searchLists(snap.docs.map((d) => d.data()), q) });
+    } catch (error) {
+      fail(res, error, "search");
+    }
+  });
+
+  // POST /api/gr/public/:slug/reserve - el invitado elige un regalo
+  app.post("/api/gr/public/:slug/reserve", async (req, res) => {
+    const { store } = req.body || {};
+    if (!reserveLimiter(clientIp(req))) {
+      return res.status(429).json({ success: false, message: "Demasiados intentos. Probá en unos minutos." });
+    }
+    try {
+      const config = await storefrontGuard(store, res);
+      if (!config) return;
+      const v = validateGuestInput(req.body);
+      if (!v.ok) return res.status(400).json({ success: false, message: v.errors.join(" ") });
+      const found = await findListBySlug(db, store, req.params.slug);
+      if (!found || found.list.status !== "active") {
+        return res.status(404).json({ success: false, message: "No encontramos esta lista o ya está cerrada." });
+      }
+
+      // Transaccion: dos invitados no pueden reservar la ultima unidad a la vez.
+      const giftRef = found.ref.collection("gifts").doc();
+      const now = Date.now();
+      const reservation = await db.runTransaction(async (tx) => {
+        const listDoc = await tx.get(found.ref);
+        const list = { id: listDoc.id, ...listDoc.data() };
+        const giftsSnap = await tx.get(found.ref.collection("gifts"));
+        const gifts = giftsSnap.docs.map((d) => ({ giftId: d.id, ...d.data() }));
+        const item = (list.items || []).find((i) => i.itemId === v.value.itemId);
+        if (!item) return { error: "Este regalo ya no está en la lista.", status: 404 };
+        const { available } = itemAvailability(item, gifts, now);
+        if (available < v.value.quantity) {
+          return {
+            error: available > 0 ? `Quedan ${available} disponibles.` : "¡Alguien se te adelantó! Este regalo ya está reservado.",
+            status: 409,
+          };
+        }
+        const gift = {
+          storeId: String(store),
+          listId: list.id,
+          itemId: item.itemId,
+          productId: String(item.productId),
+          variantId: String(item.variantId),
+          quantity: v.value.quantity,
+          guestName: v.value.guestName,
+          guestEmail: v.value.guestEmail,
+          message: v.value.message,
+          status: "reserved",
+          draftOrderId: null,
+          orderId: null,
+          reservedUntil: now + config.reservationHours * 60 * 60 * 1000,
+          createdAt: now,
+          paidAt: null,
+        };
+        tx.set(giftRef, gift);
+        return { list, item, gift };
+      });
+      if (reservation.error) return res.status(reservation.status).json({ success: false, message: reservation.error });
+
+      const { list, item, gift } = reservation;
+      if (list.deliveryMode === "guest_choice") {
+        return res.json({
+          success: true,
+          mode: "cart",
+          giftId: giftRef.id,
+          productId: gift.productId,
+          variantId: gift.variantId,
+          quantity: gift.quantity,
+          reservedUntil: gift.reservedUntil,
+        });
+      }
+
+      // Modos A y B: pedido borrador con el link de pago.
+      try {
+        const info = await getStoreInfo(db, store);
+        const payload = buildDraftOrderPayload({
+          list,
+          item,
+          quantity: gift.quantity,
+          giftId: giftRef.id,
+          guest: { name: gift.guestName, email: gift.guestEmail },
+        });
+        const draft = await createDraftOrder({ storeId: store, accessToken: info.accessToken, payload });
+        await giftRef.update({ draftOrderId: String(draft.id) });
+        res.json({ success: true, mode: "draft", giftId: giftRef.id, checkoutUrl: draft.checkoutUrl, reservedUntil: gift.reservedUntil });
+      } catch (error) {
+        await giftRef.update({ status: "expired" }).catch(() => {});
+        console.error("[GiftRegistry draft]", error.message);
+        res.status(502).json({ success: false, message: "No pudimos preparar el pago. Probá de nuevo en un rato." });
+      }
+    } catch (error) {
+      fail(res, error, "reserve");
+    }
+  });
+}
+
+// Gifts reservados o vencidos de la tienda (candidatos a matchear un pago).
+async function pendingGifts(db, storeId) {
+  const lists = await db.collection(LISTS_COLLECTION).where("storeId", "==", String(storeId)).get();
+  const out = [];
+  for (const listDoc of lists.docs) {
+    const snap = await listDoc.ref.collection("gifts").where("status", "in", ["reserved", "expired"]).get();
+    for (const d of snap.docs) out.push({ ref: d.ref, giftId: d.id, listId: listDoc.id, ...d.data() });
+  }
+  return out;
+}
+
+// Pedido pagado -> gifts "paid". Idempotente: solo mira reservados/vencidos.
+// No se confia en el body del webhook: el pedido se trae de la API.
+async function processPaidOrder({ db, storeId, orderId, now = Date.now() }) {
+  if (!isAllowedStore(storeId)) return { skipped: "store" };
+  const config = await loadConfig(db, storeId);
+  if (!config.enabled) return { skipped: "disabled" };
+  const info = await getStoreInfo(db, storeId);
+  if (!info || !info.accessToken) return { skipped: "token" };
+  const order = await fetchOrder({ storeId, accessToken: info.accessToken, orderId });
+  if (order.payment_status !== "paid") return { skipped: "unpaid" };
+
+  const candidates = await pendingGifts(db, storeId);
+  const matches = matchOrderToGift(order, candidates, now);
+  for (const m of matches) {
+    const c = candidates.find((x) => x.giftId === m.giftId);
+    await c.ref.update({ status: "paid", orderId: String(order.id), paidAt: now });
+  }
+  return { matched: matches.length };
+}
+
+// Reservas vencidas -> "expired" y se cancela el borrador (best effort).
+async function sweepReservations({ db, now = Date.now() }) {
+  let expired = 0;
+  for (const storeId of ALLOWED_STORE_IDS) {
+    const config = await loadConfig(db, storeId);
+    if (!config.enabled) continue;
+    const gifts = giftsToExpire(await pendingGifts(db, storeId), now);
+    if (!gifts.length) continue;
+    const info = await getStoreInfo(db, storeId);
+    for (const g of gifts) {
+      await g.ref.update({ status: "expired" });
+      expired++;
+      if (g.draftOrderId && info && info.accessToken) {
+        await cancelDraftOrder({ storeId, accessToken: info.accessToken, draftOrderId: g.draftOrderId })
+          .catch((e) => console.error("[GiftRegistry sweep]", e.message));
+      }
+    }
+  }
+  return { expired };
+}
+
+const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+
+function registerOrderWebhook(app, { db }) {
+  // POST /api/gr/order-webhook - Tiendanube order/paid { store_id, event, id }
+  app.post("/api/gr/order-webhook", (req, res) => {
+    res.sendStatus(200);
+    const { store_id: storeId, id: orderId } = req.body || {};
+    if (!storeId || !orderId) return;
+    processPaidOrder({ db, storeId: String(storeId), orderId })
+      .then((r) => { if (r.matched) console.warn(`[GiftRegistry] pedido ${orderId} (${storeId}): ${r.matched} regalo(s) pagado(s)`); })
+      .catch((e) => console.error("[GiftRegistry webhook]", e.message));
+  });
+
+  const timer = setInterval(() => {
+    sweepReservations({ db }).catch((e) => console.error("[GiftRegistry sweep]", e.message));
+  }, SWEEP_INTERVAL_MS);
+  if (timer.unref) timer.unref();
 }
 
 module.exports = {
@@ -1092,8 +1372,15 @@ module.exports = {
   addItemToList,
   updateItemQuantity,
   giftsCsv,
+  validateGuestInput,
+  searchLists,
+  createDraftOrder,
+  cancelDraftOrder,
+  fetchOrder,
   createRateLimiter,
   buildLoaderSnippet,
   isGiftRegistryEnabled,
+  processPaidOrder,
+  sweepReservations,
   registerGiftRegistryRoutes,
 };
