@@ -634,9 +634,15 @@ function clientMain(CFG) {
     ctx.stroke();
     drawQr(ctx, qr, qrX + qrPad, qrTop + qrPad, qrSize);
 
+    // El link puede ser largo (dominio + slug): se achica hasta que entre.
+    var link = shortUrl(list);
     ctx.fillStyle = soft;
     ctx.font = "400 " + linkSize + "px " + font;
-    ctx.fillText(shortUrl(list), w / 2, linkY);
+    while (linkSize > 12 && ctx.measureText(link).width > w - pad * 2) {
+      linkSize -= 1;
+      ctx.font = "400 " + linkSize + "px " + font;
+    }
+    ctx.fillText(link, w / 2, linkY);
     return c;
   }
 
