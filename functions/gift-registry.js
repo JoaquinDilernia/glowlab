@@ -1148,8 +1148,34 @@ async function findListBySlug(db, storeId, slug) {
   return { ref: doc.ref, list: { id: doc.id, ...doc.data() } };
 }
 
+// Solo portadas subidas por el modulo (Storage no tiene CORS y el canvas de
+// las placas necesita la imagen del mismo origen).
+function isCoverImageUrl(value) {
+  let u;
+  try { u = new URL(str(value)); } catch (_) { return false; }
+  if (u.protocol !== "https:" || u.hostname !== "storage.googleapis.com") return false;
+  const parts = u.pathname.split("/");
+  return parts.length >= 5 && parts[2] === "gift-registry" && !u.pathname.includes("..");
+}
+
 function registerGuestRoutes(app, { db, storefrontGuard, fail }) {
   const reserveLimiter = createRateLimiter({ max: 10, windowMs: 10 * 60 * 1000 });
+
+  // GET /api/gr/cover?url=... - proxy de la portada para dibujar las placas
+  app.get("/api/gr/cover", async (req, res) => {
+    if (!isCoverImageUrl(req.query.url)) return res.status(400).end();
+    try {
+      const upstream = await fetch(str(req.query.url));
+      const type = upstream.headers.get("content-type") || "";
+      if (!upstream.ok || !type.startsWith("image/")) return res.status(404).end();
+      res.setHeader("Content-Type", type);
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.send(Buffer.from(await upstream.arrayBuffer()));
+    } catch (error) {
+      console.error("[GiftRegistry cover]", error.message);
+      res.status(502).end();
+    }
+  });
 
   // GET /api/gr/public/:slug?store=X
   app.get("/api/gr/public/:slug", async (req, res) => {
@@ -1380,6 +1406,7 @@ module.exports = {
   createRateLimiter,
   buildLoaderSnippet,
   isGiftRegistryEnabled,
+  isCoverImageUrl,
   processPaidOrder,
   sweepReservations,
   registerGiftRegistryRoutes,

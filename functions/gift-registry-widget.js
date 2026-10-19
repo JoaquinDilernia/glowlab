@@ -461,18 +461,264 @@ function clientMain(CFG) {
     return window.location.origin + CFG.pagePath + "?lista=" + encodeURIComponent(list.slug);
   }
 
+  function saveBlob(blob, name) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+  }
+
   function downloadCsv(list) {
     fetch(API + "/api/gr/lists/" + list.id + "/export.csv?store=" + STORE, { headers: { Authorization: "Bearer " + memory.token } })
       .then(function (r) { if (!r.ok) throw new Error(); return r.blob(); })
-      .then(function (blob) {
-        var a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = "regalos-" + list.slug + ".csv";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      })
+      .then(function (blob) { saveBlob(blob, "regalos-" + list.slug + ".csv"); })
       .catch(function () { window.console && console.warn("[Lista de regalos] no se pudo exportar"); });
+  }
+
+  // --- compartir: link, WhatsApp, QR y placas ---------------------------------
+
+  var QR_SRC = "https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js";
+  var qrLoading = null;
+  function loadQr() {
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    if (!qrLoading) {
+      qrLoading = new Promise(function (resolve, reject) {
+        var s = document.createElement("script");
+        s.src = QR_SRC;
+        s.async = true;
+        s.onload = function () { if (window.qrcode) resolve(window.qrcode); else reject(new Error("No pudimos generar el QR.")); };
+        s.onerror = function () { qrLoading = null; reject(new Error("No pudimos generar el QR. Revisá tu conexión.")); };
+        document.head.appendChild(s);
+      });
+    }
+    return qrLoading;
+  }
+  function makeQr(text) {
+    return loadQr().then(function (lib) {
+      var qr = lib(0, "M");
+      qr.addData(text);
+      qr.make();
+      return qr;
+    });
+  }
+  function drawQr(ctx, qr, x, y, size) {
+    var n = qr.getModuleCount();
+    var cell = size / n;
+    ctx.fillStyle = "#1f1e1e";
+    for (var row = 0; row < n; row++) {
+      for (var col = 0; col < n; col++) {
+        // +0.5 evita las lineas finas entre modulos al escalar
+        if (qr.isDark(row, col)) ctx.fillRect(x + col * cell, y + row * cell, Math.ceil(cell + 0.5), Math.ceil(cell + 0.5));
+      }
+    }
+  }
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function fontFamily() {
+    var f = "";
+    try { f = window.getComputedStyle(document.body).fontFamily || ""; } catch (_) { /* sin estilos */ }
+    return (f ? f + ", " : "") + "Helvetica, Arial, sans-serif";
+  }
+  function wrapText(ctx, text, maxWidth, maxLines) {
+    var words = String(text || "").split(/\s+/);
+    var lines = [];
+    var line = "";
+    words.forEach(function (w) {
+      var test = line ? line + " " + w : w;
+      if (ctx.measureText(test).width > maxWidth && line) { lines.push(line); line = w; }
+      else line = test;
+    });
+    if (line) lines.push(line);
+    if (lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      lines[maxLines - 1] = lines[maxLines - 1].replace(/\s*\S*$/, "") + "…";
+    }
+    return lines;
+  }
+  // Storage no tiene CORS: la portada pasa por el proxy para no "ensuciar" el canvas.
+  function loadCover(url) {
+    if (!url) return Promise.resolve(null);
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { resolve(null); };
+      img.src = API + "/api/gr/cover?url=" + encodeURIComponent(absUrl(url));
+    });
+  }
+  function drawCover(ctx, img, x, y, w, h) {
+    var scale = Math.max(w / img.width, h / img.height);
+    var sw = w / scale;
+    var sh = h / scale;
+    ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, x, y, w, h);
+  }
+  function shortUrl(list) {
+    return window.location.host.replace(/^www\./, "") + CFG.pagePath + "?lista=" + list.slug;
+  }
+
+  // Placa vertical: foto arriba, datos del evento y QR abajo.
+  function drawPlaca(list, w, h, qr, img) {
+    var c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    var ctx = c.getContext("2d");
+    var font = fontFamily();
+    var ink = "#353434";
+    var soft = "#8a8580";
+    var pad = Math.round(w * 0.08);
+    ctx.fillStyle = "#faf8f5";
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = "center";
+
+    // De abajo hacia arriba: link, QR, leyenda.
+    var linkSize = Math.round(w * 0.026);
+    var linkY = h - pad;
+    var qrSize = Math.round(w * 0.38);
+    var qrPad = Math.round(w * 0.035);
+    var qrBox = qrSize + qrPad * 2;
+    var qrTop = linkY - linkSize * 2 - qrBox;
+    var captionSize = Math.round(w * 0.034);
+    var captionY = qrTop - captionSize * 1.4;
+
+    // Bloque de texto del evento.
+    var titleSize = Math.round(w * 0.072);
+    ctx.font = "600 " + titleSize + "px " + font;
+    var titleLines = wrapText(ctx, list.title, w - pad * 2, 3);
+    var eventSize = Math.round(w * 0.026);
+    var dateSize = Math.round(w * 0.034);
+    var textH = eventSize * 2.2 + titleLines.length * titleSize * 1.18 + dateSize * 1.8;
+    var gap = Math.round(h * 0.045);
+    var room = captionY - captionSize - gap * 2 - textH;
+    var photoH = img ? Math.min(Math.round(h * 0.4), room) : 0;
+    if (photoH < h * 0.15) photoH = 0;
+    if (photoH) drawCover(ctx, img, 0, 0, w, photoH);
+
+    // Centrado en el espacio libre entre la foto y la leyenda del QR.
+    var y = photoH + Math.max(gap, (captionY - captionSize - gap - photoH - textH) / 2);
+    ctx.textBaseline = "top";
+    ctx.fillStyle = soft;
+    ctx.font = "600 " + eventSize + "px " + font;
+    if ("letterSpacing" in ctx) ctx.letterSpacing = Math.round(eventSize * 0.25) + "px";
+    ctx.fillText((EVENTS[list.eventType] || "Lista de regalos").toUpperCase(), w / 2, y);
+    if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
+    y += eventSize * 2.2;
+    ctx.fillStyle = ink;
+    ctx.font = "600 " + titleSize + "px " + font;
+    titleLines.forEach(function (line) { ctx.fillText(line, w / 2, y); y += titleSize * 1.18; });
+    y += dateSize * 0.5;
+    ctx.fillStyle = soft;
+    ctx.font = "400 " + dateSize + "px " + font;
+    ctx.fillText(formatDate(list.eventDate), w / 2, y);
+
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = ink;
+    ctx.font = "600 " + captionSize + "px " + font;
+    ctx.fillText("Nuestra lista de regalos", w / 2, captionY);
+
+    var qrX = (w - qrBox) / 2;
+    ctx.fillStyle = "#fff";
+    roundRect(ctx, qrX, qrTop, qrBox, qrBox, Math.round(w * 0.02));
+    ctx.fill();
+    ctx.strokeStyle = "#e7e2db";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    drawQr(ctx, qr, qrX + qrPad, qrTop + qrPad, qrSize);
+
+    ctx.fillStyle = soft;
+    ctx.font = "400 " + linkSize + "px " + font;
+    ctx.fillText(shortUrl(list), w / 2, linkY);
+    return c;
+  }
+
+  function drawQrOnly(qr) {
+    var size = 1000;
+    var margin = 80;
+    var c = document.createElement("canvas");
+    c.width = size;
+    c.height = size;
+    var ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, size, size);
+    drawQr(ctx, qr, margin, margin, size - margin * 2);
+    return c;
+  }
+
+  function canvasToPng(canvas, name) {
+    return new Promise(function (resolve, reject) {
+      try {
+        canvas.toBlob(function (blob) {
+          if (!blob) return reject(new Error("No pudimos armar la imagen."));
+          saveBlob(blob, name);
+          resolve();
+        }, "image/png");
+      } catch (e) {
+        reject(new Error("No pudimos armar la imagen."));
+      }
+    });
+  }
+
+  function renderShare(r, list) {
+    var url = publicUrl(list);
+    add(r, el("h3", null, "Compartí tu lista"));
+    var share = el("div", "pn-gr-share");
+    var linkInput = document.createElement("input");
+    linkInput.readOnly = true;
+    linkInput.value = url;
+    var copyBtn = button("Copiar link", "pn-gr-btn", function () {
+      linkInput.select();
+      var done = function () { copyBtn.textContent = "¡Copiado!"; setTimeout(function () { copyBtn.textContent = "Copiar link"; }, 1800); };
+      if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, done);
+      else { document.execCommand("copy"); done(); }
+    });
+    add(share, linkInput, copyBtn);
+    r.appendChild(share);
+
+    var actions = el("div", "pn-gr-actions");
+    actions.style.marginTop = "10px";
+    var wa = el("a", "pn-gr-btn pn-gr-btn--ghost", "Compartir por WhatsApp");
+    wa.href = "https://wa.me/?text=" + encodeURIComponent(list.title + " — nuestra lista de regalos: " + url);
+    wa.target = "_blank";
+    wa.rel = "noopener";
+    var error = el("p", "pn-gr-error");
+
+    // Cada boton arma su imagen al tocarlo (el QR se carga recien ahi).
+    var job = function (btn, label, build) {
+      return function () {
+        error.textContent = "";
+        btn.disabled = true;
+        btn.textContent = "Armando…";
+        build().catch(function (e) { error.textContent = e.message; })
+          .then(function () { btn.disabled = false; btn.textContent = label; });
+      };
+    };
+    var fontsReady = function () { return (document.fonts && document.fonts.ready) || Promise.resolve(); };
+    var placa = function (w, h, name) {
+      return function () {
+        return Promise.all([makeQr(url), loadCover(list.coverImage), fontsReady()]).then(function (res) {
+          return canvasToPng(drawPlaca(list, w, h, res[0], res[1]), name);
+        });
+      };
+    };
+    var qrBtn = button("Descargar QR", "pn-gr-btn pn-gr-btn--ghost");
+    qrBtn.addEventListener("click", job(qrBtn, "Descargar QR", function () {
+      return makeQr(url).then(function (qr) { return canvasToPng(drawQrOnly(qr), "qr-" + list.slug + ".png"); });
+    }));
+    var storyBtn = button("Placa para historia", "pn-gr-btn pn-gr-btn--ghost");
+    storyBtn.addEventListener("click", job(storyBtn, "Placa para historia", placa(1080, 1920, "historia-" + list.slug + ".png")));
+    var cardBtn = button("Tarjeta para imprimir", "pn-gr-btn pn-gr-btn--ghost");
+    cardBtn.addEventListener("click", job(cardBtn, "Tarjeta para imprimir", placa(1200, 1800, "tarjeta-" + list.slug + ".png")));
+    add(actions, wa, qrBtn, storyBtn, cardBtn);
+    add(r, actions, el("p", "pn-gr-muted", "La placa para historia es para Instagram o WhatsApp. La tarjeta mide 10×15 cm para imprimir y sumar a la invitación."), error);
   }
 
   function renderPanel(me, list) {
@@ -491,20 +737,7 @@ function clientMain(CFG) {
     r.appendChild(head);
     if (list.message) add(r, el("p", "pn-gr-muted", list.message));
 
-    // Compartir (link simple; QR y placas en la etapa de compartir).
-    add(r, el("h3", null, "Compartí tu lista"));
-    var share = el("div", "pn-gr-share");
-    var linkInput = document.createElement("input");
-    linkInput.readOnly = true;
-    linkInput.value = publicUrl(list);
-    var copyBtn = button("Copiar link", "pn-gr-btn", function () {
-      linkInput.select();
-      var done = function () { copyBtn.textContent = "¡Copiado!"; setTimeout(function () { copyBtn.textContent = "Copiar link"; }, 1800); };
-      if (navigator.clipboard) navigator.clipboard.writeText(linkInput.value).then(done, done);
-      else { document.execCommand("copy"); done(); }
-    });
-    add(share, linkInput, copyBtn);
-    r.appendChild(share);
+    renderShare(r, list);
 
     // Productos
     var itemsHead = el("div", "pn-gr-head");

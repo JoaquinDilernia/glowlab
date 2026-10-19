@@ -27,6 +27,7 @@ const {
   createRateLimiter,
   validateGuestInput,
   searchLists,
+  isCoverImageUrl,
 } = require("./gift-registry");
 
 const NOW = Date.UTC(2026, 9, 19, 12, 0, 0);
@@ -392,4 +393,13 @@ test("searchLists - solo publicas y activas, sin acentos, con limite", () => {
   assert.deepEqual(searchLists(lists, "sofia y").map((l) => l.slug), ["a"]);
   assert.deepEqual(searchLists(lists, "s"), []);
   assert.equal(searchLists(lists, "sofi", 1).length, 1);
+});
+
+test("isCoverImageUrl - solo portadas del modulo en Storage", () => {
+  assert.equal(isCoverImageUrl("https://storage.googleapis.com/pedidos-lett-2.appspot.com/gift-registry/6854698/1-foto.webp"), true);
+  assert.equal(isCoverImageUrl("https://storage.googleapis.com/pedidos-lett-2.appspot.com/images/6854698/1-foto.webp"), false);
+  assert.equal(isCoverImageUrl("http://storage.googleapis.com/b/gift-registry/1/x.webp"), false);
+  assert.equal(isCoverImageUrl("https://evil.com/b/gift-registry/1/x.webp"), false);
+  assert.equal(isCoverImageUrl("https://storage.googleapis.com/b/gift-registry/"), false);
+  assert.equal(isCoverImageUrl("no es url"), false);
 });
