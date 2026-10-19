@@ -618,10 +618,21 @@ function clientMain(CFG) {
 
   // --- boton en la ficha de producto --------------------------------------------
 
+  // Algunas fichas tienen mas de un form de compra (ej. barra fija): se usa
+  // el que tiene el producto y los selects de variante.
+  function productForm() {
+    var forms = document.querySelectorAll(".js-product-form, form[action*='/comprar']");
+    for (var i = 0; i < forms.length; i++) {
+      if (forms[i].querySelector("[name='add_to_cart']") && forms[i].querySelector("[name^='variation']")) return forms[i];
+    }
+    for (var k = 0; k < forms.length; k++) if (forms[k].querySelector("[name='add_to_cart']")) return forms[k];
+    return forms[0] || null;
+  }
+
   function selectedVariant() {
     var variants = (window.LS && window.LS.variants) || [];
     if (variants.length <= 1) return variants[0];
-    var form = document.querySelector(".js-product-form, form[action*='/comprar']");
+    var form = productForm();
     var chosen = [];
     for (var i = 0; i < 3; i++) {
       var s = form && form.querySelector("[name='variation[" + i + "]']");
@@ -635,7 +646,7 @@ function clientMain(CFG) {
   function mountPdpButton() {
     var product = window.LS && window.LS.product;
     if (!product || !memory.token || document.querySelector(".pn-gr-pdp")) return;
-    var form = document.querySelector(".js-product-form, form[action*='/comprar']");
+    var form = productForm();
     if (!form || !form.parentNode) return;
 
     loadMe().then(function (me) {
