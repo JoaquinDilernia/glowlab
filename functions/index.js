@@ -785,6 +785,18 @@ registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive });
 const { registerCombosRoutes } = require('./combos');
 registerCombosRoutes(app, { db, FieldValue, checkStoreActive });
 
+// Lista de Regalos - listas de novios/eventos con pedidos borrador (piloto Alto Rancho)
+const { registerGiftRegistryRoutes } = require('./gift-registry');
+registerGiftRegistryRoutes(app, {
+  db,
+  FieldValue,
+  checkStoreActive,
+  sendEmail: async ({ to, fromName, subject, html, text }) => {
+    if (!SENDGRID_API_KEY) throw new Error('SendGrid no configurado');
+    await sgMail.send({ to, from: { email: 'info@techdi.com.ar', name: fromName || 'Lista de regalos' }, subject, html, text });
+  },
+});
+
 // Carrusel de Categorías - reemplaza el banner fijo nativo de Tiendanube por
 // un carrusel de tarjetas configurable, targeteado por categoría
 const { registerCategoryCarouselRoutes, setCategoryCarouselScriptId } = require('./category-carousel');
