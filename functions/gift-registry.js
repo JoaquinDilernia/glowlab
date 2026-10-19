@@ -8,6 +8,7 @@
 // Plan: docs/superpowers/plans/2026-10-19-lista-de-regalos.md
 
 const crypto = require("crypto");
+const { buildStorefrontScript } = require("./gift-registry-widget");
 
 const CONFIG_COLLECTION = "promonube_gift_registry_config";
 const LISTS_COLLECTION = "promonube_gift_registries";
@@ -837,6 +838,27 @@ function registerGiftRegistryRoutes(app, { db, FieldValue, checkStoreActive, sen
   registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail, guard, getListForStore });
 }
 
+// Loader que se agrega al script de Grupos de Variantes (ya instalado en la
+// tienda) durante el piloto, igual que Combos.
+function buildLoaderSnippet(store) {
+  return `
+(function() {
+  if (window.__pnGiftRegistryLoader) return;
+  window.__pnGiftRegistryLoader = true;
+  var s = document.createElement('script');
+  s.src = '${PUBLIC_BASE}/api/gift-registry-widget.js?store=${store}';
+  s.async = true;
+  document.head.appendChild(s);
+})();
+`;
+}
+
+async function isGiftRegistryEnabled(db, storeId) {
+  if (!isAllowedStore(storeId)) return false;
+  const config = await loadConfig(db, storeId);
+  return config.enabled === true;
+}
+
 // ---------------------------------------------------------------------------
 // Rutas de los novios (storefront, /api/gr/*)
 // ---------------------------------------------------------------------------
@@ -847,6 +869,22 @@ function clientIp(req) {
 
 function registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail, guard, getListForStore }) {
   const authLimiter = createRateLimiter({ max: 20, windowMs: 10 * 60 * 1000 });
+
+  // GET /api/gift-registry-widget.js?store=X
+  app.get("/api/gift-registry-widget.js", async (req, res) => {
+    const { store } = req.query;
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=60");
+    if (!store || !isAllowedStore(store)) return res.send("// Lista de regalos: no disponible");
+    try {
+      const config = await loadConfig(db, store);
+      if (!config.enabled || !(await checkStoreActive(store))) return res.send("// Lista de regalos: deshabilitado");
+      res.send(buildStorefrontScript({ store, api: PUBLIC_BASE, config }));
+    } catch (error) {
+      console.error("[GiftRegistry widget]", error);
+      res.send("// Lista de regalos: error interno");
+    }
+  });
 
   // Tienda habilitada + modulo activo. Devuelve la config o null (ya respondio).
   async function storefrontGuard(storeId, res) {
@@ -1055,5 +1093,7 @@ module.exports = {
   updateItemQuantity,
   giftsCsv,
   createRateLimiter,
+  buildLoaderSnippet,
+  isGiftRegistryEnabled,
   registerGiftRegistryRoutes,
 };
