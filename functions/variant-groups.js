@@ -7,6 +7,10 @@ const {
   collectDetectedColors,
 } = require("./variant-colors");
 const { isCombosEnabled, buildLoaderSnippet } = require("./combos");
+const {
+  isGiftRegistryEnabled,
+  buildLoaderSnippet: buildGiftRegistryLoader,
+} = require("./gift-registry");
 
 const SKU_SUFFIX_LENGTH = 2;
 const MIN_GROUP_KEY_LENGTH = 3;
@@ -616,8 +620,13 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
       if (!(await checkStoreActive(store))) {
         return res.send("// Grupos de Variantes: plan inactivo");
       }
-      // Combos no tiene script propio en Partners: se carga desde este.
-      const combosLoader = (await isCombosEnabled(db, store)) ? buildLoaderSnippet(store) : "";
+      // Combos y Lista de regalos no tienen script propio en Partners: se cargan desde este.
+      const [combosOn, giftRegistryOn] = await Promise.all([
+        isCombosEnabled(db, store),
+        isGiftRegistryEnabled(db, store),
+      ]);
+      const combosLoader = (combosOn ? buildLoaderSnippet(store) : "") +
+        (giftRegistryOn ? buildGiftRegistryLoader(store) : "");
       const doc = await db.collection(COLLECTION).doc(String(store)).get();
       const cfg = doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG;
       if (cfg.enabled === false) {
