@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Palette, LogOut, X, MapPin, MessageCircle,
-  ShoppingBag, Percent, Search, Rocket, Layers, LayoutGrid, Zap, Package
+  ShoppingBag, Percent, Search, Rocket, Layers, LayoutGrid, Zap, Package, Gift
 } from 'lucide-react';
 import { useSubscription } from '../hooks/useSubscription';
 import './Sidebar.css';
@@ -34,16 +34,19 @@ const STORE_EXCLUSIVE_ITEMS = {
     { path: '/checkout-notice', icon: MessageCircle, label: 'Aviso Checkout', exclusive: true },
     { path: '/grupos-variantes', icon: Layers, label: 'Grupos de Variantes', exclusive: true },
     { path: '/combos', icon: Package, label: 'Combos', exclusive: true },
+    { path: '/lista-regalos', icon: Gift, label: 'Lista de Regalos', exclusive: true },
   ],
   '5320806': [
     { divider: true, exclusive: true },
     { path: '/grupos-variantes', icon: Layers, label: 'Grupos de Variantes', exclusive: true },
     { path: '/combos', icon: Package, label: 'Combos', exclusive: true },
+    { path: '/lista-regalos', icon: Gift, label: 'Lista de Regalos', exclusive: true },
   ],
   '6854698': [
     { divider: true, exclusive: true },
     { path: '/grupos-variantes', icon: Layers, label: 'Grupos de Variantes', exclusive: true },
     { path: '/combos', icon: Package, label: 'Combos', exclusive: true },
+    { path: '/lista-regalos', icon: Gift, label: 'Lista de Regalos', exclusive: true },
   ],
 };
 
