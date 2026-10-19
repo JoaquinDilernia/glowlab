@@ -141,3 +141,22 @@
 .vg-chip-remove {
   border: none; background: transparent; color: #f87171; cursor: pointer; font-size: 14px; font-weight: 700; padding: 0 2px;
 }
+
+.vg-palette { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.vg-palette-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px solid var(--gl-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--gl-radius-sm);
+}
+.vg-palette-swatch {
+  width: 32px; height: 32px; flex-shrink: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+.vg-palette-swatch--image { background: rgba(255, 255, 255, 0.06) center / cover; opacity: 0.6; }
+.vg-palette-name { display: flex; flex-direction: column; flex: 1; min-width: 160px; }
+.vg-palette-name .vg-hint { margin: 2px 0 0; }
+.vg-palette-row input[type="color"] {
+  width: 40px; height: 32px; padding: 0; border: none; background: none; cursor: pointer;
+}

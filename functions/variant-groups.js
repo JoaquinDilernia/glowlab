@@ -1,5 +1,12 @@
 "use strict";
 
+const {
+  extractColorLabels,
+  resolveColors,
+  sanitizePalette,
+  collectDetectedColors,
+} = require("./variant-colors");
+
 const SKU_SUFFIX_LENGTH = 2;
 const MIN_GROUP_KEY_LENGTH = 3;
 
@@ -131,18 +138,21 @@ function safeHref(url) {
   return SAFE_HREF_PATTERN.test(s) ? s : "";
 }
 
-function buildWidgetIndex(groups) {
+function buildWidgetIndex(groups, palette) {
   const index = {};
   for (const group of groups || []) {
     if (group.hidden) continue;
     if (!group.products || group.products.length < 2) continue;
+    const colorLabels = extractColorLabels(group.products.map((p) => p.name));
     for (const product of group.products) {
       index[String(product.productId)] = {
         groupKey: group.groupKey,
-        siblings: group.products.map((p) => ({
+        siblings: group.products.map((p, i) => ({
           productId: String(p.productId),
           url: safeHref(p.url),
           image: safeString(p.image),
+          colorName: colorLabels[i],
+          colors: resolveColors(colorLabels[i], palette),
           active: String(p.productId) === String(product.productId),
         })),
       };
@@ -232,6 +242,11 @@ function buildWidgetScript(store, cfg) {
       '.pn-vg-swatch { display: inline-block !important; flex: none !important; width: ' + SWATCH_PX + 'px !important; height: ' + SWATCH_PX + 'px !important; border-radius: 50% !important; background-size: cover !important; background-position: center !important; border: 2px solid transparent !important; text-decoration: none !important; }',
       '.pn-vg-swatch.pn-vg-active { border-color: #111 !important; }',
       'a.pn-vg-swatch { cursor: pointer !important; }',
+      // Modo color: el relleno va en un hijo con 2px de aire, asi el borde
+      // del activo se ve aunque el color sea oscuro, y el filete interno
+      // marca el contorno de los colores claros (blanco, tiza, crema).
+      '.pn-vg-swatch-color { padding: 2px !important; }',
+      '.pn-vg-fill { display: block !important; width: 100% !important; height: 100% !important; border-radius: 50% !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15) !important; }',
       '.pn-vg-swatch-more { display: inline-flex !important; flex: none !important; align-items: center !important; justify-content: center !important; width: ' + SWATCH_PX + 'px !important; height: ' + SWATCH_PX + 'px !important; border-radius: 50% !important; background: rgba(0,0,0,0.06) !important; color: #666 !important; font-size: ' + Math.round(SWATCH_PX * 0.32) + 'px !important; font-weight: 600 !important; line-height: 1 !important; }',
     ].join('');
     document.head.appendChild(s);
@@ -267,9 +282,25 @@ function buildWidgetScript(store, cfg) {
     }
     visible.forEach(function(sib) {
       var el = document.createElement(sib.active ? 'span' : 'a');
-      el.className = 'pn-vg-swatch' + (sib.active ? ' pn-vg-active' : '');
+      var colors = sib.colors || [];
+      // Sin color detectado se cae a la foto, para no dejar un circulo vacio.
+      var useColor = CFG.swatchMode === 'color' && colors.length > 0;
+      el.className = 'pn-vg-swatch' + (useColor ? ' pn-vg-swatch-color' : '') + (sib.active ? ' pn-vg-active' : '');
       if (!sib.active) el.setAttribute('href', sib.url);
-      if (sib.image) el.style.backgroundImage = 'url(' + sib.image + ')';
+      if (sib.colorName) {
+        el.setAttribute('title', sib.colorName);
+        el.setAttribute('aria-label', sib.colorName);
+      }
+      if (useColor) {
+        var fill = document.createElement('span');
+        fill.className = 'pn-vg-fill';
+        fill.style.background = colors.length > 1
+          ? 'linear-gradient(135deg, ' + colors[0] + ' 50%, ' + colors[1] + ' 50%)'
+          : colors[0];
+        el.appendChild(fill);
+      } else if (sib.image) {
+        el.style.backgroundImage = 'url(' + sib.image + ')';
+      }
       row.appendChild(el);
     });
     if (hiddenCount > 0) {
@@ -377,6 +408,8 @@ const DEFAULT_CONFIG = {
   showOnListing: true,
   showOnPDP: true,
   swatchSize: "md",
+  swatchMode: "image",
+  colorPalette: {},
   groups: [],
   ungrouped: [],
   lastScanAt: null,
@@ -425,7 +458,8 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
     try {
       const doc = await db.collection(COLLECTION).doc(String(storeId)).get();
       const config = doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG;
-      res.json({ success: true, config });
+      // detectedColors no se persiste: se deriva de los grupos publicados.
+      res.json({ success: true, config, detectedColors: collectDetectedColors(config.groups) });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -448,6 +482,8 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
         showOnListing: config.showOnListing !== false,
         showOnPDP: config.showOnPDP !== false,
         swatchSize: ["sm", "md", "lg"].includes(config.swatchSize) ? config.swatchSize : "md",
+        swatchMode: config.swatchMode === "color" ? "color" : "image",
+        colorPalette: sanitizePalette(config.colorPalette),
         updatedAt: FieldValue.serverTimestamp(),
       };
       await db.collection(COLLECTION).doc(String(storeId)).set(settings, { merge: true });
@@ -589,6 +625,7 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
           showOnListing: cfg.showOnListing !== false,
           showOnPDP: cfg.showOnPDP !== false,
           swatchSize: cfg.swatchSize || "md",
+          swatchMode: cfg.swatchMode === "color" ? "color" : "image",
         })
       );
     } catch (error) {
@@ -611,7 +648,7 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
       if (!doc.exists) return res.json({});
       const cfg = doc.data();
       if (cfg.enabled === false) return res.json({});
-      res.json(buildWidgetIndex(cfg.groups || []));
+      res.json(buildWidgetIndex(cfg.groups || [], cfg.colorPalette || {}));
     } catch (error) {
       res.json({});
     }

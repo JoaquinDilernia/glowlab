@@ -15,6 +15,8 @@ const DEFAULT_CONFIG = {
   showOnListing: true,
   showOnPDP: true,
   swatchSize: 'md',
+  swatchMode: 'image',
+  colorPalette: {},
   groups: [],
   ungrouped: [],
   lastScanAt: null,
@@ -33,6 +35,8 @@ export default function VariantGroupsConfig() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [detectedColors, setDetectedColors] = useState([]);
+  const [colorFilter, setColorFilter] = useState('');
 
   const loadConfig = useCallback(async () => {
     if (!ALLOWED_STORE_IDS.includes(String(storeId))) return;
@@ -40,6 +44,7 @@ export default function VariantGroupsConfig() {
       const res = await apiRequest(`/api/variant-groups-config?storeId=${storeId}`);
       if (res?.success && res.config) {
         setConfig({ ...DEFAULT_CONFIG, ...res.config });
+        setDetectedColors(res.detectedColors || []);
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -63,6 +68,38 @@ export default function VariantGroupsConfig() {
       setSaving(false);
     }
   }, [storeId, config, toast]);
+
+  // Colores que se ven en la tienda: lo cargado a mano en la paleta o, si no,
+  // lo detectado por el backend a partir del nombre.
+  const effectiveColors = (item) => {
+    const override = config.colorPalette?.[item.key];
+    return override ? [override.hex, override.hex2].filter(Boolean) : item.autoColors;
+  };
+
+  const setPaletteColor = (item, field, value) => setConfig(c => {
+    const auto = item.autoColors;
+    const current = c.colorPalette?.[item.key] || {
+      hex: auto[0] || '#cccccc',
+      ...(auto[1] ? { hex2: auto[1] } : {}),
+    };
+    const next = { ...current, [field]: value };
+    if (value === null) delete next[field];
+    return { ...c, colorPalette: { ...c.colorPalette, [item.key]: next } };
+  });
+
+  const resetPaletteColor = (key) => setConfig(c => {
+    const next = { ...c.colorPalette };
+    delete next[key];
+    return { ...c, colorPalette: next };
+  });
+
+  const paletteItems = detectedColors
+    .filter(item => !colorFilter.trim() || item.label.toLowerCase().includes(colorFilter.trim().toLowerCase()))
+    .sort((a, b) => (effectiveColors(a).length ? 1 : 0) - (effectiveColors(b).length ? 1 : 0) || b.count - a.count);
+
+  const swatchBackground = (colors) => colors.length > 1
+    ? `linear-gradient(135deg, ${colors[0]} 50%, ${colors[1]} 50%)`
+    : colors[0];
 
   const [scanning, setScanning] = useState(false);
   const [proposal, setProposal] = useState(null);
@@ -325,6 +362,13 @@ export default function VariantGroupsConfig() {
               onChange={e => setConfig(c => ({ ...c, showOnPDP: e.target.checked }))} /> Mostrar en ficha de producto
           </label>
           <div className="vg-field">
+            <label>Círculo de variante</label>
+            <select value={config.swatchMode} onChange={e => setConfig(c => ({ ...c, swatchMode: e.target.value }))}>
+              <option value="image">Foto del producto</option>
+              <option value="color">Color</option>
+            </select>
+          </div>
+          <div className="vg-field">
             <label>Tamaño de swatch</label>
             <select value={config.swatchSize} onChange={e => setConfig(c => ({ ...c, swatchSize: e.target.value }))}>
               <option value="sm">Chico</option>
@@ -336,6 +380,67 @@ export default function VariantGroupsConfig() {
         <p className="vg-hint">
           {config.lastScanAt ? 'Último escaneo publicado.' : 'Todavía no escaneaste el catálogo.'}
         </p>
+      </div>
+
+      <div className="config-section">
+        <div className="section-header"><h2>Paleta de colores</h2></div>
+        <p className="vg-hint">
+          El color se detecta del nombre de cada producto (ej. "Mesa Brooklyn <b>Negro</b> 1,20 mts").
+          Es aproximado: ajustalo acá y se aplica a todos los productos con ese color.
+          Si un color no se reconoce, en la tienda se sigue mostrando la foto.
+          {config.swatchMode !== 'color' && ' Se usa cuando el círculo está en modo "Color".'}
+        </p>
+
+        {detectedColors.length === 0 ? (
+          <p className="vg-hint">Publicá grupos para ver sus colores.</p>
+        ) : (
+          <>
+            <input
+              type="text"
+              className="vg-search"
+              placeholder="Buscar color…"
+              value={colorFilter}
+              onChange={e => setColorFilter(e.target.value)}
+            />
+            <div className="vg-palette">
+              {paletteItems.map(item => {
+                const colors = effectiveColors(item);
+                const edited = !!config.colorPalette?.[item.key];
+                return (
+                  <div key={item.key} className="vg-palette-row">
+                    {colors.length > 0
+                      ? <span className="vg-palette-swatch" style={{ background: swatchBackground(colors) }} />
+                      : <span className="vg-palette-swatch vg-palette-swatch--image"
+                          style={item.sampleImage ? { backgroundImage: `url(${item.sampleImage})` } : undefined} />}
+                    <div className="vg-palette-name">
+                      <strong>{item.label}</strong>
+                      <span className="vg-hint">
+                        {item.count} {item.count === 1 ? 'producto' : 'productos'}
+                        {colors.length === 0 && ' · sin color, se muestra la foto'}
+                        {edited && ' · editado'}
+                      </span>
+                    </div>
+                    <input type="color" value={colors[0] || '#cccccc'}
+                      onChange={e => setPaletteColor(item, 'hex', e.target.value)} />
+                    {colors[1] ? (
+                      <>
+                        <input type="color" value={colors[1]}
+                          onChange={e => setPaletteColor(item, 'hex2', e.target.value)} />
+                        <button className="btn-back" onClick={() => setPaletteColor(item, 'hex2', null)}>Quitar 2º</button>
+                      </>
+                    ) : (
+                      <button className="btn-back" onClick={() => setPaletteColor(item, 'hex2', '#ffffff')}>+ 2º color</button>
+                    )}
+                    {edited && (
+                      <button className="btn-back" onClick={() => resetPaletteColor(item.key)}>Restablecer</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="vg-hint">Los cambios de la paleta se guardan con el botón Guardar de arriba.</p>
+          </>
+        )}
       </div>
 
       <div className="config-section">

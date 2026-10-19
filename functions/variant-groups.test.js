@@ -352,3 +352,19 @@ test("fetchAllStoreProducts - no supera MAX_PAGES aunque el API devuelva paginas
   assert.equal(calls, 50);
   assert.equal(products.length, 50 * 200);
 });
+
+test("buildWidgetIndex - cada sibling lleva su nombre y colores (paleta pisa diccionario)", () => {
+  const groups = [{
+    groupKey: "MSA120", title: "Mesa Brooklyn", hidden: false, excludedProductIds: [],
+    products: [
+      { productId: "1", sku: "MSA120NG", name: "Mesa Brooklyn Negro 1,20 mts", image: "", url: "/a" },
+      { productId: "2", sku: "MSA120GR", name: "Mesa Brooklyn Greige 1,20 mts", image: "", url: "/b" },
+    ],
+  }];
+  const index = buildWidgetIndex(groups, { greige: { hex: "#aabbcc" } });
+  const [negro, greige] = index["1"].siblings;
+  assert.equal(negro.colorName, "Negro");
+  assert.equal(negro.colors.length, 1);
+  assert.equal(greige.colorName, "Greige");
+  assert.deepEqual(greige.colors, ["#aabbcc"]);
+});
