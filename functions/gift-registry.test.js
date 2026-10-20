@@ -245,7 +245,7 @@ test("generateEditKey / bearerKey - formato y lectura del header", () => {
 });
 
 test("editUrl - sin dominio no hay link", () => {
-  assert.equal(editUrl("https://tienda.com", "/lista-de-regalos/", "abc"), "https://tienda.com/lista-de-regalos/?editar=abc");
+  assert.equal(editUrl("https://tienda.com", "/lista-de-regalos/", "abc"), "https://tienda.com/lista-de-regalos/#editar=abc");
   assert.equal(editUrl("", "/lista-de-regalos/", "abc"), "");
 });
 

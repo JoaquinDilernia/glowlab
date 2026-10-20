@@ -350,7 +350,8 @@ function bearerKey(authHeader) {
 }
 
 function editUrl(baseUrl, pagePath, editKey) {
-  return baseUrl && editKey ? `${baseUrl}${pagePath}?editar=${editKey}` : "";
+  // En el hash: no viaja a servidores ni a los trackers de la tienda.
+  return baseUrl && editKey ? `${baseUrl}${pagePath}#editar=${editKey}` : "";
 }
 
 function publicListUrl(baseUrl, pagePath, slug) {
@@ -667,7 +668,7 @@ function registerGiftRegistryRoutes(app, { db, FieldValue, checkStoreActive, sen
     let pagePath = str(config.pagePath) || DEFAULT_CONFIG.pagePath;
     if (!pagePath.startsWith("/")) pagePath = `/${pagePath}`;
     if (!pagePath.endsWith("/")) pagePath = `${pagePath}/`;
-    if (!/^\/[a-z0-9\-/]+\/$/i.test(pagePath)) return res.status(400).json({ success: false, message: "La ruta de la página no es válida" });
+    if (!/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*\/$/i.test(pagePath)) return res.status(400).json({ success: false, message: "La ruta de la página no es válida" });
 
     try {
       const current = await loadConfig(db, storeId);
@@ -868,8 +869,11 @@ async function isGiftRegistryEnabled(db, storeId) {
 // Rutas de los novios (storefront, /api/gr/*)
 // ---------------------------------------------------------------------------
 
+// El proxy de Railway agrega la IP real al final de X-Forwarded-For; las
+// entradas anteriores las puede inventar el cliente.
 function clientIp(req) {
-  return str(req.headers["x-forwarded-for"]).split(",")[0].trim() || req.ip || "";
+  const hops = str(req.headers["x-forwarded-for"]).split(",").map((s) => s.trim()).filter(Boolean);
+  return hops[hops.length - 1] || req.ip || "";
 }
 
 function registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail, guard }) {

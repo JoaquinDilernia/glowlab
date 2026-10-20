@@ -28,7 +28,6 @@ const WIDGET_DATA_TTL_MS = 5 * 60 * 1000;
 const IDS_PER_REQUEST = 50;
 
 const MAX_COMBO_IMAGES = 6;
-const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const TEXT_LIMITS = { includesText: 120, shortDescription: 300, description: 3000 };
 
 const DEFAULT_CONFIG = {
@@ -90,18 +89,18 @@ function slugify(text) {
 }
 
 // Completa los slugs vacios (desde el nombre, con sufijo -2, -3... si chocan).
-// Los que escribio el comercio se respetan, pero no pueden repetirse.
+// Los que escribio el comercio se normalizan ("Mesa Ñandú " -> "mesa-nandu")
+// y se respetan, pero no pueden repetirse.
 function assignSlugs(combos) {
   const taken = new Set();
-  for (const c of combos) {
-    const slug = typeof c.slug === "string" ? c.slug.trim() : "";
+  const explicit = combos.map((c) => slugify(typeof c.slug === "string" ? c.slug : ""));
+  for (const slug of explicit) {
     if (!slug) continue;
-    if (!SLUG_PATTERN.test(slug) || slug.length > 60) return { ok: false, message: `La URL "${slug}" no es válida.` };
     if (taken.has(slug)) return { ok: false, message: `Hay dos combos con la URL "${slug}".` };
     taken.add(slug);
   }
-  const out = combos.map((c) => {
-    const slug = typeof c.slug === "string" ? c.slug.trim() : "";
+  const out = combos.map((c, i) => {
+    const slug = explicit[i];
     if (slug) return { ...c, slug };
     const base = slugify(c.name) || "combo";
     let next = base;
@@ -1055,7 +1054,7 @@ function registerCombosRoutes(app, { db, FieldValue, checkStoreActive }) {
     let pagePath = typeof config.pagePath === "string" && config.pagePath.trim() ? config.pagePath.trim() : DEFAULT_CONFIG.pagePath;
     if (!pagePath.startsWith("/")) pagePath = `/${pagePath}`;
     if (!pagePath.endsWith("/")) pagePath = `${pagePath}/`;
-    if (!/^\/[a-z0-9\-/]+\/$/i.test(pagePath)) {
+    if (!/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*\/$/i.test(pagePath)) {
       return res.status(400).json({ success: false, message: "La dirección de la página de combos no es válida" });
     }
     if (!(await checkStoreActive(storeId))) {

@@ -194,11 +194,16 @@ test("assignSlugs - un slug generado no pisa uno explicito", () => {
   assert.deepEqual(r.combos.map((c) => c.slug), ["comedor-2", "comedor"]);
 });
 
-test("assignSlugs - rechaza slug explicito repetido o invalido", () => {
-  assert.equal(assignSlugs([{ name: "a", slug: "x" }, { name: "b", slug: "x" }]).ok, false);
-  const bad = assignSlugs([{ name: "a", slug: "Mal Slug!" }]);
-  assert.equal(bad.ok, false);
-  assert.match(bad.message, /Mal Slug!/);
+test("assignSlugs - rechaza slug explicito repetido", () => {
+  const dup = assignSlugs([{ name: "a", slug: "x" }, { name: "b", slug: "X " }]);
+  assert.equal(dup.ok, false);
+  assert.match(dup.message, /"x"/);
+});
+
+test("assignSlugs - normaliza lo que escribe el comercio", () => {
+  const r = assignSlugs([{ name: "a", slug: "Mesa Ñandú -" }, { name: "Comedor", slug: "!!!" }]);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.combos.map((c) => c.slug), ["mesa-nandu", "comedor"]);
 });
 
 test("sanitizeCombo - conserva ficha y descarta imagenes externas", () => {

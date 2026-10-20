@@ -42,7 +42,7 @@ function ComboSheet({ storeId, combo, pagePath, onChange }) {
         <div className="vg-field">
           <label>URL del combo</label>
           <input type="text" value={combo.slug || ''} placeholder="se genera del nombre"
-            onChange={e => onChange({ slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} />
+            onChange={e => onChange({ slug: e.target.value })} />
           <small className="cb-counter">{pagePath}?combo={slugPreview}</small>
         </div>
         <label className="vg-check cb-sheet-check">
@@ -175,8 +175,12 @@ export default function CombosConfig() {
         body: JSON.stringify({ storeId, config }),
       });
       if (res?.success) {
-        // El server completa los slugs y limpia los textos.
-        if (Array.isArray(res.combos)) setConfig(c => ({ ...c, combos: res.combos }));
+        // El server completa los slugs; se toma solo eso para no pisar lo que
+        // se haya editado mientras se guardaba.
+        if (Array.isArray(res.combos)) {
+          const slugs = Object.fromEntries(res.combos.map(cb => [cb.id, cb.slug]));
+          setConfig(c => ({ ...c, combos: c.combos.map(cb => (slugs[cb.id] ? { ...cb, slug: slugs[cb.id] } : cb)) }));
+        }
         toast.success('Combos guardados');
       } else {
         toast.error(res?.message || 'Error al guardar');

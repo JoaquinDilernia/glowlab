@@ -166,7 +166,9 @@ function clientMain(CFG) {
   }
 
   function params() { return new URLSearchParams(window.location.search); }
-  function pageUrl(query) { return CFG.pagePath + (query ? "?" + query : ""); }
+  // query "#..." va al hash (el link de edicion), el resto a la query string.
+  function pageUrl(query) { return CFG.pagePath + (!query ? "" : query.charAt(0) === "#" ? query : "?" + query); }
+  function hashParams() { return new URLSearchParams(window.location.hash.replace(/^#/, "")); }
   function go(query) {
     window.history.pushState({}, "", pageUrl(query));
     route();
@@ -427,7 +429,8 @@ function clientMain(CFG) {
   function publicUrl(list) {
     return window.location.origin + CFG.pagePath + "?lista=" + encodeURIComponent(list.slug);
   }
-  function editQuery(key) { return "editar=" + encodeURIComponent(key); }
+  // El link de edicion va en el hash: no viaja a servidores ni a los trackers (Pixel, GA).
+  function editQuery(key) { return "#editar=" + encodeURIComponent(key); }
   function editLink(key) { return window.location.origin + pageUrl(editQuery(key)); }
 
   // Input de solo lectura con boton de copiar.
@@ -973,7 +976,10 @@ function clientMain(CFG) {
   function route() {
     var p = params();
     if (p.get("lista")) return renderGuestRoute(p.get("lista"));
-    if (p.get("editar")) return renderEditRoute(p.get("editar"), p.get("nueva"));
+    var h = hashParams();
+    if (h.get("editar")) return renderEditRoute(h.get("editar"), h.get("nueva"));
+    // Links viejos con ?editar=: se pasan al hash para sacar la clave de la URL.
+    if (p.get("editar")) return replace(editQuery(p.get("editar")));
     if (p.has("crear")) return renderListForm(null);
     if (p.has("panel")) return renderMineRoute();
     if (window.location.pathname === CFG.pagePath) return renderHome();
@@ -1067,9 +1073,12 @@ function clientMain(CFG) {
 
   function start() {
     var p = params();
-    if (window.location.pathname === CFG.pagePath || p.get("lista") || p.get("editar") || p.has("panel") || p.has("crear")) route();
+    if (window.location.pathname === CFG.pagePath || p.get("lista") || p.get("editar") || hashParams().get("editar") || p.has("panel") || p.has("crear")) route();
     else mountPdpButton();
   }
+  window.addEventListener("hashchange", function () {
+    if (root || hashParams().get("editar")) route();
+  });
   window.addEventListener("popstate", function () {
     if (root) route();
   });
