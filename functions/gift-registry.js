@@ -12,8 +12,6 @@ const { buildStorefrontScript } = require("./gift-registry-widget");
 
 const CONFIG_COLLECTION = "promonube_gift_registry_config";
 const LISTS_COLLECTION = "promonube_gift_registries";
-const OTP_COLLECTION = "promonube_gift_registry_otps";
-const SESSION_COLLECTION = "promonube_gift_registry_sessions";
 
 const TN_V1 = "https://api.tiendanube.com/v1";
 const TN_UA = "GlowLab (info@techdi.com.ar)";
@@ -36,10 +34,6 @@ const DEFAULT_CONFIG = {
   webhookId: null,
 };
 
-const OTP_TTL_MS = 10 * 60 * 1000;
-const OTP_MAX_ATTEMPTS = 5;
-const OTP_MAX_SENDS_PER_HOUR = 5;
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ITEMS_PER_LIST = 300;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -99,7 +93,8 @@ function validateListInput(input, { allowedModes } = {}) {
     .map((o) => ({ name: str(o && o.name).slice(0, 80), email: str(o && o.email).toLowerCase() }))
     .filter((o) => o.name || o.email);
   if (owners.length < 1 || owners.length > 2) errors.push("La lista tiene que tener 1 o 2 personas a cargo.");
-  if (owners.some((o) => !EMAIL_PATTERN.test(o.email))) errors.push("Hay un email inválido.");
+  // El email del primero es obligatorio (ahi le llega el link de edicion); el de la pareja, opcional.
+  if (owners.some((o, i) => (i === 0 || o.email) && !EMAIL_PATTERN.test(o.email))) errors.push("Hay un email inválido.");
 
   const deliveryMode = src.deliveryMode;
   if (!modes.includes(deliveryMode)) errors.push("El modo de entrega no está disponible.");
@@ -130,7 +125,6 @@ function validateListInput(input, { allowedModes } = {}) {
       address,
       message,
       coverImage,
-      public: src.public === true,
     },
   };
 }
@@ -223,7 +217,6 @@ function ownerListView(list, gifts, now) {
     coverImage: list.coverImage || "",
     deliveryMode: list.deliveryMode,
     address: list.address || null,
-    public: !!list.public,
     owners: list.owners || [],
     items: itemsWithAvailability(list, gifts, now),
     gifts: (gifts || [])
@@ -342,55 +335,44 @@ function matchOrderToGift(order, candidates, now) {
 }
 
 // ---------------------------------------------------------------------------
-// Auth de novios por codigo al email
+// Link privado de edicion: quien lo tiene edita la lista (sin login ni codigo)
 // ---------------------------------------------------------------------------
 
-function sha256(s) {
-  return crypto.createHash("sha256").update(String(s)).digest("hex");
+// 192 bits: no se puede adivinar. Se guarda en la lista para que el comercio
+// pueda reenviarlo si los novios lo pierden.
+function generateEditKey() {
+  return crypto.randomBytes(24).toString("base64url");
 }
 
-function generateCode() {
-  return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+function bearerKey(authHeader) {
+  const m = /^Bearer\s+([A-Za-z0-9_-]{20,})$/.exec(str(authHeader));
+  return m ? m[1] : null;
 }
 
-function generateToken() {
-  return crypto.randomBytes(32).toString("base64url");
+function editUrl(baseUrl, pagePath, editKey) {
+  return baseUrl && editKey ? `${baseUrl}${pagePath}?editar=${editKey}` : "";
 }
 
-function recentSends(sends, now) {
-  return (sends || []).filter((t) => now - t < 60 * 60 * 1000);
+function publicListUrl(baseUrl, pagePath, slug) {
+  return baseUrl ? `${baseUrl}${pagePath}?lista=${slug}` : "";
 }
 
-function canSendCode(sends, now) {
-  return recentSends(sends, now).length < OTP_MAX_SENDS_PER_HOUR;
-}
-
-function otpDocId(storeId, email) {
-  return `${storeId}_${sha256(email)}`;
-}
-
-function codeEmail(storeName, code) {
+function editLinkEmail(storeName, list, { editLink, shareLink }) {
   const name = storeName || "la tienda";
+  const share = shareLink
+    ? `<p style="margin:20px 0 6px">Y este es el link para compartir con tus invitados:</p>
+<p style="margin:0"><a href="${escapeHtml(shareLink)}" style="color:#353434">${escapeHtml(shareLink)}</a></p>`
+    : "";
   return {
-    subject: `Tu código para tu lista de regalos: ${code}`,
-    text: `Tu código para entrar a tu lista de regalos de ${name} es ${code}. Vence en 10 minutos.\n\nSi no lo pediste, ignorá este mail.`,
+    subject: `Tu lista de regalos "${list.title}" en ${name}`,
+    text: `¡Tu lista de regalos "${list.title}" en ${name} está lista!\n\n` +
+      `Tu link privado para editarla (guardalo y no lo compartas): ${editLink}\n` +
+      (shareLink ? `\nLink para tus invitados: ${shareLink}\n` : ""),
     html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#353434">
-<p style="margin:0 0 12px">Tu código para entrar a tu lista de regalos de <b>${escapeHtml(name)}</b> es:</p>
-<p style="font-size:32px;letter-spacing:6px;font-weight:700;margin:0 0 12px">${code}</p>
-<p style="margin:0;color:#8a8580;font-size:13px">Vence en 10 minutos. Si no lo pediste, ignorá este mail.</p>
-</div>`,
-  };
-}
-
-function invitationEmail(storeName, list, panelUrl) {
-  const name = storeName || "la tienda";
-  return {
-    subject: `Tu lista de regalos "${list.title}" en ${name} está lista`,
-    text: `¡Hola! ${name} creó tu lista de regalos "${list.title}". Entrá con este email para agregar productos y compartirla: ${panelUrl}`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#353434">
-<p style="margin:0 0 12px">¡Hola! <b>${escapeHtml(name)}</b> creó tu lista de regalos <b>${escapeHtml(list.title)}</b>.</p>
-<p style="margin:0 0 20px">Entrá con este email para agregar productos y compartirla con tus invitados.</p>
-<p style="margin:0"><a href="${escapeHtml(panelUrl)}" style="background:#353434;color:#fff;padding:12px 20px;border-radius:5px;text-decoration:none;display:inline-block">Ir a mi lista</a></p>
+<p style="margin:0 0 12px">¡Tu lista de regalos <b>${escapeHtml(list.title)}</b> en <b>${escapeHtml(name)}</b> está lista!</p>
+<p style="margin:0 0 20px">Con este botón entrás a editarla cuando quieras: agregar productos, cambiar datos y ver los regalos. Guardá este mail y no lo reenvíes.</p>
+<p style="margin:0"><a href="${escapeHtml(editLink)}" style="background:#353434;color:#fff;padding:12px 20px;border-radius:5px;text-decoration:none;display:inline-block">Editar mi lista</a></p>
+${share}
 </div>`,
   };
 }
@@ -399,77 +381,31 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-async function requestCode({ db, storeId, email, storeName, sendEmail, now = Date.now() }) {
-  const normalized = str(email).toLowerCase();
-  if (!EMAIL_PATTERN.test(normalized)) return { ok: false, message: "Email inválido" };
-  const ref = db.collection(OTP_COLLECTION).doc(otpDocId(storeId, normalized));
-  const doc = await ref.get();
-  const sends = doc.exists ? recentSends(doc.data().sends, now) : [];
-  if (!canSendCode(sends, now)) return { ok: false, message: "Pediste muchos códigos. Probá de nuevo en un rato." };
-
-  const code = generateCode();
-  await ref.set({
-    storeId: String(storeId),
-    codeHash: sha256(`${normalized}:${code}`),
-    expiresAt: now + OTP_TTL_MS,
-    attempts: 0,
-    sends: [...sends, now],
-  });
-  await sendEmail({ to: normalized, fromName: storeName, ...codeEmail(storeName, code) });
-  return { ok: true };
-}
-
-async function verifyCode({ db, storeId, email, code, now = Date.now() }) {
-  const normalized = str(email).toLowerCase();
-  const ref = db.collection(OTP_COLLECTION).doc(otpDocId(storeId, normalized));
-  const doc = await ref.get();
-  const fail = { ok: false, message: "El código no es válido o venció." };
-  if (!doc.exists) return fail;
-  const otp = doc.data();
-  if (otp.expiresAt <= now || otp.attempts >= OTP_MAX_ATTEMPTS) return fail;
-  if (otp.codeHash !== sha256(`${normalized}:${str(code)}`)) {
-    await ref.update({ attempts: (otp.attempts || 0) + 1 });
-    return fail;
+// Manda el link de edicion a los que tienen email. Nunca corta el flujo.
+async function sendEditLink({ sendEmail, storeName, list, editLink, shareLink }) {
+  const mail = editLinkEmail(storeName, list, { editLink, shareLink });
+  let sent = false;
+  for (const owner of list.owners || []) {
+    if (!owner.email) continue;
+    try {
+      await sendEmail({ to: owner.email, fromName: storeName, ...mail });
+      sent = true;
+    } catch (e) {
+      console.error("[GiftRegistry email]", e.message);
+    }
   }
-  const token = generateToken();
-  await db.collection(SESSION_COLLECTION).doc(sha256(token)).set({
-    storeId: String(storeId),
-    email: normalized,
-    expiresAt: now + SESSION_TTL_MS,
-  });
-  await ref.delete();
-  return { ok: true, token };
-}
-
-async function getSession(db, storeId, authHeader, now = Date.now()) {
-  const m = /^Bearer\s+(.+)$/i.exec(str(authHeader));
-  if (!m) return null;
-  const doc = await db.collection(SESSION_COLLECTION).doc(sha256(m[1])).get();
-  if (!doc.exists) return null;
-  const s = doc.data();
-  if (s.storeId !== String(storeId) || s.expiresAt <= now) return null;
-  return { email: s.email };
+  return sent;
 }
 
 // ---------------------------------------------------------------------------
 // Panel de los novios: reglas puras
 // ---------------------------------------------------------------------------
 
-function isOwner(list, email) {
-  const e = str(email).toLowerCase();
-  return !!e && (list.owners || []).some((o) => o.email === e);
-}
-
-// Edicion de los datos de la lista: quien edita tiene que seguir siendo owner.
-function mergeListEdit(list, input, { allowedModes, editorEmail }) {
+function mergeListEdit(list, input, { allowedModes }) {
   const src = input && typeof input === "object" ? input : {};
   const merged = { ...list, ...src };
   if (!Array.isArray(src.owners)) merged.owners = list.owners;
-  const v = validateListInput(merged, { allowedModes });
-  if (v.ok && !isOwner(v.value, editorEmail)) {
-    return { ok: false, errors: ["No podés sacarte de la lista."], value: null };
-  }
-  return v;
+  return validateListInput(merged, { allowedModes });
 }
 
 // Si la variante ya esta en la lista, suma cantidad en vez de duplicarla.
@@ -552,19 +488,7 @@ function validateGuestInput(input) {
   };
 }
 
-// Buscador de la tienda: solo listas publicas y activas, por nombre.
-function searchLists(lists, q, limit = 10) {
-  const needle = slugify(q).replace(/-/g, " ");
-  if (needle.length < 2) return [];
-  return (lists || [])
-    .filter((l) => l.public === true && l.status === "active")
-    .filter((l) => slugify(l.title).replace(/-/g, " ").includes(needle))
-    .sort((a, b) => String(a.eventDate).localeCompare(String(b.eventDate)))
-    .slice(0, limit)
-    .map((l) => ({ slug: l.slug, title: l.title, eventType: l.eventType, eventDate: l.eventDate }));
-}
-
-// Rate limit en memoria (por instancia): suficiente para frenar abuso de /auth.
+// Rate limit en memoria (por instancia): suficiente para frenar abuso.
 function createRateLimiter({ max, windowMs }) {
   const hits = new Map();
   return function allow(key, now = Date.now()) {
@@ -675,6 +599,7 @@ async function createList({ db, FieldValue, storeId, value, createdBy }) {
     slug,
     status: "active",
     items: [],
+    editKey: generateEditKey(),
     createdBy,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -683,8 +608,15 @@ async function createList({ db, FieldValue, storeId, value, createdBy }) {
   return { id: ref.id, ...list };
 }
 
-function panelUrl(baseUrl, pagePath) {
-  return baseUrl ? `${baseUrl}${pagePath}?panel` : "";
+async function findListByEditKey(db, storeId, editKey) {
+  const snap = await db.collection(LISTS_COLLECTION)
+    .where("storeId", "==", String(storeId))
+    .where("editKey", "==", editKey)
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  const doc = snap.docs[0];
+  return { ref: doc.ref, list: { id: doc.id, ...doc.data() } };
 }
 
 // ---------------------------------------------------------------------------
@@ -795,12 +727,20 @@ function registerGiftRegistryRoutes(app, { db, FieldValue, checkStoreActive, sen
       const now = Date.now();
       const config = await loadConfig(db, storeId);
       const info = await getStoreInfo(db, storeId);
+      // Listas creadas antes del link de edicion: se les genera uno.
+      let editKey = found.list.editKey;
+      if (!editKey) {
+        editKey = generateEditKey();
+        await found.ref.update({ editKey });
+      }
+      const baseUrl = info && info.baseUrl;
       res.json({
         success: true,
         list: {
           ...ownerListView(found.list, gifts, now),
           createdBy: found.list.createdBy,
-          publicUrl: info && info.baseUrl ? `${info.baseUrl}${config.pagePath}?lista=${found.list.slug}` : "",
+          publicUrl: publicListUrl(baseUrl, config.pagePath, found.list.slug),
+          editUrl: editUrl(baseUrl, config.pagePath, editKey),
         },
         gifts: gifts
           .filter((g) => g.status !== "expired")
@@ -834,20 +774,18 @@ function registerGiftRegistryRoutes(app, { db, FieldValue, checkStoreActive, sen
       const created = await createList({ db, FieldValue, storeId, value: v.value, createdBy: "store" });
 
       const info = await getStoreInfo(db, storeId);
-      const url = panelUrl(info && info.baseUrl, config.pagePath);
-      let invited = false;
-      if (url) {
-        const mail = invitationEmail(info.storeName, created, url);
-        for (const owner of created.owners) {
-          try {
-            await sendEmail({ to: owner.email, fromName: info.storeName, ...mail });
-            invited = true;
-          } catch (e) {
-            console.error("[GiftRegistry invite]", e.message);
-          }
-        }
-      }
-      res.json({ success: true, id: created.id, slug: created.slug, invited });
+      const baseUrl = info && info.baseUrl;
+      const editLink = editUrl(baseUrl, config.pagePath, created.editKey);
+      const invited = editLink
+        ? await sendEditLink({
+          sendEmail,
+          storeName: info.storeName,
+          list: created,
+          editLink,
+          shareLink: publicListUrl(baseUrl, config.pagePath, created.slug),
+        })
+        : false;
+      res.json({ success: true, id: created.id, slug: created.slug, invited, editUrl: editLink });
     } catch (error) {
       console.error("[GiftRegistry create]", error);
       res.status(500).json({ success: false, message: error.message });
@@ -901,7 +839,7 @@ function registerGiftRegistryRoutes(app, { db, FieldValue, checkStoreActive, sen
     }
   });
 
-  registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail, guard, getListForStore });
+  registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail, guard });
   registerOrderWebhook(app, { db });
 }
 
@@ -934,8 +872,8 @@ function clientIp(req) {
   return str(req.headers["x-forwarded-for"]).split(",")[0].trim() || req.ip || "";
 }
 
-function registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail, guard, getListForStore }) {
-  const authLimiter = createRateLimiter({ max: 20, windowMs: 10 * 60 * 1000 });
+function registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail, guard }) {
+  const createLimiter = createRateLimiter({ max: 10, windowMs: 60 * 60 * 1000 });
 
   // GET /api/gift-registry-widget.js?store=X
   app.get("/api/gift-registry-widget.js", async (req, res) => {
@@ -964,22 +902,22 @@ function registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail
     return config;
   }
 
-  // Sesion + lista propia. Devuelve { session, found, config } o null.
+  // Link de edicion (Authorization: Bearer <editKey>). Si la ruta tiene :id,
+  // tiene que ser la lista de ese link. Devuelve { config, found } o null.
   async function ownerGuard(req, res, storeId) {
     const config = await storefrontGuard(storeId, res);
     if (!config) return null;
-    const session = await getSession(db, storeId, req.headers.authorization);
-    if (!session) {
-      res.status(401).json({ success: false, message: "Tu sesión venció. Volvé a ingresar." });
+    const key = bearerKey(req.headers.authorization);
+    const found = key && await findListByEditKey(db, storeId, key);
+    if (!found) {
+      res.status(401).json({ success: false, message: "Este link de edición no es válido." });
       return null;
     }
-    if (!req.params.id) return { session, config };
-    const found = await getListForStore(storeId, req.params.id);
-    if (!found || !isOwner(found.list, session.email)) {
+    if (req.params.id && req.params.id !== found.list.id) {
       res.status(404).json({ success: false, message: "Lista no encontrada" });
       return null;
     }
-    return { session, config, found };
+    return { config, found };
   }
 
   const fail = (res, error, tag) => {
@@ -987,70 +925,42 @@ function registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail
     res.status(500).json({ success: false, message: "Algo salió mal. Probá de nuevo." });
   };
 
-  app.post("/api/gr/auth/request-code", async (req, res) => {
-    const { store, email } = req.body || {};
-    if (!authLimiter(clientIp(req))) return res.status(429).json({ success: false, message: "Demasiados intentos. Probá en unos minutos." });
+  // GET /api/gr/manage?store=X - la lista del link de edicion
+  app.get("/api/gr/manage", async (req, res) => {
     try {
-      if (!(await storefrontGuard(store, res))) return;
-      const info = await getStoreInfo(db, store);
-      const r = await requestCode({ db, storeId: store, email, storeName: info && info.storeName, sendEmail });
-      if (!r.ok) return res.status(400).json({ success: false, message: r.message });
-      res.json({ success: true });
-    } catch (error) {
-      fail(res, error, "request-code");
-    }
-  });
-
-  app.post("/api/gr/auth/verify", async (req, res) => {
-    const { store, email, code } = req.body || {};
-    if (!authLimiter(clientIp(req))) return res.status(429).json({ success: false, message: "Demasiados intentos. Probá en unos minutos." });
-    try {
-      if (!(await storefrontGuard(store, res))) return;
-      const r = await verifyCode({ db, storeId: store, email, code });
-      if (!r.ok) return res.status(400).json({ success: false, message: r.message });
-      res.json({ success: true, token: r.token, email: str(email).toLowerCase() });
-    } catch (error) {
-      fail(res, error, "verify");
-    }
-  });
-
-  // GET /api/gr/me?store=X - listas donde el email de la sesion es owner
-  app.get("/api/gr/me", async (req, res) => {
-    const store = req.query.store;
-    try {
-      const ctx = await ownerGuard(req, res, store);
+      const ctx = await ownerGuard(req, res, req.query.store);
       if (!ctx) return;
-      const snap = await db.collection(LISTS_COLLECTION).where("storeId", "==", String(store)).get();
-      const now = Date.now();
-      const mine = snap.docs.map((d) => ({ ref: d.ref, list: { id: d.id, ...d.data() } }))
-        .filter(({ list }) => isOwner(list, ctx.session.email));
-      const lists = await Promise.all(mine.map(async ({ ref, list }) => ownerListView(list, await loadGifts(ref), now)));
-      lists.sort((a, b) => String(a.eventDate).localeCompare(String(b.eventDate)));
-      res.json({
-        success: true,
-        email: ctx.session.email,
-        lists,
-        config: { allowedModes: ctx.config.allowedModes, pagePath: ctx.config.pagePath },
-      });
+      res.json({ success: true, list: ownerListView(ctx.found.list, await loadGifts(ctx.found.ref), Date.now()) });
     } catch (error) {
-      fail(res, error, "me");
+      fail(res, error, "manage");
     }
   });
 
+  // POST /api/gr/lists - los novios crean su lista; la respuesta trae el link de edicion
   app.post("/api/gr/lists", async (req, res) => {
     const { store, list } = req.body || {};
+    if (!createLimiter(clientIp(req))) return res.status(429).json({ success: false, message: "Demasiados intentos. Probá en unos minutos." });
     try {
-      const ctx = await ownerGuard(req, res, store);
-      if (!ctx) return;
+      const config = await storefrontGuard(store, res);
+      if (!config) return;
       if (!(await checkStoreActive(store))) return res.status(403).json({ success: false, message: "La lista de regalos no está disponible." });
-      const input = { ...(list || {}) };
-      const others = (Array.isArray(input.owners) ? input.owners : []).filter((o) => str(o && o.email).toLowerCase() !== ctx.session.email);
-      const me = (Array.isArray(input.owners) ? input.owners : []).find((o) => str(o && o.email).toLowerCase() === ctx.session.email);
-      input.owners = [{ name: str(me && me.name) || str(input.ownerName), email: ctx.session.email }, ...others].slice(0, 2);
-      const v = validateListInput(input, { allowedModes: ctx.config.allowedModes });
+      const v = validateListInput(list, { allowedModes: config.allowedModes });
       if (!v.ok) return res.status(400).json({ success: false, message: v.errors.join(" ") });
       const created = await createList({ db, FieldValue, storeId: store, value: v.value, createdBy: "couple" });
-      res.json({ success: true, list: ownerListView(created, [], Date.now()) });
+
+      const info = await getStoreInfo(db, store);
+      const baseUrl = info && info.baseUrl;
+      const editLink = editUrl(baseUrl, config.pagePath, created.editKey);
+      const emailed = editLink
+        ? await sendEditLink({
+          sendEmail,
+          storeName: info.storeName,
+          list: created,
+          editLink,
+          shareLink: publicListUrl(baseUrl, config.pagePath, created.slug),
+        })
+        : false;
+      res.json({ success: true, list: ownerListView(created, [], Date.now()), editKey: created.editKey, emailed });
     } catch (error) {
       fail(res, error, "create");
     }
@@ -1061,7 +971,7 @@ function registerCoupleRoutes(app, { db, FieldValue, checkStoreActive, sendEmail
     try {
       const ctx = await ownerGuard(req, res, store);
       if (!ctx) return;
-      const v = mergeListEdit(ctx.found.list, list, { allowedModes: ctx.config.allowedModes, editorEmail: ctx.session.email });
+      const v = mergeListEdit(ctx.found.list, list, { allowedModes: ctx.config.allowedModes });
       if (!v.ok) return res.status(400).json({ success: false, message: v.errors.join(" ") });
       await ctx.found.ref.update({ ...v.value, updatedAt: FieldValue.serverTimestamp() });
       const gifts = await loadGifts(ctx.found.ref);
@@ -1189,21 +1099,6 @@ function registerGuestRoutes(app, { db, storefrontGuard, fail }) {
       res.json({ success: true, list: publicListView(found.list, await loadGifts(found.ref), Date.now()) });
     } catch (error) {
       fail(res, error, "public");
-    }
-  });
-
-  // GET /api/gr/search?store=X&q=texto
-  app.get("/api/gr/search", async (req, res) => {
-    const { store, q } = req.query;
-    try {
-      if (!(await storefrontGuard(store, res))) return;
-      const snap = await db.collection(LISTS_COLLECTION)
-        .where("storeId", "==", String(store))
-        .select("slug", "title", "eventType", "eventDate", "public", "status")
-        .get();
-      res.json({ success: true, lists: searchLists(snap.docs.map((d) => d.data()), q) });
-    } catch (error) {
-      fail(res, error, "search");
     }
   });
 
@@ -1386,20 +1281,16 @@ module.exports = {
   listSummary,
   buildDraftOrderPayload,
   matchOrderToGift,
-  sha256,
-  generateCode,
-  generateToken,
-  canSendCode,
-  requestCode,
-  verifyCode,
-  getSession,
-  isOwner,
+  generateEditKey,
+  bearerKey,
+  editUrl,
+  editLinkEmail,
+  sendEditLink,
   mergeListEdit,
   addItemToList,
   updateItemQuantity,
   giftsCsv,
   validateGuestInput,
-  searchLists,
   createDraftOrder,
   cancelDraftOrder,
   fetchOrder,

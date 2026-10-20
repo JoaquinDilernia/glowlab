@@ -201,3 +201,14 @@ instalado, como Combos.
 
 El dueño abrió el link del borrador: dirección precargada, elección de envío y
 **paso de Pago con los medios de pago normales**, todo OK. Validación cerrada.
+
+## Cambio 2026-10-20: link privado de edición (sin código por email)
+
+Probando el piloto, el login por código de 6 dígitos resultó raro y el envío del mail falló. Se reemplaza:
+
+- **Alta sin login:** los novios crean la lista desde la página (`?crear`) y la respuesta trae su `editKey`.
+- **Link privado de edición:** `?editar=<editKey>` (192 bits, guardado en la lista). Quien lo tiene edita la lista, agrega productos y ve los regalos. Se muestra al crear la lista, se manda por mail como respaldo (best effort, no bloquea) y el comercio lo ve en el detalle de la lista para reenviarlo.
+- El navegador recuerda los links abiertos (`localStorage`), así el botón "Agregar a mi lista de regalos" de la ficha sigue funcionando.
+- **Invitados:** solo entran por la URL de la lista (`?lista=<slug>`). Se eliminan el buscador (`/api/gr/search`) y el campo `public`.
+- El email de la pareja pasa a ser opcional; el del primer owner sigue siendo obligatorio.
+- Rutas eliminadas: `/api/gr/auth/request-code`, `/api/gr/auth/verify`, `/api/gr/me`. Nueva: `GET /api/gr/manage` (Bearer editKey).

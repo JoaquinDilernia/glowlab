@@ -69,8 +69,9 @@ const STYLES = [
   ".pn-gr-modal-bg { position: fixed !important; inset: 0 !important; z-index: 100001 !important; background: rgba(0,0,0,0.45) !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 16px !important; }",
   ".pn-gr-modal { background: #fff !important; border-radius: 10px !important; padding: 22px !important; width: 100% !important; max-width: 480px !important; max-height: 92vh !important; overflow-y: auto !important; }",
   ".pn-gr-modal h3 { margin: 0 0 4px !important; }",
-  ".pn-gr-results { display: flex !important; flex-direction: column !important; gap: 6px !important; margin-top: 10px !important; }",
-  ".pn-gr-result { text-align: left !important; background: #faf8f5 !important; border: 1px solid #e7e2db !important; border-radius: 5px !important; padding: 10px 12px !important; font-size: 14px !important; cursor: pointer !important; color: #353434 !important; }",
+  ".pn-gr-private { border: 1px solid #e7e2db !important; border-radius: 8px !important; padding: 16px !important; margin: 18px 0 0 !important; background: #fff !important; }",
+  ".pn-gr-private.is-new { border-color: #4f7a4a !important; background: #f4f8f3 !important; }",
+  ".pn-gr-private h3 { margin: 0 0 6px !important; }",
   "@media (max-width: 640px) { .pn-gr-form { grid-template-columns: 1fr !important; } .pn-gr h2 { font-size: 22px !important; } .pn-gr-cover { height: 160px !important; } .pn-gr-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; } }",
 ].join("");
 
@@ -84,8 +85,8 @@ function clientMain(CFG) {
 
   var API = CFG.api;
   var STORE = CFG.store;
-  var TOKEN_KEY = "pn_gr_token_" + STORE;
-  var EMAIL_KEY = "pn_gr_email_" + STORE;
+  // Links de edicion de las listas abiertas en este navegador.
+  var KEYS_KEY = "pn_gr_keys_" + STORE;
 
   var MODES = {
     couple_address: { label: "Envío a nuestra casa", hint: "La dirección de ustedes llega cargada en el checkout. El invitado paga el envío." },
@@ -101,13 +102,18 @@ function clientMain(CFG) {
       if (value === undefined) return window.localStorage.getItem(key);
       if (value === null) window.localStorage.removeItem(key);
       else window.localStorage.setItem(key, value);
-    } catch (_) { /* sin storage: la sesion dura lo que la pagina */ }
+    } catch (_) { /* sin storage: se recuerda lo que dura la pagina */ }
     return null;
   }
-  var memory = { token: store(TOKEN_KEY), email: store(EMAIL_KEY) };
-  function setSession(token, email) {
-    memory.token = token; memory.email = email;
-    store(TOKEN_KEY, token); store(EMAIL_KEY, email);
+  var memory = { keys: [] };
+  try { memory.keys = JSON.parse(store(KEYS_KEY) || "[]").filter(function (k) { return typeof k === "string"; }); } catch (_) { /* vacio */ }
+  function saveKeys() { store(KEYS_KEY, memory.keys.length ? JSON.stringify(memory.keys) : null); }
+  function rememberKey(key) {
+    if (memory.keys.indexOf(key) === -1) { memory.keys.push(key); saveKeys(); }
+  }
+  function forgetKey(key) {
+    memory.keys = memory.keys.filter(function (k) { return k !== key; });
+    saveKeys();
   }
 
   function el(tag, cls, text) {
@@ -137,9 +143,10 @@ function clientMain(CFG) {
   function absUrl(u) { return u && u.indexOf("//") === 0 ? "https:" + u : u || ""; }
   function bg(node, url) { if (url) node.style.backgroundImage = "url(\"" + absUrl(url).replace(/"/g, "") + "\")"; }
 
-  function api(method, path, body) {
+  // key: link de edicion de la lista (solo en las rutas de los novios).
+  function api(method, path, body, key) {
     var headers = { "Content-Type": "application/json" };
-    if (memory.token) headers.Authorization = "Bearer " + memory.token;
+    if (key) headers.Authorization = "Bearer " + key;
     var url = API + path + (path.indexOf("?") > -1 ? "&" : "?") + "store=" + STORE;
     return fetch(url, {
       method: method,
@@ -147,7 +154,7 @@ function clientMain(CFG) {
       body: body ? JSON.stringify(Object.assign({ store: STORE }, body)) : undefined,
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (json) {
-        if (r.status === 401) setSession(null, null);
+        if (r.status === 401 && key) forgetKey(key);
         if (!r.ok || json.success === false) {
           var err = new Error(json.message || "Algo salió mal. Probá de nuevo.");
           err.status = r.status;
@@ -162,6 +169,10 @@ function clientMain(CFG) {
   function pageUrl(query) { return CFG.pagePath + (query ? "?" + query : ""); }
   function go(query) {
     window.history.pushState({}, "", pageUrl(query));
+    route();
+  }
+  function replace(query) {
+    window.history.replaceState({}, "", pageUrl(query));
     route();
   }
 
@@ -186,7 +197,8 @@ function clientMain(CFG) {
       var overlay = el("div", "pn-gr-overlay");
       var close = button("Cerrar ✕", "pn-gr-btn pn-gr-btn--ghost pn-gr-close", function () {
         overlay.remove();
-        var p = params(); p.delete("lista"); p.delete("panel");
+        var p = params();
+        ["lista", "panel", "editar", "nueva", "crear"].forEach(function (k) { p.delete(k); });
         var q = p.toString();
         window.history.replaceState({}, "", window.location.pathname + (q ? "?" + q : ""));
       });
@@ -223,64 +235,20 @@ function clientMain(CFG) {
     var cards = el("div", "pn-gr-cards");
     var create = el("div", "pn-gr-card");
     add(create, el("h3", null, "Tengo un evento"),
-      el("p", "pn-gr-muted", "Creá tu lista o entrá a la que ya tenés."),
-      button(memory.token ? "Ir a mi lista" : "Crear o entrar a mi lista", "pn-gr-btn pn-gr-btn--block", function () { go("panel"); }));
+      el("p", "pn-gr-muted", "Creá tu lista en un minuto y compartila con tus invitados."),
+      button("Crear mi lista", "pn-gr-btn pn-gr-btn--block", function () { go("crear"); }));
+    if (memory.keys.length) {
+      var mine = button(memory.keys.length > 1 ? "Ver mis listas" : "Ir a mi lista", "pn-gr-btn pn-gr-btn--ghost pn-gr-btn--block", function () { go("panel"); });
+      mine.style.marginTop = "8px";
+      add(create, mine);
+    }
     cards.appendChild(create);
 
     var guest = el("div", "pn-gr-card");
     add(guest, el("h3", null, "Soy invitado"),
-      el("p", "pn-gr-muted", "Entrá con el link o el QR que te pasaron, o buscá la lista:"));
-    renderSearch(guest);
+      el("p", "pn-gr-muted", "Entrá con el link o el QR que te pasaron para ver la lista y elegir tu regalo."));
     cards.appendChild(guest);
     r.appendChild(cards);
-  }
-
-  function renderLogin(next) {
-    var r = screen();
-    add(r, el("h2", null, "Entrá a tu lista"),
-      el("p", "pn-gr-muted", "Te mandamos un código por email. No hace falta contraseña."));
-
-    var card = el("div", "pn-gr-card");
-    var form = el("div", "pn-gr-form");
-    var emailField = field("Email", "email", memory.email || "");
-    emailField.input.autocomplete = "email";
-    var codeField = field("Código de 6 dígitos", "text", "");
-    codeField.input.inputMode = "numeric";
-    codeField.input.maxLength = 6;
-    codeField.wrap.style.display = "none";
-    emailField.wrap.classList.add("pn-gr-full");
-    codeField.wrap.classList.add("pn-gr-full");
-    var error = el("p", "pn-gr-error pn-gr-full");
-    var step = "email";
-
-    var submit = button("Enviarme el código", "pn-gr-btn pn-gr-btn--block pn-gr-full", function () {
-      error.textContent = "";
-      submit.disabled = true;
-      var email = emailField.input.value.trim().toLowerCase();
-      var p = step === "email"
-        ? api("POST", "/api/gr/auth/request-code", { email: email }).then(function () {
-          step = "code";
-          emailField.input.disabled = true;
-          codeField.wrap.style.display = "";
-          codeField.input.focus();
-          submit.textContent = "Entrar";
-          hint.textContent = "Revisá tu email (y la carpeta de spam). El código vence en 10 minutos.";
-        })
-        : api("POST", "/api/gr/auth/verify", { email: email, code: codeField.input.value.trim() }).then(function (res) {
-          setSession(res.token, res.email);
-          next();
-        });
-      p.catch(function (e) { error.textContent = e.message; }).then(function () { submit.disabled = false; });
-    });
-    var hint = el("p", "pn-gr-muted pn-gr-full", "");
-    var other = button("Usar otro email", "pn-gr-link pn-gr-full", function () { renderLogin(next); });
-
-    add(form, emailField.wrap, codeField.wrap, submit, error, hint, other);
-    [emailField.input, codeField.input].forEach(function (i) {
-      i.addEventListener("keydown", function (e) { if (e.key === "Enter") submit.click(); });
-    });
-    add(card, form);
-    r.appendChild(card);
   }
 
   function field(label, type, value, tag) {
@@ -336,11 +304,14 @@ function clientMain(CFG) {
     });
   }
 
-  function renderListForm(me, list) {
+  // list + key: edicion. Sin list: alta (no pide login: el link de edicion
+  // sale en la respuesta).
+  function renderListForm(list, key) {
     var editing = !!list;
-    var src = list || { eventType: "wedding", deliveryMode: me.config.allowedModes[0], owners: [{ name: "", email: me.email }], address: {} };
-    var mine = (src.owners || []).filter(function (o) { return o.email === me.email; })[0] || { name: "", email: me.email };
-    var partner = (src.owners || []).filter(function (o) { return o.email !== me.email; })[0] || { name: "", email: "" };
+    var allowedModes = CFG.allowedModes && CFG.allowedModes.length ? CFG.allowedModes : Object.keys(MODES);
+    var src = list || { eventType: "wedding", deliveryMode: allowedModes[0], owners: [], address: {} };
+    var mine = (src.owners || [])[0] || { name: "", email: "" };
+    var partner = (src.owners || [])[1] || { name: "", email: "" };
     var address = src.address || {};
     var cover = src.coverImage || "";
 
@@ -355,9 +326,9 @@ function clientMain(CFG) {
     title.input.placeholder = "Ej: Sofi y Juan";
     title.wrap.classList.add("pn-gr-full");
     var myName = field("Tu nombre", "text", mine.name);
+    var myEmail = field("Tu email (te mandamos el link para editar la lista)", "email", mine.email);
+    myEmail.input.autocomplete = "email";
     var partnerName = field("Nombre de tu pareja (opcional)", "text", partner.name);
-    var partnerEmail = field("Email de tu pareja (opcional, también podrá editar)", "email", partner.email);
-    partnerEmail.wrap.classList.add("pn-gr-full");
     var message = field("Mensaje para los invitados (opcional)", null, src.message || "", "textarea");
     message.input.rows = 3;
     message.input.maxLength = 500;
@@ -389,7 +360,7 @@ function clientMain(CFG) {
     var modes = el("div", "pn-gr-modes");
     var mode = src.deliveryMode;
     var addressBox = el("div", "pn-gr-form pn-gr-full");
-    me.config.allowedModes.forEach(function (id) {
+    allowedModes.forEach(function (id) {
       var opt = el("label", "pn-gr-mode" + (mode === id ? " is-on" : ""));
       var radio = document.createElement("input");
       radio.type = "radio";
@@ -421,18 +392,12 @@ function clientMain(CFG) {
     Object.keys(addr).forEach(function (k) { addressBox.appendChild(addr[k].wrap); });
     addressBox.style.display = mode === "couple_address" ? "" : "none";
 
-    var publicCheck = el("label", "pn-gr-check pn-gr-full");
-    var publicInput = document.createElement("input");
-    publicInput.type = "checkbox";
-    publicInput.checked = !!src.public;
-    add(publicCheck, publicInput, el("span", null, "Que aparezca en el buscador de listas de la tienda"));
-
     var error = el("p", "pn-gr-error pn-gr-full");
     var actions = el("div", "pn-gr-actions pn-gr-full");
     var saveBtn = button(editing ? "Guardar cambios" : "Crear lista", "pn-gr-btn", function () {
       error.textContent = "";
-      var owners = [{ name: myName.input.value.trim(), email: me.email }];
-      if (partnerEmail.input.value.trim()) owners.push({ name: partnerName.input.value.trim(), email: partnerEmail.input.value.trim() });
+      var owners = [{ name: myName.input.value.trim(), email: myEmail.input.value.trim() }];
+      if (partnerName.input.value.trim() || partner.email) owners.push({ name: partnerName.input.value.trim(), email: partner.email || "" });
       var payload = {
         title: title.input.value.trim(),
         eventType: event.input.value,
@@ -440,25 +405,45 @@ function clientMain(CFG) {
         message: message.input.value.trim(),
         coverImage: cover,
         deliveryMode: mode,
-        public: publicInput.checked,
         owners: owners,
         address: mode === "couple_address" ? Object.keys(addr).reduce(function (a, k) { a[k] = addr[k].input.value.trim(); return a; }, {}) : null,
       };
       saveBtn.disabled = true;
-      var p = editing ? api("PATCH", "/api/gr/lists/" + list.id, { list: payload }) : api("POST", "/api/gr/lists", { list: payload });
-      p.then(function (res) { go("panel&id=" + res.list.id); })
-        .catch(function (e) { error.textContent = e.message; saveBtn.disabled = false; });
+      var p = editing
+        ? api("PATCH", "/api/gr/lists/" + list.id, { list: payload }, key).then(function () { go(editQuery(key)); })
+        : api("POST", "/api/gr/lists", { list: payload }).then(function (res) {
+          rememberKey(res.editKey);
+          go(editQuery(res.editKey) + "&nueva=" + (res.emailed ? "mail" : "1"));
+        });
+      p.catch(function (e) { error.textContent = e.message; saveBtn.disabled = false; });
     });
-    add(actions, saveBtn);
-    if (editing || me.lists.length) add(actions, button("Cancelar", "pn-gr-btn pn-gr-btn--ghost", function () { go(editing ? "panel&id=" + list.id : "panel"); }));
+    add(actions, saveBtn, button("Cancelar", "pn-gr-btn pn-gr-btn--ghost", function () { go(editing ? editQuery(key) : ""); }));
 
-    add(form, event.wrap, date.wrap, title.wrap, myName.wrap, partnerName.wrap, partnerEmail.wrap,
-      message.wrap, coverWrap, modesWrap, addressBox, publicCheck, error, actions);
+    add(form, event.wrap, date.wrap, title.wrap, myName.wrap, myEmail.wrap, partnerName.wrap,
+      message.wrap, coverWrap, modesWrap, addressBox, error, actions);
     r.appendChild(form);
   }
 
   function publicUrl(list) {
     return window.location.origin + CFG.pagePath + "?lista=" + encodeURIComponent(list.slug);
+  }
+  function editQuery(key) { return "editar=" + encodeURIComponent(key); }
+  function editLink(key) { return window.location.origin + pageUrl(editQuery(key)); }
+
+  // Input de solo lectura con boton de copiar.
+  function copyField(value, label) {
+    var wrap = el("div", "pn-gr-share");
+    var input = document.createElement("input");
+    input.readOnly = true;
+    input.value = value;
+    var btn = button(label, "pn-gr-btn", function () {
+      input.select();
+      var done = function () { btn.textContent = "¡Copiado!"; setTimeout(function () { btn.textContent = label; }, 1800); };
+      if (navigator.clipboard) navigator.clipboard.writeText(value).then(done, done);
+      else { document.execCommand("copy"); done(); }
+    });
+    add(wrap, input, btn);
+    return wrap;
   }
 
   function saveBlob(blob, name) {
@@ -471,8 +456,8 @@ function clientMain(CFG) {
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
   }
 
-  function downloadCsv(list) {
-    fetch(API + "/api/gr/lists/" + list.id + "/export.csv?store=" + STORE, { headers: { Authorization: "Bearer " + memory.token } })
+  function downloadCsv(list, key) {
+    fetch(API + "/api/gr/lists/" + list.id + "/export.csv?store=" + STORE, { headers: { Authorization: "Bearer " + key } })
       .then(function (r) { if (!r.ok) throw new Error(); return r.blob(); })
       .then(function (blob) { saveBlob(blob, "regalos-" + list.slug + ".csv"); })
       .catch(function () { window.console && console.warn("[Lista de regalos] no se pudo exportar"); });
@@ -675,19 +660,7 @@ function clientMain(CFG) {
 
   function renderShare(r, list) {
     var url = publicUrl(list);
-    add(r, el("h3", null, "Compartí tu lista"));
-    var share = el("div", "pn-gr-share");
-    var linkInput = document.createElement("input");
-    linkInput.readOnly = true;
-    linkInput.value = url;
-    var copyBtn = button("Copiar link", "pn-gr-btn", function () {
-      linkInput.select();
-      var done = function () { copyBtn.textContent = "¡Copiado!"; setTimeout(function () { copyBtn.textContent = "Copiar link"; }, 1800); };
-      if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, done);
-      else { document.execCommand("copy"); done(); }
-    });
-    add(share, linkInput, copyBtn);
-    r.appendChild(share);
+    add(r, el("h3", null, "Compartí tu lista"), copyField(url, "Copiar link"));
 
     var actions = el("div", "pn-gr-actions");
     actions.style.marginTop = "10px";
@@ -727,7 +700,17 @@ function clientMain(CFG) {
     add(r, actions, el("p", "pn-gr-muted", "La placa para historia es para Instagram o WhatsApp. La tarjeta mide 10×15 cm para imprimir y sumar a la invitación."), error);
   }
 
-  function renderPanel(me, list) {
+  // fresh: "1" o "mail" recien creada (mail = tambien se mando por email).
+  function renderPrivateLink(r, key, fresh) {
+    var box = el("div", "pn-gr-private" + (fresh ? " is-new" : ""));
+    add(box, el("h3", null, fresh ? "¡Tu lista está creada! Guardá tu link privado" : "Tu link privado para editar"),
+      el("p", "pn-gr-muted", "Con este link volvés a editar tu lista desde cualquier celu o compu. No se lo pases a los invitados: para ellos está el link de abajo." +
+        (fresh === "mail" ? " También te lo mandamos por email." : "")),
+      copyField(editLink(key), "Copiar"));
+    r.appendChild(box);
+  }
+
+  function renderPanel(list, key, fresh) {
     var r = screen();
     if (list.coverImage) { var c = el("div", "pn-gr-cover"); bg(c, list.coverImage); r.appendChild(c); }
 
@@ -737,12 +720,13 @@ function clientMain(CFG) {
     add(info, el("span", "pn-gr-chip", EVENTS[list.eventType] || "Evento"), el("span", "pn-gr-chip", formatDate(list.eventDate)),
       el("span", "pn-gr-chip", (MODES[list.deliveryMode] || {}).label), list.status !== "active" ? el("span", "pn-gr-chip", "Cerrada") : null);
     var actions = el("div", "pn-gr-actions");
-    add(actions, button("Editar datos", "pn-gr-btn pn-gr-btn--ghost", function () { renderListForm(me, list); }));
-    if (me.lists.length > 1) add(actions, button("Mis listas", "pn-gr-btn pn-gr-btn--ghost", function () { go("panel"); }));
+    add(actions, button("Editar datos", "pn-gr-btn pn-gr-btn--ghost", function () { renderListForm(list, key); }));
+    if (memory.keys.length > 1) add(actions, button("Mis listas", "pn-gr-btn pn-gr-btn--ghost", function () { go("panel"); }));
     add(head, info, actions);
     r.appendChild(head);
     if (list.message) add(r, el("p", "pn-gr-muted", list.message));
 
+    renderPrivateLink(r, key, fresh);
     renderShare(r, list);
 
     // Productos
@@ -775,9 +759,9 @@ function clientMain(CFG) {
       var change = function (n) {
         error.textContent = "";
         var p = n === 0
-          ? api("DELETE", "/api/gr/lists/" + list.id + "/items/" + item.itemId)
-          : api("PATCH", "/api/gr/lists/" + list.id + "/items/" + item.itemId, { quantity: n });
-        p.then(function (res) { replaceList(me, res.list); renderPanel(me, res.list); })
+          ? api("DELETE", "/api/gr/lists/" + list.id + "/items/" + item.itemId, null, key)
+          : api("PATCH", "/api/gr/lists/" + list.id + "/items/" + item.itemId, { quantity: n }, key);
+        p.then(function (res) { renderPanel(res.list, key); })
           .catch(function (e) { error.textContent = e.message; });
       };
       if (list.status === "active") {
@@ -806,56 +790,70 @@ function clientMain(CFG) {
       r.appendChild(row);
     });
     if (list.gifts.length) {
-      var exp = button("Descargar lista de regalos (Excel)", "pn-gr-btn pn-gr-btn--ghost", function () { downloadCsv(list); });
+      var exp = button("Descargar lista de regalos (Excel)", "pn-gr-btn pn-gr-btn--ghost", function () { downloadCsv(list, key); });
       exp.style.marginTop = "12px";
       r.appendChild(exp);
     }
 
     var foot = el("p", "pn-gr-muted");
     foot.style.marginTop = "32px";
-    add(foot, document.createTextNode("Entraste como " + me.email + " · "),
-      button("Salir", "pn-gr-link", function () { setSession(null, null); go(""); }));
+    add(foot, button("Olvidar esta lista en este dispositivo", "pn-gr-link", function () { forgetKey(key); go(""); }));
     r.appendChild(foot);
   }
 
-  function replaceList(me, list) {
-    me.lists = me.lists.map(function (l) { return l.id === list.id ? list : l; });
+  function loadManaged(key) {
+    return api("GET", "/api/gr/manage", null, key).then(function (res) { return { key: key, list: res.list }; });
   }
 
-  function renderMyLists(me) {
+  // Listas de los links guardados en este navegador (los invalidos se olvidan).
+  function loadAllManaged() {
+    return Promise.all(memory.keys.map(function (k) {
+      return loadManaged(k).catch(function () { return null; });
+    })).then(function (all) { return all.filter(Boolean); });
+  }
+
+  function renderMyLists(entries) {
     var r = screen();
     add(r, el("h2", null, "Mis listas"));
     var cards = el("div", "pn-gr-cards");
-    me.lists.forEach(function (l) {
+    entries.forEach(function (e) {
       var card = el("div", "pn-gr-card");
-      add(card, el("h3", null, l.title), el("p", "pn-gr-muted", (EVENTS[l.eventType] || "") + " · " + formatDate(l.eventDate)),
-        button("Ver lista", "pn-gr-btn pn-gr-btn--block", function () { go("panel&id=" + l.id); }));
+      add(card, el("h3", null, e.list.title), el("p", "pn-gr-muted", (EVENTS[e.list.eventType] || "") + " · " + formatDate(e.list.eventDate)),
+        button("Ver lista", "pn-gr-btn pn-gr-btn--block", function () { go(editQuery(e.key)); }));
       cards.appendChild(card);
     });
     r.appendChild(cards);
-    var n = button("+ Crear otra lista", "pn-gr-btn pn-gr-btn--ghost", function () { renderListForm(me, null); });
+    var n = button("+ Crear otra lista", "pn-gr-btn pn-gr-btn--ghost", function () { go("crear"); });
     n.style.marginTop = "16px";
     r.appendChild(n);
   }
 
-  function loadMe() {
-    return api("GET", "/api/gr/me");
+  function renderEditRoute(key, fresh) {
+    loading();
+    loadManaged(key).then(function (e) {
+      rememberKey(key);
+      // El aviso de "recien creada" no vuelve a salir si recargan.
+      if (fresh) window.history.replaceState({}, "", pageUrl(editQuery(key)));
+      renderPanel(e.list, key, fresh);
+    }).catch(function (e) {
+      var r = screen();
+      add(r, el("h2", null, e.status === 401 ? "Link no válido" : "Uy, algo salió mal"),
+        el("p", "pn-gr-muted", e.status === 401
+          ? "Este link de edición no corresponde a ninguna lista. Revisá que esté completo o pedíselo a la tienda."
+          : e.message),
+        button("Volver al inicio", "pn-gr-btn pn-gr-btn--ghost", function () { go(""); }));
+    });
   }
 
-  function renderPanelRoute() {
-    if (!memory.token) return renderLogin(renderPanelRoute);
+  // ?panel: las listas guardadas en este navegador (o crear la primera).
+  function renderMineRoute() {
+    if (!memory.keys.length) return renderListForm(null);
     loading();
-    loadMe().then(function (me) {
-      var id = params().get("id");
-      var list = me.lists.filter(function (l) { return l.id === id; })[0];
-      if (list) return renderPanel(me, list);
-      if (!me.lists.length) return renderListForm(me, null);
-      if (me.lists.length === 1) return renderPanel(me, me.lists[0]);
-      renderMyLists(me);
-    }).catch(function (e) {
-      if (e.status === 401) return renderLogin(renderPanelRoute);
-      showError(e);
-    });
+    loadAllManaged().then(function (entries) {
+      if (!entries.length) return renderListForm(null);
+      if (entries.length === 1) return replace(editQuery(entries[0].key));
+      renderMyLists(entries);
+    }).catch(showError);
   }
 
   // --- invitados -----------------------------------------------------------------
@@ -875,7 +873,7 @@ function clientMain(CFG) {
       .catch(function (e) {
         var r = screen();
         add(r, el("h2", null, "Lista no disponible"), el("p", "pn-gr-muted", e.message),
-          button("Buscar otra lista", "pn-gr-btn pn-gr-btn--ghost", function () { go(""); }));
+          button("Ir al inicio", "pn-gr-btn pn-gr-btn--ghost", function () { go(""); }));
       });
   }
 
@@ -972,34 +970,12 @@ function clientMain(CFG) {
     name.input.focus();
   }
 
-  function renderSearch(container) {
-    var wrap = el("div", "pn-gr-share");
-    var input = document.createElement("input");
-    input.placeholder = "Buscá por nombre (ej: Sofi y Juan)";
-    var results = el("div", "pn-gr-results");
-    var timer = null;
-    var search = function () {
-      var q = input.value.trim();
-      results.innerHTML = "";
-      if (q.length < 2) return;
-      api("GET", "/api/gr/search?q=" + encodeURIComponent(q)).then(function (res) {
-        results.innerHTML = "";
-        if (!res.lists.length) { add(results, el("p", "pn-gr-muted", "No encontramos listas con ese nombre.")); return; }
-        res.lists.forEach(function (l) {
-          var b = button(l.title + " · " + formatDate(l.eventDate), "pn-gr-result", function () { go("lista=" + encodeURIComponent(l.slug)); });
-          results.appendChild(b);
-        });
-      }).catch(function () {});
-    };
-    input.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(search, 350); });
-    add(wrap, input);
-    add(container, wrap, results);
-  }
-
   function route() {
     var p = params();
     if (p.get("lista")) return renderGuestRoute(p.get("lista"));
-    if (p.has("panel")) return renderPanelRoute();
+    if (p.get("editar")) return renderEditRoute(p.get("editar"), p.get("nueva"));
+    if (p.has("crear")) return renderListForm(null);
+    if (p.has("panel")) return renderMineRoute();
     if (window.location.pathname === CFG.pagePath) return renderHome();
   }
 
@@ -1032,12 +1008,12 @@ function clientMain(CFG) {
 
   function mountPdpButton() {
     var product = window.LS && window.LS.product;
-    if (!product || !memory.token || document.querySelector(".pn-gr-pdp")) return;
+    if (!product || !memory.keys.length || document.querySelector(".pn-gr-pdp")) return;
     var form = productForm();
     if (!form || !form.parentNode) return;
 
-    loadMe().then(function (me) {
-      var lists = me.lists.filter(function (l) { return l.status === "active"; });
+    loadAllManaged().then(function (entries) {
+      var lists = entries.filter(function (e) { return e.list.status === "active"; });
       if (!lists.length) return;
       if (!document.getElementById("pn-gr-styles")) {
         var style = document.createElement("style");
@@ -1049,7 +1025,7 @@ function clientMain(CFG) {
       var select = null;
       if (lists.length > 1) {
         select = document.createElement("select");
-        lists.forEach(function (l) { var o = el("option", null, l.title); o.value = l.id; select.appendChild(o); });
+        lists.forEach(function (e, i) { var o = el("option", null, e.list.title); o.value = String(i); select.appendChild(o); });
         box.appendChild(select);
       }
       var msg = el("p", "pn-gr-pdp-ok");
@@ -1059,10 +1035,10 @@ function clientMain(CFG) {
         var qtyInput = form.querySelector(".js-quantity-input, input[name='quantity']");
         var quantity = Math.max(1, parseInt(qtyInput && qtyInput.value, 10) || 1);
         var options = [v.option0, v.option1, v.option2].filter(Boolean).join(" / ");
-        var listId = select ? select.value : lists[0].id;
+        var target = lists[select ? Number(select.value) : 0];
         btn.disabled = true;
         msg.textContent = "";
-        api("POST", "/api/gr/lists/" + listId + "/items", {
+        api("POST", "/api/gr/lists/" + target.list.id + "/items", {
           item: {
             productId: product.id,
             variantId: v.id,
@@ -1071,11 +1047,11 @@ function clientMain(CFG) {
             price: v.price_number,
             quantity: quantity,
           },
-        }).then(function () {
+        }, target.key).then(function () {
           msg.style.color = "";
           msg.textContent = "Agregado a tu lista ✓";
           var link = el("a", null, "Ver mi lista");
-          link.href = pageUrl("panel&id=" + listId);
+          link.href = pageUrl(editQuery(target.key));
           msg.appendChild(link);
         }).catch(function (e) {
           msg.style.color = "#b3261e";
@@ -1084,14 +1060,14 @@ function clientMain(CFG) {
       });
       add(box, btn, msg);
       form.parentNode.insertBefore(box, form.nextSibling);
-    }).catch(function () { /* sesion vencida: no se muestra */ });
+    }).catch(function () { /* sin listas validas: no se muestra */ });
   }
 
   // --- arranque ----------------------------------------------------------------
 
   function start() {
     var p = params();
-    if (window.location.pathname === CFG.pagePath || p.get("lista") || p.has("panel")) route();
+    if (window.location.pathname === CFG.pagePath || p.get("lista") || p.get("editar") || p.has("panel") || p.has("crear")) route();
     else mountPdpButton();
   }
   window.addEventListener("popstate", function () {
@@ -1106,6 +1082,7 @@ function buildStorefrontScript({ store, api, config }) {
     store: String(store),
     api,
     pagePath: config.pagePath,
+    allowedModes: config.allowedModes || [],
     texts: config.texts || {},
     styles: STYLES,
   };

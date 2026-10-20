@@ -58,7 +58,9 @@ function CreateListModal({ storeId, allowedModes, onClose, onCreated }) {
       const list = { ...form, owners: form.owners.filter(o => o.name.trim() || o.email.trim()) };
       const res = await apiRequest('/api/gift-registry/lists', { method: 'POST', body: JSON.stringify({ storeId, list }) });
       if (res?.success) {
-        toast.success(res.invited ? 'Lista creada. Les mandamos el mail a los novios.' : 'Lista creada (no se pudo mandar el mail).');
+        toast.success(res.invited
+          ? 'Lista creada. Les mandamos a los novios el link para editarla.'
+          : 'Lista creada. No se pudo mandar el mail: copiá el link de edición desde el detalle de la lista.');
         onCreated();
       } else {
         toast.error(res?.message || 'No se pudo crear la lista');
@@ -138,7 +140,7 @@ function CreateListModal({ storeId, allowedModes, onClose, onCreated }) {
           </label>
         </div>
 
-        <p className="vg-hint">Los novios reciben un mail para entrar y sumar productos desde la tienda.</p>
+        <p className="vg-hint">Los novios reciben por mail un link privado para sumar productos desde la tienda.</p>
         <div className="gr-drawer-foot">
           <button className="btn-back" onClick={onClose}>Cancelar</button>
           <button className="vg-btn-save" onClick={submit} disabled={saving}>{saving ? 'Creando…' : 'Crear lista'}</button>
@@ -202,15 +204,27 @@ function ListDetail({ storeId, listId, onClose, onChanged }) {
             <div className="gr-meta">
               <span>{EVENT_TYPES.find(t => t.id === list.eventType)?.label} · {formatDate(list.eventDate)}</span>
               <span>{MODE_LABEL[list.deliveryMode]}</span>
-              <span>{list.owners.map(o => `${o.name} <${o.email}>`).join(' · ')}</span>
+              <span>{list.owners.map(o => o.email ? `${o.name} <${o.email}>` : o.name).join(' · ')}</span>
               {list.address && <span>{[list.address.address, list.address.number, list.address.floor, list.address.city, list.address.zipcode].filter(Boolean).join(' ')}</span>}
             </div>
 
             {list.publicUrl && (
-              <div className="gr-link">
-                <code>{list.publicUrl}</code>
-                <button className="btn-back" onClick={() => copy(list.publicUrl)}><Copy size={14} /> Copiar</button>
-              </div>
+              <>
+                <p className="vg-hint">Link para los invitados</p>
+                <div className="gr-link">
+                  <code>{list.publicUrl}</code>
+                  <button className="btn-back" onClick={() => copy(list.publicUrl)}><Copy size={14} /> Copiar</button>
+                </div>
+              </>
+            )}
+            {list.editUrl && (
+              <>
+                <p className="vg-hint">Link privado de edición de los novios (pasáselo solo a ellos si lo pierden)</p>
+                <div className="gr-link">
+                  <code>{list.editUrl}</code>
+                  <button className="btn-back" onClick={() => copy(list.editUrl)}><Copy size={14} /> Copiar</button>
+                </div>
+              </>
             )}
 
             <h3 className="gr-subtitle">Regalos de la lista</h3>

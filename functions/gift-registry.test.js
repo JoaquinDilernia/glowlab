@@ -13,20 +13,17 @@ const {
   listSummary,
   buildDraftOrderPayload,
   matchOrderToGift,
-  generateCode,
-  generateToken,
-  canSendCode,
-  requestCode,
-  verifyCode,
-  getSession,
-  isOwner,
+  generateEditKey,
+  bearerKey,
+  editUrl,
+  editLinkEmail,
+  sendEditLink,
   mergeListEdit,
   addItemToList,
   updateItemQuantity,
   giftsCsv,
   createRateLimiter,
   validateGuestInput,
-  searchLists,
   isCoverImageUrl,
 } = require("./gift-registry");
 
@@ -233,96 +230,68 @@ test("matchOrderToGift - un gift ya pagado no se vuelve a matchear", () => {
   assert.deepEqual(matchOrderToGift({ id: 777, products: [] }, candidates, NOW), []);
 });
 
-// --- auth ------------------------------------------------------------------
+// --- panel de novios -------------------------------------------------------
 
-test("generateCode / generateToken - formato", () => {
-  for (let i = 0; i < 50; i++) assert.match(generateCode(), /^\d{6}$/);
-  assert.ok(generateToken().length >= 40);
-  assert.notEqual(generateToken(), generateToken());
+// --- link de edicion ---------------------------------------------------------
+
+test("generateEditKey / bearerKey - formato y lectura del header", () => {
+  const key = generateEditKey();
+  assert.match(key, /^[A-Za-z0-9_-]{32}$/);
+  assert.notEqual(generateEditKey(), key);
+  assert.equal(bearerKey(`Bearer ${key}`), key);
+  assert.equal(bearerKey("Bearer corto"), null);
+  assert.equal(bearerKey(`Bearer ${key}' OR 1`), null);
+  assert.equal(bearerKey(""), null);
 });
 
-test("canSendCode - maximo 5 por hora", () => {
-  assert.equal(canSendCode([NOW - 1, NOW - 2, NOW - 3, NOW - 4], NOW), true);
-  assert.equal(canSendCode([NOW - 1, NOW - 2, NOW - 3, NOW - 4, NOW - 5], NOW), false);
-  assert.equal(canSendCode([NOW - 2 * HOUR, NOW - 2 * HOUR, NOW - 2 * HOUR, NOW - 2 * HOUR, NOW - 2 * HOUR], NOW), true);
+test("editUrl - sin dominio no hay link", () => {
+  assert.equal(editUrl("https://tienda.com", "/lista-de-regalos/", "abc"), "https://tienda.com/lista-de-regalos/?editar=abc");
+  assert.equal(editUrl("", "/lista-de-regalos/", "abc"), "");
 });
 
-function fakeDb() {
-  const store = new Map();
-  function docRef(col, id) {
-    const key = `${col}/${id}`;
-    return {
-      async get() { return { exists: store.has(key), data: () => store.get(key) }; },
-      async set(v) { store.set(key, { ...v }); },
-      async update(v) { store.set(key, { ...store.get(key), ...v }); },
-      async delete() { store.delete(key); },
-    };
-  }
-  return { store, collection: (col) => ({ doc: (id) => docRef(col, id) }) };
-}
+test("editLinkEmail - trae el link y escapa el nombre", () => {
+  const mail = editLinkEmail("Tienda", { title: "<b>Sofi</b>" }, { editLink: "https://t.com/l/?editar=k", shareLink: "https://t.com/l/?lista=s" });
+  assert.match(mail.html, /\?editar=k/);
+  assert.match(mail.html, /\?lista=s/);
+  assert.ok(!mail.html.includes("<b>Sofi</b>"));
+  assert.match(mail.text, /\?editar=k/);
+});
 
-test("requestCode + verifyCode + getSession - flujo completo", async () => {
-  const db = fakeDb();
+test("sendEditLink - salta owners sin email y no corta si falla un envio", async () => {
   const sent = [];
-  const sendEmail = async (m) => { sent.push(m); };
-  const r = await requestCode({ db, storeId: "1", email: "Sofi@Mail.com", storeName: "Tienda", sendEmail, now: NOW });
-  assert.equal(r.ok, true);
-  assert.equal(sent[0].to, "sofi@mail.com");
-  const code = /(\d{6})/.exec(sent[0].subject)[1];
-
-  assert.equal((await verifyCode({ db, storeId: "1", email: "sofi@mail.com", code: "000000" === code ? "111111" : "000000", now: NOW })).ok, false);
-  const ok = await verifyCode({ db, storeId: "1", email: "sofi@mail.com", code, now: NOW + 1000 });
-  assert.equal(ok.ok, true);
-
-  assert.deepEqual(await getSession(db, "1", `Bearer ${ok.token}`, NOW), { email: "sofi@mail.com" });
-  assert.equal(await getSession(db, "2", `Bearer ${ok.token}`, NOW), null, "otra tienda");
-  assert.equal(await getSession(db, "1", "Bearer otro", NOW), null);
-
-  // el codigo es de un solo uso
-  assert.equal((await verifyCode({ db, storeId: "1", email: "sofi@mail.com", code, now: NOW + 2000 })).ok, false);
-  // en Firestore no queda el token en claro
-  assert.ok(![...db.store.keys()].some((k) => k.includes(ok.token)));
+  const sendEmail = async (m) => {
+    if (m.to === "falla@mail.com") throw new Error("SendGrid");
+    sent.push(m.to);
+  };
+  const owners = [{ name: "Sofi", email: "falla@mail.com" }, { name: "Juan", email: "" }];
+  assert.equal(await sendEditLink({ sendEmail, storeName: "T", list: { title: "S", owners }, editLink: "x" }), false);
+  owners.push({ name: "Leo", email: "leo@mail.com" });
+  assert.equal(await sendEditLink({ sendEmail, storeName: "T", list: { title: "S", owners }, editLink: "x" }), true);
+  assert.deepEqual(sent, ["leo@mail.com"]);
 });
 
-test("verifyCode - vence a los 10 minutos y se bloquea tras 5 intentos", async () => {
-  const db = fakeDb();
-  const sent = [];
-  await requestCode({ db, storeId: "1", email: "a@mail.com", sendEmail: async (m) => sent.push(m), now: NOW });
-  const code = /(\d{6})/.exec(sent[0].subject)[1];
-  assert.equal((await verifyCode({ db, storeId: "1", email: "a@mail.com", code, now: NOW + 11 * 60 * 1000 })).ok, false);
-
-  await requestCode({ db, storeId: "1", email: "a@mail.com", sendEmail: async (m) => sent.push(m), now: NOW });
-  const code2 = /(\d{6})/.exec(sent[1].subject)[1];
-  const wrong = code2 === "000000" ? "111111" : "000000";
-  for (let i = 0; i < 5; i++) await verifyCode({ db, storeId: "1", email: "a@mail.com", code: wrong, now: NOW });
-  assert.equal((await verifyCode({ db, storeId: "1", email: "a@mail.com", code: code2, now: NOW })).ok, false);
-});
-
-test("requestCode - rate limit y email invalido", async () => {
-  const db = fakeDb();
-  const sendEmail = async () => {};
-  assert.equal((await requestCode({ db, storeId: "1", email: "mal", sendEmail, now: NOW })).ok, false);
-  for (let i = 0; i < 5; i++) {
-    assert.equal((await requestCode({ db, storeId: "1", email: "a@mail.com", sendEmail, now: NOW + i })).ok, true);
-  }
-  assert.equal((await requestCode({ db, storeId: "1", email: "a@mail.com", sendEmail, now: NOW + 10 })).ok, false);
+test("publicListView / ownerListView - nunca exponen el link de edicion", () => {
+  const withKey = { ...list, editKey: "SECRETO_SECRETO_SECRETO_123" };
+  assert.ok(!JSON.stringify(publicListView(withKey, [], NOW)).includes("SECRETO"));
+  assert.ok(!JSON.stringify(ownerListView(withKey, [], NOW)).includes("SECRETO"));
 });
 
 // --- panel de novios -------------------------------------------------------
 
-test("isOwner - compara el email en minusculas", () => {
-  assert.equal(isOwner(list, "SOFI@mail.com"), true);
-  assert.equal(isOwner(list, "otro@mail.com"), false);
-  assert.equal(isOwner(list, ""), false);
+test("validateListInput - el email de la pareja es opcional", () => {
+  const v = validateListInput({ ...validList, owners: [{ name: "Sofi", email: "sofi@mail.com" }, { name: "Juan", email: "" }] });
+  assert.equal(v.ok, true, v.errors.join(" "));
+  assert.equal(validateListInput({ ...validList, owners: [{ name: "Sofi", email: "" }] }).ok, false);
+  assert.equal(validateListInput({ ...validList, owners: [{ name: "Sofi", email: "sofi@mail.com" }, { name: "Juan", email: "mal" }] }).ok, false);
 });
 
-test("mergeListEdit - edita datos y no permite sacarse de la lista", () => {
-  const ok = mergeListEdit(list, { title: "Sofi y Juan 2027", eventDate: "2027-01-10" }, { editorEmail: "sofi@mail.com" });
+test("mergeListEdit - edita datos y mantiene los owners si no vienen", () => {
+  const ok = mergeListEdit(list, { title: "Sofi y Juan 2027", eventDate: "2027-01-10" }, {});
   assert.equal(ok.ok, true);
   assert.equal(ok.value.title, "Sofi y Juan 2027");
   assert.equal(ok.value.owners[0].email, "sofi@mail.com");
 
-  const out = mergeListEdit(list, { owners: [{ name: "Juan", email: "juan@mail.com" }] }, { editorEmail: "sofi@mail.com" });
+  const out = mergeListEdit(list, { owners: [] }, {});
   assert.equal(out.ok, false);
 });
 
@@ -380,19 +349,6 @@ test("validateGuestInput - normaliza y valida", () => {
   const bad = validateGuestInput({ guestName: "M", guestEmail: "x", quantity: 0 });
   assert.equal(bad.ok, false);
   assert.equal(bad.errors.length, 3);
-});
-
-test("searchLists - solo publicas y activas, sin acentos, con limite", () => {
-  const lists = [
-    { slug: "a", title: "Sofía y Juan", public: true, status: "active", eventDate: "2026-12-01" },
-    { slug: "b", title: "Sofi y Leo", public: false, status: "active", eventDate: "2026-11-01" },
-    { slug: "c", title: "Sofi y Tomás", public: true, status: "closed", eventDate: "2026-11-01" },
-    { slug: "d", title: "Baby shower de Sofi", public: true, status: "active", eventDate: "2026-11-15" },
-  ];
-  assert.deepEqual(searchLists(lists, "SOFI").map((l) => l.slug), ["d", "a"]);
-  assert.deepEqual(searchLists(lists, "sofia y").map((l) => l.slug), ["a"]);
-  assert.deepEqual(searchLists(lists, "s"), []);
-  assert.equal(searchLists(lists, "sofi", 1).length, 1);
 });
 
 test("isCoverImageUrl - solo portadas del modulo en Storage", () => {
