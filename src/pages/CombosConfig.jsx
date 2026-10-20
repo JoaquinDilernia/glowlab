@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Package, Plus, Trash2 } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
+import ComboImageUploader from './ComboImageUploader';
 import './StyleConfig.css';
 import './VariantGroupsConfig.css';
 import './CombosConfig.css';
@@ -14,9 +15,64 @@ const DEFAULT_CONFIG = {
   enabled: false,
   combinesWithCoupons: false,
   combos: [],
+  pagePath: '/combos/',
+  pageTitle: '',
+  pageIntro: '',
 };
 
 const newId = () => `cb_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+const LIMITS = { includesText: 120, shortDescription: 300, description: 3000 };
+
+function Counter({ value, max }) {
+  return <small className="cb-counter">{(value || '').length}/{max}</small>;
+}
+
+// Pestaña "Ficha": lo que se ve en la pagina de combos y en la ficha del combo.
+function ComboSheet({ storeId, combo, pagePath, onChange }) {
+  const slugPreview = combo.slug || 'se-genera-al-guardar';
+  return (
+    <div className="cb-sheet">
+      <div className="vg-field">
+        <label>Fotos</label>
+        <ComboImageUploader storeId={storeId} images={combo.images || []} onChange={images => onChange({ images })} />
+      </div>
+
+      <div className="cb-sheet-row">
+        <div className="vg-field">
+          <label>URL del combo</label>
+          <input type="text" value={combo.slug || ''} placeholder="se genera del nombre"
+            onChange={e => onChange({ slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} />
+          <small className="cb-counter">{pagePath}?combo={slugPreview}</small>
+        </div>
+        <label className="vg-check cb-sheet-check">
+          <input type="checkbox" checked={combo.showOnPage !== false}
+            onChange={e => onChange({ showOnPage: e.target.checked })} /> Mostrar en la página de combos
+        </label>
+      </div>
+
+      <div className="vg-field">
+        <label>Qué incluye (opcional)</label>
+        <input type="text" maxLength={LIMITS.includesText} value={combo.includesText || ''}
+          placeholder="Si lo dejás vacío: 1 Mesa Nova + 4 Silla Rey · cualquier color"
+          onChange={e => onChange({ includesText: e.target.value })} />
+        <Counter value={combo.includesText} max={LIMITS.includesText} />
+      </div>
+      <div className="vg-field">
+        <label>Descripción corta (al lado del precio)</label>
+        <textarea rows={2} maxLength={LIMITS.shortDescription} value={combo.shortDescription || ''}
+          onChange={e => onChange({ shortDescription: e.target.value })} />
+        <Counter value={combo.shortDescription} max={LIMITS.shortDescription} />
+      </div>
+      <div className="vg-field">
+        <label>Descripción larga (abajo de la ficha)</label>
+        <textarea rows={5} maxLength={LIMITS.description} value={combo.description || ''}
+          onChange={e => onChange({ description: e.target.value })} />
+        <Counter value={combo.description} max={LIMITS.description} />
+      </div>
+    </div>
+  );
+}
 
 function ItemPicker({ storeId, groups, onAdd }) {
   const [query, setQuery] = useState('');
@@ -94,6 +150,7 @@ export default function CombosConfig() {
   const [saving, setSaving] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [groups, setGroups] = useState([]);
+  const [tabs, setTabs] = useState({}); // comboId -> 'items' | 'sheet'
 
   const loadConfig = useCallback(async () => {
     if (!ALLOWED_STORE_IDS.includes(String(storeId))) return;
@@ -117,8 +174,13 @@ export default function CombosConfig() {
         method: 'POST',
         body: JSON.stringify({ storeId, config }),
       });
-      if (res?.success) toast.success('Combos guardados');
-      else toast.error(res?.message || 'Error al guardar');
+      if (res?.success) {
+        // El server completa los slugs y limpia los textos.
+        if (Array.isArray(res.combos)) setConfig(c => ({ ...c, combos: res.combos }));
+        toast.success('Combos guardados');
+      } else {
+        toast.error(res?.message || 'Error al guardar');
+      }
     } catch (e) {
       toast.error('Error: ' + e.message);
     } finally {
@@ -209,6 +271,32 @@ export default function CombosConfig() {
         </p>
       </div>
 
+      <div className="config-section">
+        <div className="section-header">
+          <h2>Página de combos</h2>
+        </div>
+        <div className="cb-sheet-row">
+          <div className="vg-field">
+            <label>Dirección de la página en la tienda</label>
+            <input type="text" value={config.pagePath} onChange={e => setConfig(c => ({ ...c, pagePath: e.target.value }))} />
+          </div>
+          <div className="vg-field">
+            <label>Título</label>
+            <input type="text" maxLength={80} placeholder="Combos" value={config.pageTitle}
+              onChange={e => setConfig(c => ({ ...c, pageTitle: e.target.value }))} />
+          </div>
+        </div>
+        <div className="vg-field cb-sheet-gap">
+          <label>Bajada</label>
+          <input type="text" maxLength={300} placeholder="Armá el conjunto en los colores que quieras y llevátelo con descuento."
+            value={config.pageIntro} onChange={e => setConfig(c => ({ ...c, pageIntro: e.target.value }))} />
+        </div>
+        <p className="vg-hint">
+          Creá en Tiendanube una página vacía con esa dirección (Mi tienda online → Páginas) y sumala al menú.
+          Ahí se muestran todos los combos activos, y cada uno tiene su ficha en {config.pagePath}?combo=nombre-del-combo.
+        </p>
+      </div>
+
       {config.combos.map(combo => {
         const units = combo.items.reduce((sum, it) => sum + Number(it.quantity || 0), 0);
         return (
@@ -230,6 +318,15 @@ export default function CombosConfig() {
               </button>
             </div>
 
+            <div className="cb-tabs">
+              <button className={`cb-tab ${tabs[combo.id] !== 'sheet' ? 'is-on' : ''}`} onClick={() => setTabs(t => ({ ...t, [combo.id]: 'items' }))}>Productos y descuento</button>
+              <button className={`cb-tab ${tabs[combo.id] === 'sheet' ? 'is-on' : ''}`} onClick={() => setTabs(t => ({ ...t, [combo.id]: 'sheet' }))}>Ficha</button>
+            </div>
+
+            {tabs[combo.id] === 'sheet' ? (
+              <ComboSheet storeId={storeId} combo={combo} pagePath={config.pagePath || '/combos/'}
+                onChange={patch => updateCombo(combo.id, patch)} />
+            ) : (<>
             <div className="cb-items">
               {combo.items.map((item, i) => (
                 <div key={`${item.groupKey || item.productId}-${i}`} className="cb-item">
@@ -247,6 +344,7 @@ export default function CombosConfig() {
             <ItemPicker storeId={storeId} groups={groups} onAdd={item => addItem(combo.id, item)} />
 
             {units < 2 && <p className="vg-hint">Sumá al menos 2 unidades para que sea un combo.</p>}
+            </>)}
           </div>
         );
       })}

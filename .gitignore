@@ -42,3 +42,6 @@ functions/tmpclaude-*
 *.sln
 *.sw?
 functions/railway-vars.json
+
+# Mockups de brainstorming
+.superpowers/
