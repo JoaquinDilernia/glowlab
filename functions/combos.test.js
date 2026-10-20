@@ -7,6 +7,12 @@ const {
   buildCallbackResponse,
   buildWidgetCombos,
   buildWidgetScript,
+  assignSlugs,
+  sanitizeCombo,
+  comboFromPrice,
+  comboGallery,
+  buildPageCombos,
+  defaultIncludesText,
 } = require("./combos");
 
 const groupsByKey = new Map([
@@ -158,6 +164,114 @@ test("buildWidgetCombos - no muestra el combo si el producto no participa o un i
   assert.equal(buildWidgetCombos("s1", state.config, groupsByKey, productsById, {}).length, 0);
 });
 
-test("buildWidgetScript - genera JS valido", () => {
-  assert.doesNotThrow(() => new Function(buildWidgetScript("2547699")));
+test("buildWidgetScript - genera JS valido con la pagina de combos", () => {
+  const js = buildWidgetScript("2547699", { pagePath: "/combos/" });
+  assert.doesNotThrow(() => new Function(js));
+  assert.ok(js.includes("?combo="));
+  assert.ok(js.includes('"/combos/"'));
+});
+
+// --- ficha y pagina de combos ------------------------------------------------
+
+const IMG = "https://storage.googleapis.com/bucket/combos/2547699/1-a.webp";
+
+const pageProducts = {
+  m1: { name: "Mesa Nova Negro", variantId: "v1", price: 1000, available: true, image: "https://img/m1.jpg", url: "" },
+  m2: { name: "Mesa Nova Greige", variantId: "v2", price: 900, available: true, image: "https://img/m2.jpg", url: "" },
+  s1: { name: "Silla Rey Negro", variantId: "v3", price: 100, available: true, image: "https://img/s1.jpg", url: "" },
+  s2: { name: "Silla Rey Natural", variantId: "v4", price: 120, available: true, image: "https://img/s2.jpg", url: "" },
+};
+
+test("assignSlugs - genera desde el nombre y desambigua", () => {
+  const r = assignSlugs([{ name: "Comedor Nová" }, { name: "Comedor Nova" }, { name: "Otro", slug: "otro-combo" }]);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.combos.map((c) => c.slug), ["comedor-nova", "comedor-nova-2", "otro-combo"]);
+});
+
+test("assignSlugs - un slug generado no pisa uno explicito", () => {
+  const r = assignSlugs([{ name: "Comedor" }, { name: "X", slug: "comedor" }]);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.combos.map((c) => c.slug), ["comedor-2", "comedor"]);
+});
+
+test("assignSlugs - rechaza slug explicito repetido o invalido", () => {
+  assert.equal(assignSlugs([{ name: "a", slug: "x" }, { name: "b", slug: "x" }]).ok, false);
+  const bad = assignSlugs([{ name: "a", slug: "Mal Slug!" }]);
+  assert.equal(bad.ok, false);
+  assert.match(bad.message, /Mal Slug!/);
+});
+
+test("sanitizeCombo - conserva ficha y descarta imagenes externas", () => {
+  const c = sanitizeCombo({
+    ...comedor,
+    slug: "comedor-nova",
+    images: [IMG, "https://evil.com/x.jpg", "http://storage.googleapis.com/bucket/combos/1/a.webp"],
+    shortDescription: "  Corta  ",
+    description: "x".repeat(3500),
+    includesText: "<b>Mesa</b> + 4 sillas",
+  });
+  assert.deepEqual(c.images, [IMG]);
+  assert.equal(c.slug, "comedor-nova");
+  assert.equal(c.showOnPage, true);
+  assert.equal(c.shortDescription, "Corta");
+  assert.equal(c.description.length, 3000);
+  assert.equal(c.includesText, "<b>Mesa</b> + 4 sillas", "se guarda como texto; el storefront usa textContent");
+  assert.equal(sanitizeCombo({ ...comedor, showOnPage: false }).showOnPage, false);
+  assert.equal(sanitizeCombo({ ...comedor, images: new Array(9).fill(IMG) }).images.length, 6);
+});
+
+test("comboFromPrice - usa la opcion mas barata con stock", () => {
+  const items = [
+    { quantity: 2, options: [{ price: 100, available: true }, { price: 80, available: false }, { price: 90, available: true }] },
+    { quantity: 1, options: [{ price: 50, available: true }] },
+  ];
+  assert.deepEqual(comboFromPrice(items, 10), { was: 230, from: 207 });
+});
+
+test("comboGallery - sin fotos propias usa las de las piezas sin duplicar", () => {
+  const items = [
+    { options: [{ image: "a", available: false }, { image: "b", available: true }] },
+    { options: [{ image: "b", available: true }] },
+    { options: [{ image: "", available: true }] },
+  ];
+  assert.deepEqual(comboGallery({ images: [] }, items), ["b"]);
+  assert.deepEqual(comboGallery({ images: [IMG] }, items), [IMG]);
+});
+
+test("defaultIncludesText - cantidades y cualquier color", () => {
+  const items = [
+    { label: "Mesa Nova", quantity: 1, options: [{}, {}] },
+    { label: "Lampara", quantity: 2, options: [{}] },
+  ];
+  assert.equal(defaultIncludesText(items), "1 Mesa Nova + 2 Lampara · cualquier color");
+  assert.equal(defaultIncludesText([items[1]]), "2 Lampara");
+});
+
+test("buildPageCombos - filtra inactivos, ocultos y sin stock y respeta el orden", () => {
+  const par = { id: "c2", name: "Par de sillas", slug: "par", active: true, discountPercent: 20, images: [IMG],
+    items: [{ type: "group", groupKey: "SILLA", quantity: 2 }] };
+  const config = {
+    combos: [
+      par,
+      { ...comedor, slug: "comedor", description: "Linea 1\nLinea 2" },
+      { ...par, id: "c3", slug: "oculto", showOnPage: false },
+      { ...par, id: "c4", slug: "inactivo", active: false },
+      { ...par, id: "c5", slug: "sin-stock", items: [{ type: "product", productId: "999", quantity: 2 }] },
+    ],
+  };
+  const out = buildPageCombos(config, groupsByKey, pageProducts, {});
+  assert.deepEqual(out.map((c) => c.slug), ["par", "comedor"]);
+  assert.deepEqual([out[0].was, out[0].from], [200, 160]);
+  // comedor: mesa mas barata 900 + 4 sillas a 100 = 1300, -10%
+  assert.deepEqual([out[1].was, out[1].from], [1300, 1170]);
+  assert.deepEqual(out[0].images, [IMG]);
+  assert.deepEqual(out[1].images, ["https://img/m1.jpg", "https://img/s1.jpg"]);
+  assert.equal(out[1].includesText, "1 Mesa Nova + 4 Silla Rey · cualquier color");
+  assert.equal(out[1].description, "Linea 1\nLinea 2");
+  assert.equal(out[1].items[1].options.length, 2);
+});
+
+test("buildWidgetCombos - incluye el slug para el link a la ficha", () => {
+  const combos = buildWidgetCombos("s1", { combos: [{ ...comedor, slug: "comedor" }] }, groupsByKey, pageProducts, {});
+  assert.equal(combos[0].slug, "comedor");
 });
