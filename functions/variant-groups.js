@@ -143,16 +143,21 @@ function safeHref(url) {
   return SAFE_HREF_PATTERN.test(s) ? s : "";
 }
 
-function buildWidgetIndex(groups, palette) {
+// hiddenProductIds: productos ocultos en la tienda (published: false). Se
+// sacan de los siblings porque su link da 404; si el grupo queda con menos
+// de 2 productos visibles no se muestra.
+function buildWidgetIndex(groups, palette, hiddenProductIds) {
+  const hidden = new Set((hiddenProductIds || []).map(String));
   const index = {};
   for (const group of groups || []) {
     if (group.hidden) continue;
-    if (!group.products || group.products.length < 2) continue;
-    const colorLabels = extractColorLabels(group.products.map((p) => p.name));
-    for (const product of group.products) {
+    const products = (group.products || []).filter((p) => !hidden.has(String(p.productId)));
+    if (products.length < 2) continue;
+    const colorLabels = extractColorLabels(products.map((p) => p.name));
+    for (const product of products) {
       index[String(product.productId)] = {
         groupKey: group.groupKey,
-        siblings: group.products.map((p, i) => ({
+        siblings: products.map((p, i) => ({
           productId: String(p.productId),
           url: safeHref(p.url),
           image: safeString(p.image),
@@ -204,6 +209,37 @@ async function fetchAllStoreProducts({ storeId, accessToken, fetchImpl }) {
         image: (product.images && product.images[0] && (product.images[0].src || product.images[0])) || "",
         url: product.canonical_url || "",
       });
+    }
+
+    if (items.length < PRODUCTS_PER_PAGE) break;
+    page += 1;
+  }
+
+  return out;
+}
+
+// Devuelve los ids de productos ocultos (published: false) de la tienda.
+async function fetchHiddenProductIds({ storeId, accessToken, fetchImpl }) {
+  const doFetch = fetchImpl || globalThis.fetch;
+  const headers = { Authentication: `bearer ${accessToken}`, "User-Agent": TN_UA };
+  const out = [];
+  let page = 1;
+
+  while (page <= MAX_PAGES) {
+    const res = await doFetch(
+      `${TN_V1}/${storeId}/products?page=${page}&per_page=${PRODUCTS_PER_PAGE}&fields=id,published`,
+      { headers }
+    );
+    if (!res.ok) {
+      const err = new Error(`TN GET products page ${page}: ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    const items = await res.json();
+    if (!Array.isArray(items) || items.length === 0) break;
+
+    for (const product of items) {
+      if (product.published === false) out.push(String(product.id));
     }
 
     if (items.length < PRODUCTS_PER_PAGE) break;
@@ -414,6 +450,7 @@ const DEFAULT_CONFIG = {
   showOnPDP: true,
   swatchSize: "md",
   swatchMode: "image",
+  hideUnpublished: true,
   colorPalette: {},
   groups: [],
   ungrouped: [],
@@ -451,7 +488,50 @@ function isValidGroup(g) {
   );
 }
 
+// Cada cuanto se re-consulta en Tiendanube que productos estan ocultos.
+const HIDDEN_REFRESH_MS = 10 * 60 * 1000;
+
 function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) {
+  const hiddenRefreshes = new Map(); // storeId -> promesa en curso
+
+  // Actualiza hiddenProductIds en Firestore. Una sola consulta por tienda a la vez.
+  function refreshHiddenProducts(storeId) {
+    const key = String(storeId);
+    if (hiddenRefreshes.has(key)) return hiddenRefreshes.get(key);
+    const job = (async () => {
+      const storeDoc = await db.collection("promonube_stores").doc(key).get();
+      const accessToken = storeDoc.exists ? storeDoc.data().accessToken : null;
+      if (!accessToken) throw new Error("No hay token de acceso");
+      const hiddenProductIds = await fetchHiddenProductIds({ storeId: key, accessToken });
+      await db.collection(COLLECTION).doc(key).set(
+        { hiddenProductIds, hiddenCheckedAt: Date.now() },
+        { merge: true }
+      );
+      return hiddenProductIds;
+    })().finally(() => hiddenRefreshes.delete(key));
+    hiddenRefreshes.set(key, job);
+    return job;
+  }
+
+  // Ocultos para el widget: la primera vez se espera la consulta; despues se
+  // sirve la lista guardada y se refresca en segundo plano si esta vieja.
+  async function getHiddenProductIds(storeId, cfg) {
+    const checkedAt = typeof cfg.hiddenCheckedAt === "number" ? cfg.hiddenCheckedAt : 0;
+    const stored = Array.isArray(cfg.hiddenProductIds) ? cfg.hiddenProductIds : [];
+    if (!checkedAt) {
+      try {
+        return await refreshHiddenProducts(storeId);
+      } catch (e) {
+        console.error("[VariantGroups hidden]", e.message);
+        return stored;
+      }
+    }
+    if (Date.now() - checkedAt > HIDDEN_REFRESH_MS) {
+      refreshHiddenProducts(storeId).catch((e) => console.error("[VariantGroups hidden]", e.message));
+    }
+    return stored;
+  }
+
   // GET /api/variant-groups-config?storeId=X
   app.get("/api/variant-groups-config", async (req, res) => {
     const { storeId } = req.query;
@@ -488,6 +568,7 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
         showOnPDP: config.showOnPDP !== false,
         swatchSize: ["sm", "md", "lg"].includes(config.swatchSize) ? config.swatchSize : "md",
         swatchMode: config.swatchMode === "color" ? "color" : "image",
+        hideUnpublished: config.hideUnpublished !== false,
         colorPalette: sanitizePalette(config.colorPalette),
         updatedAt: FieldValue.serverTimestamp(),
       };
@@ -558,6 +639,8 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
         },
         { merge: true }
       );
+      // Al publicar se refresca la lista de ocultos para que se vea al toque.
+      refreshHiddenProducts(storeId).catch((e) => console.error("[VariantGroups hidden]", e.message));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -661,7 +744,8 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
       if (!doc.exists) return res.json({});
       const cfg = doc.data();
       if (cfg.enabled === false) return res.json({});
-      res.json(buildWidgetIndex(cfg.groups || [], cfg.colorPalette || {}));
+      const hiddenProductIds = cfg.hideUnpublished === false ? [] : await getHiddenProductIds(store, cfg);
+      res.json(buildWidgetIndex(cfg.groups || [], cfg.colorPalette || {}, hiddenProductIds));
     } catch (error) {
       res.json({});
     }
@@ -675,6 +759,7 @@ module.exports = {
   diffScanWithPublished,
   buildWidgetIndex,
   fetchAllStoreProducts,
+  fetchHiddenProductIds,
   isValidGroupProduct,
   isValidGroup,
   registerVariantGroupsRoutes,

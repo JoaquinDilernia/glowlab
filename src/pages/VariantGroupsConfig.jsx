@@ -16,6 +16,7 @@ const DEFAULT_CONFIG = {
   showOnPDP: true,
   swatchSize: 'md',
   swatchMode: 'image',
+  hideUnpublished: true,
   colorPalette: {},
   groups: [],
   ungrouped: [],
@@ -360,6 +361,10 @@ export default function VariantGroupsConfig() {
           <label className="vg-check">
             <input type="checkbox" checked={config.showOnPDP !== false}
               onChange={e => setConfig(c => ({ ...c, showOnPDP: e.target.checked }))} /> Mostrar en ficha de producto
+          </label>
+          <label className="vg-check" title="Los productos ocultos dan 404 en la tienda. Se revisa cada 10 minutos.">
+            <input type="checkbox" checked={config.hideUnpublished !== false}
+              onChange={e => setConfig(c => ({ ...c, hideUnpublished: e.target.checked }))} /> No mostrar productos ocultos como variante
           </label>
           <div className="vg-field">
             <label>Círculo de variante</label>

@@ -8,6 +8,7 @@ const {
   diffScanWithPublished,
   buildWidgetIndex,
   fetchAllStoreProducts,
+  fetchHiddenProductIds,
   isValidGroup,
 } = require("./variant-groups");
 
@@ -367,4 +368,38 @@ test("buildWidgetIndex - cada sibling lleva su nombre y colores (paleta pisa dic
   assert.equal(negro.colors.length, 1);
   assert.equal(greige.colorName, "Greige");
   assert.deepEqual(greige.colors, ["#aabbcc"]);
+});
+
+test("buildWidgetIndex - saca los productos ocultos de los siblings", () => {
+  const groups = [{
+    groupKey: "BCV136", title: "Silla Rey", hidden: false, excludedProductIds: [],
+    products: [
+      { productId: "1", sku: "BCV136PT", name: "Rojo", image: "", url: "/rojo" },
+      { productId: "2", sku: "BCV136NT", name: "Natural", image: "", url: "/natural" },
+      { productId: "3", sku: "BCV136NG", name: "Negro", image: "", url: "/negro" },
+    ],
+  }];
+  const index = buildWidgetIndex(groups, {}, ["3"]);
+  assert.deepEqual(Object.keys(index).sort(), ["1", "2"]);
+  assert.deepEqual(index["1"].siblings.map((s) => s.productId), ["1", "2"]);
+});
+
+test("buildWidgetIndex - grupo que queda con 1 producto visible no se muestra", () => {
+  const groups = [{
+    groupKey: "BCV136", title: "Silla Rey", hidden: false, excludedProductIds: [],
+    products: [
+      { productId: "1", sku: "BCV136PT", name: "Rojo", image: "", url: "/rojo" },
+      { productId: "2", sku: "BCV136NT", name: "Natural", image: "", url: "/natural" },
+    ],
+  }];
+  assert.deepEqual(buildWidgetIndex(groups, {}, [2]), {});
+});
+
+test("fetchHiddenProductIds - devuelve solo los ids con published: false", async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => [{ id: 1, published: true }, { id: 2, published: false }, { id: 3 }],
+  });
+  const ids = await fetchHiddenProductIds({ storeId: "111", accessToken: "tok", fetchImpl });
+  assert.deepEqual(ids, ["2"]);
 });
