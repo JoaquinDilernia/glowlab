@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Layers } from 'lucide-react';
+import { ArrowLeft, Save, Layers, ChevronDown } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
 import './StyleConfig.css';
@@ -9,6 +9,29 @@ import './VariantGroupsConfig.css';
 // Piloto: solo estas dos tiendas ven el modulo (ver Sidebar.jsx STORE_EXCLUSIVE_ITEMS).
 // TODO: quitar este guard cuando se libere a todas las tiendas.
 const ALLOWED_STORE_IDS = ['2547699', '5320806', '6854698'];
+
+// Seccion plegable. Cerrada por defecto para que la pagina no sea un scroll
+// infinito; `actions` queda siempre visible a la derecha del titulo. Con
+// `open`/`onToggle` se controla desde afuera (ej. abrir al escanear).
+function Collapsible({ title, meta, actions, sub = false, hidden = false, defaultOpen = false, open, onToggle, children }) {
+  const [innerOpen, setInnerOpen] = useState(defaultOpen);
+  const isOpen = open ?? innerOpen;
+  if (hidden) return null;
+  const toggle = () => (onToggle ? onToggle(!isOpen) : setInnerOpen(!isOpen));
+  return (
+    <div className={sub ? 'vg-collapse-sub' : 'config-section'}>
+      <div className={`vg-collapse-head ${sub ? '' : 'section-header'}`}>
+        <button type="button" className="vg-collapse-title" aria-expanded={isOpen} onClick={toggle}>
+          <ChevronDown size={sub ? 16 : 18} className={`vg-chevron ${isOpen ? 'is-open' : ''}`} />
+          {sub ? <strong>{title}</strong> : <h2>{title}</h2>}
+          {meta && <span className="vg-collapse-meta">{meta}</span>}
+        </button>
+        {actions}
+      </div>
+      {isOpen && <div className="vg-collapse-body">{children}</div>}
+    </div>
+  );
+}
 
 // El circulo mide 44px como maximo: se recorta al centro en cuadrado y se
 // guarda a 160px (alcanza para pantallas retina y pesa pocos KB por swatch).
@@ -40,8 +63,6 @@ const DEFAULT_CONFIG = {
   swatchSize: 'md',
   swatchMode: 'image',
   colorSkuPrefixes: [],
-  techSheetEnabled: false,
-  techSheetSkuPrefixes: ['M', 'I'],
   hideUnpublished: true,
   colorPalette: {},
   groups: [],
@@ -150,6 +171,7 @@ export default function VariantGroupsConfig() {
 
   const [scanning, setScanning] = useState(false);
   const [proposal, setProposal] = useState(null);
+  const [scanOpen, setScanOpen] = useState(false);
   // selección editable: qué incluir de cada bucket propuesto
   const [includedNewGroupProducts, setIncludedNewGroupProducts] = useState({}); // { [groupKey]: Set(productId) }
   const [includedAdditions, setIncludedAdditions] = useState({}); // { [groupKey]: Set(productId) }
@@ -167,6 +189,7 @@ export default function VariantGroupsConfig() {
       if (!res?.success) { toast.error(res?.message || 'Error al escanear'); return; }
 
       setProposal(res);
+      setScanOpen(true);
       setIncludedNewGroupProducts(
         Object.fromEntries(res.newGroups.map(g => [g.groupKey, new Set(g.products.map(p => String(p.productId)))]))
       );
@@ -296,6 +319,14 @@ export default function VariantGroupsConfig() {
   };
 
   const [groupFilter, setGroupFilter] = useState('');
+  // Las tarjetas de grupos publicados muestran solo el titulo; los productos
+  // se despliegan al tocarlo (o al editar).
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
+  const toggleExpandedGroup = (key) => setExpandedGroups(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
   const [editingGroupKey, setEditingGroupKey] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
 
@@ -442,33 +473,8 @@ export default function VariantGroupsConfig() {
         </p>
       </div>
 
-      <div className="config-section">
-        <div className="section-header">
-          <h2>Ficha técnica</h2>
-          <label className="toggle-switch" title="Mostrar desplegable de Dimensiones">
-            <input type="checkbox" checked={config.techSheetEnabled === true}
-              onChange={e => setConfig(c => ({ ...c, techSheetEnabled: e.target.checked }))} />
-            <span className="toggle-slider"></span>
-          </label>
-        </div>
-        <p className="vg-hint">
-          Agrega un desplegable "Dimensiones" arriba de la descripción del producto con la
-          <b> última foto cargada</b> (la ficha técnica). Funciona aunque los grupos estén deshabilitados.
-        </p>
-        {config.techSheetEnabled && (
-          <div className="vg-row">
-            <div className="vg-field" title="Separados por coma. Ej: M, I">
-              <label>Solo en SKU que empiezan con</label>
-              <input type="text" placeholder="Ej: M, I"
-                value={(config.techSheetSkuPrefixes || []).join(',')}
-                onChange={e => setConfig(c => ({ ...c, techSheetSkuPrefixes: e.target.value ? e.target.value.split(',') : [] }))} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="config-section">
-        <div className="section-header"><h2>Paleta de colores</h2></div>
+      <Collapsible title="Paleta de colores"
+        meta={detectedColors.length ? `${detectedColors.length} colores` : ''}>
         <p className="vg-hint">
           El color se detecta del nombre de cada producto (ej. "Mesa Brooklyn <b>Negro</b> 1,20 mts").
           Es aproximado: ajustalo acá y se aplica a todos los productos con ese color.
@@ -538,22 +544,25 @@ export default function VariantGroupsConfig() {
             <p className="vg-hint">Los cambios de la paleta se guardan con el botón Guardar de arriba.</p>
           </>
         )}
-      </div>
+      </Collapsible>
 
-      <div className="config-section">
-        <div className="section-header">
-          <h2>Escanear y revisar</h2>
+      <Collapsible title="Escanear y revisar"
+        open={scanOpen} onToggle={setScanOpen}
+        meta={proposal ? 'propuesta lista para revisar' : ''}
+        actions={(
           <button className="vg-btn-save" onClick={runScan} disabled={scanning}>
             {scanning ? 'Leyendo catálogo…' : 'Escanear productos'}
           </button>
-        </div>
-
+        )}>
         {!proposal && (
           <p className="vg-hint">Corré un escaneo para ver la propuesta de agrupado por SKU.</p>
         )}
 
         {proposal && (
           <div className="vg-review">
+            {/* Cada bloque de la propuesta arranca cerrado: con catalogos
+                grandes son cientos de tarjetas. */}
+            <Collapsible sub title="Grupos nuevos" meta={String(proposal.newGroups.length)} hidden={!proposal.newGroups.length}>
             {proposal.newGroups.map(g => (
               <div key={g.groupKey} className="vg-group-card">
                 <div className="vg-group-card-head">
@@ -579,7 +588,9 @@ export default function VariantGroupsConfig() {
                 </div>
               </div>
             ))}
+            </Collapsible>
 
+            <Collapsible sub title="Productos nuevos en grupos existentes" meta={String(proposal.groupsWithAdditions.length)} hidden={!proposal.groupsWithAdditions.length}>
             {proposal.groupsWithAdditions.map(g => (
               <div key={g.groupKey} className="vg-group-card">
                 <div className="vg-group-card-head">
@@ -607,10 +618,11 @@ export default function VariantGroupsConfig() {
                 </div>
               </div>
             ))}
+            </Collapsible>
 
             {proposal.removedFromCatalog.length > 0 && (
+              <Collapsible sub title="Ya no están en el catálogo" meta={String(proposal.removedFromCatalog.length)}>
               <div className="vg-group-card vg-group-card--warn">
-                <div className="vg-group-card-head"><strong>Ya no están en el catálogo</strong></div>
                 {proposal.removedFromCatalog.map(g => (
                   <div key={g.groupKey} className="vg-prod-chips">
                     {g.products.map(p => {
@@ -626,11 +638,12 @@ export default function VariantGroupsConfig() {
                   </div>
                 ))}
               </div>
+              </Collapsible>
             )}
 
             {proposal.ungrouped.length > 0 && (
+              <Collapsible sub title="Sin agrupar" meta={String(proposal.ungrouped.length)}>
               <div className="vg-group-card">
-                <div className="vg-group-card-head"><strong>Sin agrupar</strong></div>
                 <div className="vg-ungrouped-list">
                   {proposal.ungrouped.map(p => (
                     <div key={p.productId} className="vg-ungrouped-row">
@@ -649,16 +662,15 @@ export default function VariantGroupsConfig() {
                   ))}
                 </div>
               </div>
+              </Collapsible>
             )}
 
             <button className="vg-btn-save" onClick={publishProposal}>Publicar</button>
           </div>
         )}
-      </div>
+      </Collapsible>
 
-      <div className="config-section">
-        <div className="section-header"><h2>Grupos publicados</h2></div>
-
+      <Collapsible title="Grupos publicados" meta={`${(config.groups || []).length} grupos`}>
         <input
           type="text"
           className="vg-search"
@@ -683,7 +695,11 @@ export default function VariantGroupsConfig() {
                   </>
                 ) : (
                   <>
-                    <strong>{g.title}</strong>
+                    <button type="button" className="vg-collapse-title" aria-expanded={expandedGroups.has(g.groupKey)}
+                      onClick={() => toggleExpandedGroup(g.groupKey)}>
+                      <ChevronDown size={16} className={`vg-chevron ${expandedGroups.has(g.groupKey) ? 'is-open' : ''}`} />
+                      <strong>{g.title}</strong>
+                    </button>
                     <span className="vg-hint">{g.groupKey} · {g.products.length} productos</span>
                     <button className="btn-back" onClick={() => startEdit(g)}>Editar</button>
                     <button className="btn-back" onClick={() => toggleHidden(g.groupKey)}>
@@ -692,6 +708,7 @@ export default function VariantGroupsConfig() {
                   </>
                 )}
               </div>
+              {(expandedGroups.has(g.groupKey) || editingGroupKey === g.groupKey) && (
               <div className="vg-prod-chips">
                 {g.products.map(p => (
                   <span key={p.productId} className="vg-chip">
@@ -703,10 +720,11 @@ export default function VariantGroupsConfig() {
                   </span>
                 ))}
               </div>
+              )}
             </div>
           ))}
         </div>
-      </div>
+      </Collapsible>
     </div>
   );
 }

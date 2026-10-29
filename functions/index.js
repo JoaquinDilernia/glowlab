@@ -779,6 +779,8 @@ registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
 
 // Grupos de Variantes por SKU - agrupa productos de Alto Rancho por SKU (piloto)
 const { registerVariantGroupsRoutes } = require('./variant-groups');
+const { registerTechSheetRoutes } = require('./tech-sheet');
+registerTechSheetRoutes(app, { db, FieldValue });
 registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive });
 
 // Combos - descuento por combos de productos/grupos via Discounts API (piloto Alto Rancho)

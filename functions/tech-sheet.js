@@ -1,13 +1,36 @@
 "use strict";
 
+const { sanitizeSkuPrefixes } = require("./sku-prefixes");
+
 // Ficha tecnica en la PDP: un desplegable "Dimensiones" arriba de la
 // descripcion que muestra la ultima foto de la galeria (Alto Rancho carga ahi
 // la ficha tecnica, una imagen cuadrada). Solo en productos cuyo SKU empieza
 // con alguno de los prefijos. Viaja pegado al widget de Grupos de Variantes,
 // asi no hace falta instalar otro script en la tienda.
+const COLLECTION = "promonube_tech_sheet";
 const DEFAULT_SKU_PREFIXES = ["M", "I"];
+const DEFAULT_TITLE = "Dimensiones";
+const MAX_TITLE_LENGTH = 40;
 
-function buildTechSheetLoader(store, { skuPrefixes = DEFAULT_SKU_PREFIXES } = {}) {
+// Piloto: solo Alto Rancho (minorista + mayorista) y la tienda demo.
+const ALLOWED_STORE_IDS = ["2547699", "5320806", "6854698"];
+
+const DEFAULT_CONFIG = {
+  enabled: false,
+  skuPrefixes: DEFAULT_SKU_PREFIXES,
+  title: DEFAULT_TITLE,
+};
+
+function isAllowedStore(storeId) {
+  return ALLOWED_STORE_IDS.includes(String(storeId));
+}
+
+function sanitizeTitle(title) {
+  const clean = String(title || "").replace(/\s+/g, " ").trim().slice(0, MAX_TITLE_LENGTH);
+  return clean || DEFAULT_TITLE;
+}
+
+function buildTechSheetLoader(store, { skuPrefixes = DEFAULT_SKU_PREFIXES, title = DEFAULT_TITLE } = {}) {
   return `
 /* Ficha tecnica - tienda ${store} */
 (function() {
@@ -16,6 +39,7 @@ function buildTechSheetLoader(store, { skuPrefixes = DEFAULT_SKU_PREFIXES } = {}
   window.__pnTechSheetLoaded = true;
 
   var PREFIXES = ${JSON.stringify(skuPrefixes)};
+  var TITLE = ${JSON.stringify(sanitizeTitle(title)).replace(/</g, "\\u003c")};
   if (!window.LS || LS.template !== 'product') return;
 
   // Basta con que una variante tenga el prefijo: todas comparten el modelo.
@@ -75,9 +99,9 @@ function buildTechSheetLoader(store, { skuPrefixes = DEFAULT_SKU_PREFIXES } = {}
     var details = document.createElement('details');
     details.className = 'pn-ts';
     var summary = document.createElement('summary');
-    summary.textContent = 'Dimensiones';
+    summary.textContent = TITLE;
     var img = document.createElement('img');
-    img.alt = 'Dimensiones de ' + String((LS.product && LS.product.name) || 'el producto');
+    img.alt = TITLE + ' de ' + String((LS.product && LS.product.name) || 'el producto');
     img.loading = 'lazy';
     img.src = url;
     details.appendChild(summary);
@@ -91,4 +115,67 @@ function buildTechSheetLoader(store, { skuPrefixes = DEFAULT_SKU_PREFIXES } = {}
 `;
 }
 
-module.exports = { buildTechSheetLoader, DEFAULT_SKU_PREFIXES };
+// Script para pegar al widget de variantes, o "" si esta apagado.
+async function getTechSheetLoader(db, store) {
+  if (!isAllowedStore(store)) return "";
+  const doc = await db.collection(COLLECTION).doc(String(store)).get();
+  if (!doc.exists || doc.data().enabled !== true) return "";
+  const skuPrefixes = sanitizeSkuPrefixes(doc.data().skuPrefixes);
+  if (!skuPrefixes.length) return "";
+  return buildTechSheetLoader(store, { skuPrefixes, title: doc.data().title });
+}
+
+function registerTechSheetRoutes(app, { db, FieldValue }) {
+  function guard(storeId, res) {
+    if (!storeId) {
+      res.status(400).json({ success: false, message: "storeId requerido" });
+      return false;
+    }
+    if (!isAllowedStore(storeId)) {
+      res.status(403).json({ success: false, message: "Módulo no disponible para esta tienda" });
+      return false;
+    }
+    return true;
+  }
+
+  // GET /api/tech-sheet-config?storeId=X
+  app.get("/api/tech-sheet-config", async (req, res) => {
+    const { storeId } = req.query;
+    if (!guard(storeId, res)) return;
+    try {
+      const doc = await db.collection(COLLECTION).doc(String(storeId)).get();
+      res.json({ success: true, config: doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // POST /api/tech-sheet-config
+  app.post("/api/tech-sheet-config", async (req, res) => {
+    const { storeId, config } = req.body || {};
+    if (!guard(storeId, res)) return;
+    if (!config || typeof config !== "object") {
+      return res.status(400).json({ success: false, message: "config requerido" });
+    }
+    try {
+      const settings = {
+        enabled: config.enabled === true,
+        skuPrefixes: sanitizeSkuPrefixes(config.skuPrefixes),
+        title: sanitizeTitle(config.title),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      await db.collection(COLLECTION).doc(String(storeId)).set(settings, { merge: true });
+      res.json({ success: true, config: { ...settings, updatedAt: undefined } });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+}
+
+module.exports = {
+  buildTechSheetLoader,
+  getTechSheetLoader,
+  registerTechSheetRoutes,
+  sanitizeTitle,
+  DEFAULT_SKU_PREFIXES,
+};

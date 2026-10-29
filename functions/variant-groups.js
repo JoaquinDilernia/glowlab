@@ -13,10 +13,8 @@ const {
   isGiftRegistryEnabled,
   buildLoaderSnippet: buildGiftRegistryLoader,
 } = require("./gift-registry");
-const {
-  buildTechSheetLoader,
-  DEFAULT_SKU_PREFIXES: DEFAULT_TECH_SHEET_PREFIXES,
-} = require("./tech-sheet");
+const { getTechSheetLoader } = require("./tech-sheet");
+const { sanitizeSkuPrefixes, matchesSkuPrefix } = require("./sku-prefixes");
 
 const SKU_SUFFIX_LENGTH = 2;
 const MIN_GROUP_KEY_LENGTH = 3;
@@ -260,24 +258,6 @@ async function fetchHiddenProductIds({ storeId, accessToken, fetchImpl }) {
   return out;
 }
 
-// "m, mec" o ["M", "MEC"] -> ["M", "MEC"]. Solo letras y numeros, sin repetir.
-function sanitizeSkuPrefixes(value) {
-  const list = Array.isArray(value) ? value : String(value || "").split(/[\s,;]+/);
-  const out = [];
-  for (const raw of list) {
-    const prefix = String(raw || "").trim().toUpperCase();
-    if (!/^[A-Z0-9]{1,12}$/.test(prefix) || out.includes(prefix)) continue;
-    out.push(prefix);
-    if (out.length >= 20) break;
-  }
-  return out;
-}
-
-function matchesSkuPrefix(groupKey, prefixes) {
-  const key = String(groupKey || "").toUpperCase();
-  return (prefixes || []).some((p) => key.startsWith(p));
-}
-
 function buildWidgetScript(store, cfg) {
   return `
 /**
@@ -514,10 +494,6 @@ const DEFAULT_CONFIG = {
   // Grupos cuyo SKU empieza con alguno de estos prefijos usan el circulo de
   // color aunque swatchMode sea "image" (para probar en algunas lineas).
   colorSkuPrefixes: [],
-  // Desplegable "Dimensiones" en la PDP (ver tech-sheet.js). Es independiente
-  // de enabled: se puede tener la ficha tecnica sin los swatches.
-  techSheetEnabled: false,
-  techSheetSkuPrefixes: DEFAULT_TECH_SHEET_PREFIXES,
   hideUnpublished: true,
   colorPalette: {},
   groups: [],
@@ -637,8 +613,6 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
         swatchSize: ["sm", "md", "lg"].includes(config.swatchSize) ? config.swatchSize : "md",
         swatchMode: config.swatchMode === "color" ? "color" : "image",
         colorSkuPrefixes: sanitizeSkuPrefixes(config.colorSkuPrefixes),
-        techSheetEnabled: config.techSheetEnabled === true,
-        techSheetSkuPrefixes: sanitizeSkuPrefixes(config.techSheetSkuPrefixes),
         hideUnpublished: config.hideUnpublished !== false,
         colorPalette: sanitizePalette(config.colorPalette),
         updatedAt: FieldValue.serverTimestamp(),
@@ -776,18 +750,16 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
       }
       // Combos, Lista de regalos y la ficha tecnica no tienen script propio en
       // Partners: se cargan desde este.
-      const [combosOn, giftRegistryOn] = await Promise.all([
+      const [combosOn, giftRegistryOn, techSheetLoader] = await Promise.all([
         isCombosEnabled(db, store),
         isGiftRegistryEnabled(db, store),
+        getTechSheetLoader(db, store),
       ]);
-      const doc = await db.collection(COLLECTION).doc(String(store)).get();
-      const cfg = doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG;
-      const techSheetPrefixes = sanitizeSkuPrefixes(cfg.techSheetSkuPrefixes);
       const combosLoader = (combosOn ? buildLoaderSnippet(store) : "") +
         (giftRegistryOn ? buildGiftRegistryLoader(store) : "") +
-        (cfg.techSheetEnabled === true && techSheetPrefixes.length
-          ? buildTechSheetLoader(store, { skuPrefixes: techSheetPrefixes })
-          : "");
+        techSheetLoader;
+      const doc = await db.collection(COLLECTION).doc(String(store)).get();
+      const cfg = doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG;
       if (cfg.enabled === false) {
         return res.send("// Grupos de Variantes: deshabilitado" + combosLoader);
       }
