@@ -8,6 +8,7 @@ const {
   extractColorLabels,
   sanitizePalette,
   resolveColors,
+  resolveTextures,
   collectDetectedColors,
 } = require("./variant-colors");
 
@@ -93,4 +94,27 @@ test("collectDetectedColors - agrupa por color entre grupos y cuenta productos",
   assert.deepEqual(negro.autoColors, [D.negro]);
   const zebra = detected.find((d) => d.key === "zebra");
   assert.deepEqual(zebra.autoColors, []);
+});
+
+test("resolveTextures - materiales con textura, colores lisos en null", () => {
+  assert.deepEqual(resolveTextures("Petiribi", {}), ["wood"]);
+  assert.deepEqual(resolveTextures("Negro Ébano", {}), ["wood"]);
+  assert.deepEqual(resolveTextures("Tapa Negra Pata Petribi", {}), [null, "wood"]);
+  assert.deepEqual(resolveTextures("Dorados", {}), ["metal"]);
+  assert.deepEqual(resolveTextures("Verde", {}), [null]);
+  assert.deepEqual(resolveTextures("Natural", {}), [null]);
+  assert.deepEqual(resolveTextures("Zebra", {}), []);
+});
+
+test("resolveTextures - Azul Acero es un azul liso, no azul + metal", () => {
+  assert.deepEqual(findColors("Azul Acero"), [D["azul acero"]]);
+  assert.deepEqual(resolveTextures("Azul Acero", {}), [null]);
+});
+
+test("resolveTextures - retocar el tono en la paleta mantiene la textura", () => {
+  const palette = { petiribi: { hex: "#aa7744" } };
+  assert.deepEqual(resolveColors("Petiribi", palette), ["#aa7744"]);
+  assert.deepEqual(resolveTextures("Petiribi", palette), ["wood"]);
+  // Si la paleta deja un solo color, la textura del segundo no sobra
+  assert.deepEqual(resolveTextures("Madera y Blanco", { "madera y blanco": { hex: "#ffffff" } }), ["wood"]);
 });

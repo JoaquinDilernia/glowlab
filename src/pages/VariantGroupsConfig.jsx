@@ -16,6 +16,7 @@ const DEFAULT_CONFIG = {
   showOnPDP: true,
   swatchSize: 'md',
   swatchMode: 'image',
+  colorSkuPrefixes: [],
   hideUnpublished: true,
   colorPalette: {},
   groups: [],
@@ -373,6 +374,15 @@ export default function VariantGroupsConfig() {
               <option value="color">Color</option>
             </select>
           </div>
+          {config.swatchMode !== 'color' && (
+            <div className="vg-field" title="Separados por coma. Ej: M, BCV">
+              <label>Color solo en SKU que empiezan con</label>
+              {/* Se guarda tal cual se tipea (con comas); el backend lo limpia. */}
+              <input type="text" placeholder="Ej: M"
+                value={(config.colorSkuPrefixes || []).join(',')}
+                onChange={e => setConfig(c => ({ ...c, colorSkuPrefixes: e.target.value ? e.target.value.split(',') : [] }))} />
+            </div>
+          )}
           <div className="vg-field">
             <label>Tamaño de swatch</label>
             <select value={config.swatchSize} onChange={e => setConfig(c => ({ ...c, swatchSize: e.target.value }))}>
@@ -393,7 +403,7 @@ export default function VariantGroupsConfig() {
           El color se detecta del nombre de cada producto (ej. "Mesa Brooklyn <b>Negro</b> 1,20 mts").
           Es aproximado: ajustalo acá y se aplica a todos los productos con ese color.
           Si un color no se reconoce, en la tienda se sigue mostrando la foto.
-          {config.swatchMode !== 'color' && ' Se usa cuando el círculo está en modo "Color".'}
+          {config.swatchMode !== 'color' && ' Se usa cuando el círculo está en modo "Color" o en los SKU elegidos arriba.'}
         </p>
 
         {detectedColors.length === 0 ? (

@@ -547,7 +547,7 @@ function buildWidgetScript(store, { pagePath = DEFAULT_CONFIG.pagePath } = {}) {
       '.pn-cb-btn[disabled] { opacity: 0.5 !important; cursor: wait !important; }',
       '.pn-cb-msg { width: 100% !important; font-size: 12px !important; color: #b3261e !important; margin: 0 !important; }',
       // pagina de combos
-      '.pn-cbp { color: #353434 !important; text-align: left !important; padding: 0 0 48px !important; }',
+      '.pn-cbp { color: #353434 !important; text-align: left !important; padding: 36px 0 48px !important; }',
       '.pn-cbp a { color: inherit !important; text-decoration: none !important; }',
       '.pn-cbp-crumb { font-size: 12px !important; color: #8a8580 !important; margin: 0 0 8px !important; }',
       '.pn-cbp-crumb a:hover { text-decoration: underline !important; }',
@@ -590,6 +590,7 @@ function buildWidgetScript(store, { pagePath = DEFAULT_CONFIG.pagePath } = {}) {
       '.pn-cbp-desc h2 { font-size: 15px !important; font-weight: 600 !important; margin: 0 0 10px !important; }',
       '.pn-cbp-desc p { font-size: 14px !important; line-height: 1.7 !important; margin: 0 !important; white-space: pre-line !important; max-width: 760px !important; }',
       '@media (max-width: 767px) {',
+      '  .pn-cbp { padding-top: 24px !important; }',
       '  .pn-cbp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 14px !important; }',
       '  .pn-cbp-hero h1 { font-size: 24px !important; }',
       '  .pn-cbp-pdp { grid-template-columns: minmax(0, 1fr) !important; gap: 20px !important; }',

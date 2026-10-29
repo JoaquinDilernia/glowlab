@@ -7,6 +7,7 @@ const {
   computeSkuGroups,
   diffScanWithPublished,
   buildWidgetIndex,
+  sanitizeSkuPrefixes,
   fetchAllStoreProducts,
   fetchHiddenProductIds,
   isValidGroup,
@@ -402,4 +403,26 @@ test("fetchHiddenProductIds - devuelve solo los ids con published: false", async
   });
   const ids = await fetchHiddenProductIds({ storeId: "111", accessToken: "tok", fetchImpl });
   assert.deepEqual(ids, ["2"]);
+});
+
+test("sanitizeSkuPrefixes - limpia, pasa a mayuscula y saca repetidos", () => {
+  assert.deepEqual(sanitizeSkuPrefixes("m, mec ,M"), ["M", "MEC"]);
+  assert.deepEqual(sanitizeSkuPrefixes(["m", " ", "B-1", "bcv"]), ["M", "BCV"]);
+  assert.deepEqual(sanitizeSkuPrefixes(undefined), []);
+});
+
+test("buildWidgetIndex - colorMode solo en grupos con prefijo elegido", () => {
+  const mk = (groupKey, a, b) => ({
+    groupKey, hidden: false, excludedProductIds: [],
+    products: [
+      { productId: a, sku: groupKey + "NE", name: "Mesa Negro", image: "", url: "" },
+      { productId: b, sku: groupKey + "PT", name: "Mesa Petiribi", image: "", url: "" },
+    ],
+  });
+  const index = buildWidgetIndex([mk("MEC011", "1", "2"), mk("DPE001", "3", "4")], {}, [], ["M"]);
+  assert.equal(index["1"].colorMode, true);
+  assert.equal(index["3"].colorMode, false);
+  assert.deepEqual(index["1"].siblings[1].textures, ["wood"]);
+  // Sin prefijos ningun grupo fuerza el color
+  assert.equal(buildWidgetIndex([mk("MEC011", "1", "2")])["1"].colorMode, false);
 });

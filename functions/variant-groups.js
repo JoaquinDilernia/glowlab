@@ -3,6 +3,7 @@
 const {
   extractColorLabels,
   resolveColors,
+  resolveTextures,
   sanitizePalette,
   collectDetectedColors,
 } = require("./variant-colors");
@@ -146,7 +147,9 @@ function safeHref(url) {
 // hiddenProductIds: productos ocultos en la tienda (published: false). Se
 // sacan de los siblings porque su link da 404; si el grupo queda con menos
 // de 2 productos visibles no se muestra.
-function buildWidgetIndex(groups, palette, hiddenProductIds) {
+// colorSkuPrefixes: grupos que usan el circulo de color aunque el modo general
+// sea "image" (colorMode en cada entrada).
+function buildWidgetIndex(groups, palette, hiddenProductIds, colorSkuPrefixes) {
   const hidden = new Set((hiddenProductIds || []).map(String));
   const index = {};
   for (const group of groups || []) {
@@ -157,12 +160,14 @@ function buildWidgetIndex(groups, palette, hiddenProductIds) {
     for (const product of products) {
       index[String(product.productId)] = {
         groupKey: group.groupKey,
+        colorMode: matchesSkuPrefix(group.groupKey, colorSkuPrefixes),
         siblings: products.map((p, i) => ({
           productId: String(p.productId),
           url: safeHref(p.url),
           image: safeString(p.image),
           colorName: colorLabels[i],
           colors: resolveColors(colorLabels[i], palette),
+          textures: resolveTextures(colorLabels[i], palette),
           active: String(p.productId) === String(product.productId),
         })),
       };
@@ -249,6 +254,24 @@ async function fetchHiddenProductIds({ storeId, accessToken, fetchImpl }) {
   return out;
 }
 
+// "m, mec" o ["M", "MEC"] -> ["M", "MEC"]. Solo letras y numeros, sin repetir.
+function sanitizeSkuPrefixes(value) {
+  const list = Array.isArray(value) ? value : String(value || "").split(/[\s,;]+/);
+  const out = [];
+  for (const raw of list) {
+    const prefix = String(raw || "").trim().toUpperCase();
+    if (!/^[A-Z0-9]{1,12}$/.test(prefix) || out.includes(prefix)) continue;
+    out.push(prefix);
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+function matchesSkuPrefix(groupKey, prefixes) {
+  const key = String(groupKey || "").toUpperCase();
+  return (prefixes || []).some((p) => key.startsWith(p));
+}
+
 function buildWidgetScript(store, cfg) {
   return `
 /**
@@ -287,10 +310,29 @@ function buildWidgetScript(store, cfg) {
       // del activo se ve aunque el color sea oscuro, y el filete interno
       // marca el contorno de los colores claros (blanco, tiza, crema).
       '.pn-vg-swatch-color { padding: 2px !important; }',
-      '.pn-vg-fill { display: block !important; width: 100% !important; height: 100% !important; border-radius: 50% !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15) !important; }',
+      '.pn-vg-fill { position: relative !important; display: block !important; width: 100% !important; height: 100% !important; border-radius: 50% !important; overflow: hidden !important; }',
+      // El filete va en un ::after para quedar por encima de las capas.
+      '.pn-vg-fill::after { content: "" !important; position: absolute !important; inset: 0 !important; border-radius: 50% !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15) !important; }',
+      '.pn-vg-layer { position: absolute !important; inset: 0 !important; }',
+      '.pn-vg-layer-2 { clip-path: polygon(100% 0, 100% 100%, 0 100%) !important; }',
       '.pn-vg-swatch-more { display: inline-flex !important; flex: none !important; align-items: center !important; justify-content: center !important; width: ' + SWATCH_PX + 'px !important; height: ' + SWATCH_PX + 'px !important; border-radius: 50% !important; background: rgba(0,0,0,0.06) !important; color: #666 !important; font-size: ' + Math.round(SWATCH_PX * 0.32) + 'px !important; font-weight: 600 !important; line-height: 1 !important; }',
     ].join('');
     document.head.appendChild(s);
+  }
+
+  // Texturas de material dibujadas con gradientes sobre el tono base, sin
+  // imagenes: vetas de madera, brillo metalico, trama de rattan, carey.
+  var TEXTURES = {
+    // Dos tramas de vetas con angulos y pasos distintos: al cruzarse se
+    // desparejan y no queda el rayado regular de una tela.
+    wood: 'repeating-linear-gradient(94deg, rgba(0,0,0,0) 0 3px, rgba(0,0,0,0.12) 3px 4px, rgba(0,0,0,0) 4px 9px, rgba(0,0,0,0.07) 9px 11px), repeating-linear-gradient(87deg, rgba(255,255,255,0) 0 5px, rgba(255,255,255,0.08) 5px 7px, rgba(255,255,255,0) 7px 17px), linear-gradient(90deg, rgba(0,0,0,0.1), rgba(0,0,0,0) 35%, rgba(0,0,0,0.07) 70%, rgba(0,0,0,0))',
+    metal: 'linear-gradient(135deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 32%, rgba(0,0,0,0.2) 58%, rgba(255,255,255,0.35) 82%, rgba(0,0,0,0.12) 100%), repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, rgba(0,0,0,0) 1px 2px)',
+    rattan: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.2) 0 1px, rgba(0,0,0,0) 1px 4px), repeating-linear-gradient(-45deg, rgba(0,0,0,0.2) 0 1px, rgba(0,0,0,0) 1px 4px)',
+    carey: 'radial-gradient(ellipse 28% 22% at 28% 30%, rgba(25,12,4,0.85), rgba(25,12,4,0)), radial-gradient(ellipse 22% 30% at 72% 60%, rgba(25,12,4,0.75), rgba(25,12,4,0)), radial-gradient(ellipse 20% 14% at 40% 80%, rgba(25,12,4,0.65), rgba(25,12,4,0)), radial-gradient(ellipse 26% 20% at 55% 42%, rgba(214,146,54,0.65), rgba(214,146,54,0)), radial-gradient(ellipse 18% 16% at 80% 22%, rgba(214,146,54,0.6), rgba(214,146,54,0)), radial-gradient(ellipse 16% 20% at 16% 64%, rgba(214,146,54,0.55), rgba(214,146,54,0))',
+  };
+
+  function paint(hex, texture) {
+    return TEXTURES[texture] ? TEXTURES[texture] + ', ' + hex : hex;
   }
 
   function loadIndex(cb) {
@@ -325,7 +367,7 @@ function buildWidgetScript(store, cfg) {
       var el = document.createElement(sib.active ? 'span' : 'a');
       var colors = sib.colors || [];
       // Sin color detectado se cae a la foto, para no dejar un circulo vacio.
-      var useColor = CFG.swatchMode === 'color' && colors.length > 0;
+      var useColor = (CFG.swatchMode === 'color' || entry.colorMode === true) && colors.length > 0;
       el.className = 'pn-vg-swatch' + (useColor ? ' pn-vg-swatch-color' : '') + (sib.active ? ' pn-vg-active' : '');
       if (!sib.active) el.setAttribute('href', sib.url);
       if (sib.colorName) {
@@ -335,9 +377,15 @@ function buildWidgetScript(store, cfg) {
       if (useColor) {
         var fill = document.createElement('span');
         fill.className = 'pn-vg-fill';
-        fill.style.background = colors.length > 1
-          ? 'linear-gradient(135deg, ' + colors[0] + ' 50%, ' + colors[1] + ' 50%)'
-          : colors[0];
+        var textures = sib.textures || [];
+        // Cada color va en su propia capa para que la textura no cruce la
+        // diagonal del bicolor: el segundo ocupa el triangulo de abajo.
+        colors.slice(0, 2).forEach(function(hex, i) {
+          var layer = document.createElement('span');
+          layer.className = 'pn-vg-layer' + (i === 1 ? ' pn-vg-layer-2' : '');
+          layer.style.background = paint(hex, textures[i]);
+          fill.appendChild(layer);
+        });
         el.appendChild(fill);
       } else if (sib.image) {
         el.style.backgroundImage = 'url(' + sib.image + ')';
@@ -450,6 +498,9 @@ const DEFAULT_CONFIG = {
   showOnPDP: true,
   swatchSize: "md",
   swatchMode: "image",
+  // Grupos cuyo SKU empieza con alguno de estos prefijos usan el circulo de
+  // color aunque swatchMode sea "image" (para probar en algunas lineas).
+  colorSkuPrefixes: [],
   hideUnpublished: true,
   colorPalette: {},
   groups: [],
@@ -568,6 +619,7 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
         showOnPDP: config.showOnPDP !== false,
         swatchSize: ["sm", "md", "lg"].includes(config.swatchSize) ? config.swatchSize : "md",
         swatchMode: config.swatchMode === "color" ? "color" : "image",
+        colorSkuPrefixes: sanitizeSkuPrefixes(config.colorSkuPrefixes),
         hideUnpublished: config.hideUnpublished !== false,
         colorPalette: sanitizePalette(config.colorPalette),
         updatedAt: FieldValue.serverTimestamp(),
@@ -745,7 +797,7 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
       const cfg = doc.data();
       if (cfg.enabled === false) return res.json({});
       const hiddenProductIds = cfg.hideUnpublished === false ? [] : await getHiddenProductIds(store, cfg);
-      res.json(buildWidgetIndex(cfg.groups || [], cfg.colorPalette || {}, hiddenProductIds));
+      res.json(buildWidgetIndex(cfg.groups || [], cfg.colorPalette || {}, hiddenProductIds, sanitizeSkuPrefixes(cfg.colorSkuPrefixes)));
     } catch (error) {
       res.json({});
     }
@@ -758,6 +810,7 @@ module.exports = {
   computeSkuGroups,
   diffScanWithPublished,
   buildWidgetIndex,
+  sanitizeSkuPrefixes,
   fetchAllStoreProducts,
   fetchHiddenProductIds,
   isValidGroupProduct,

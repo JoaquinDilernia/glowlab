@@ -32,6 +32,9 @@ const COLOR_DICTIONARY = {
   "natural": "#c9a77c",
   "madera": "#a87a4f",
   "roble": "#b08657",
+  "roble oscuro": "#6e4b2e",
+  "ebano": "#2a201a",
+  "negro ebano": "#2a201a",
   "pino": "#d8b27a",
   "cedro": "#9a5b3a",
   "nogal": "#6b4a2f",
@@ -57,6 +60,8 @@ const COLOR_DICTIONARY = {
   "plata": "#c0c0c0",
   "niquel": "#a7a9ac",
   "acero": "#9ea3a8",
+  // "Azul Acero" es un tono de azul, no azul + metal
+  "azul acero": "#4a6584",
   "cromo": "#b8bcc0",
   "dorado": "#c9a646",
   "oro": "#c9a646",
@@ -102,6 +107,20 @@ const COLOR_DICTIONARY = {
   "transparente": "#e6eef1",
 };
 
+// Colores que son un material: el widget les dibuja una textura encima del
+// tono base (vetas, brillo metalico, trama, manchas). El resto va liso.
+// "Natural" queda afuera a proposito: en la tienda se usa para tusor y lino.
+const COLOR_TEXTURES = {
+  "madera": "wood", "roble": "wood", "roble oscuro": "wood", "pino": "wood",
+  "cedro": "wood", "nogal": "wood", "wengue": "wood", "petiribi": "wood",
+  "petribi": "wood", "paraiso": "wood", "ebano": "wood", "negro ebano": "wood",
+  "plateado": "metal", "plata": "metal", "niquel": "metal", "acero": "metal",
+  "cromo": "metal", "dorado": "metal", "oro": "metal", "bronce": "metal",
+  "cobre": "metal",
+  "rattan": "rattan",
+  "carey": "carey",
+};
+
 const MAX_COLORS = 2;
 const MAX_PHRASE_WORDS = 3;
 
@@ -140,8 +159,8 @@ function isColorToken(word) {
 
 // Busca hasta 2 colores conocidos dentro de un texto ("Tapa Negra Patas
 // Petribi" -> [negro, petribi]). Prioriza la frase mas larga ("verde seco"
-// antes que "verde").
-function findColors(label) {
+// antes que "verde"). Devuelve las claves del diccionario.
+function findColorKeys(label) {
   const tokens = tokenize(label).map(canonicalToken);
   const found = [];
   let i = 0;
@@ -151,7 +170,7 @@ function findColors(label) {
       const phrase = tokens.slice(i, i + n).join(" ");
       if (COLOR_DICTIONARY[phrase]) {
         const hex = COLOR_DICTIONARY[phrase];
-        if (!found.includes(hex)) found.push(hex);
+        if (!found.some((k) => COLOR_DICTIONARY[k] === hex)) found.push(phrase);
         matched = n;
         break;
       }
@@ -159,6 +178,10 @@ function findColors(label) {
     i += matched || 1;
   }
   return found;
+}
+
+function findColors(label) {
+  return findColorKeys(label).map((k) => COLOR_DICTIONARY[k]);
 }
 
 function colorKey(label) {
@@ -213,6 +236,13 @@ function resolveColors(label, palette) {
   return findColors(label);
 }
 
+// Textura de cada color de resolveColors (misma posicion, null = liso). Sale
+// del nombre, asi si el admin retoca el tono de "Petiribi" sigue siendo madera.
+function resolveTextures(label, palette) {
+  const textures = findColorKeys(label).map((k) => COLOR_TEXTURES[k] || null);
+  return textures.slice(0, resolveColors(label, palette).length);
+}
+
 // Para la paleta del admin: un item por color distinto de los grupos publicados.
 function collectDetectedColors(groups) {
   const byKey = new Map();
@@ -240,5 +270,6 @@ module.exports = {
   extractColorLabels,
   sanitizePalette,
   resolveColors,
+  resolveTextures,
   collectDetectedColors,
 };

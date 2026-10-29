@@ -73,7 +73,7 @@
 .vg-field label {
   font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--gl-text-muted);
 }
-.vg-field select { padding: 10px 12px; border-radius: var(--gl-radius-sm); font-size: 14px; min-width: 160px; }
+.vg-field select, .vg-field input { padding: 10px 12px; border-radius: var(--gl-radius-sm); font-size: 14px; min-width: 160px; }
 
 .vg-review { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
 
