@@ -12587,331 +12587,289 @@ app.get("/api/style-widget.js", async (req, res) => {
       return;
     }
 
-    const categoryUrls = CONFIG.lightToggle.categoryUrls || [];
+    const lt = CONFIG.lightToggle;
+    const categoryUrls = lt.categoryUrls || [];
     const currentUrl = window.location.href;
 
-    console.log('PromoNube Light Toggle: Checking URL...', currentUrl);
-    
-    // Si categoryUrls est? vac�o, aplicar a TODOS los productos (p�ginas de producto)
-    // Si tiene URLs, solo aplicar si la URL actual coincide con alguna de ellas
+    // Si categoryUrls esta vacio se aplica en todas las paginas con listado;
+    // si tiene URLs, solo cuando la URL actual coincide con alguna
     if (categoryUrls.length > 0) {
       const matchesAnyUrl = categoryUrls.some(url => url && currentUrl.includes(url));
       if (!matchesAnyUrl) {
-        console.log('PromoNube: No estamos en ninguna de las categor�as configuradas:', categoryUrls);
+        console.log('PromoNube: No estamos en ninguna de las categorias configuradas:', categoryUrls);
         return;
       }
     }
 
-    console.log('PromoNube: ? Activando Cambio de Vista...');
+    if (document.getElementById('pn-light-toggle')) return;
 
-    // Aplicar hover para mostrar la segunda imagen en TODOS los productos
-    function applySecondViewHover() {
-      const productItems = document.querySelectorAll('.js-item-product, .product-item, [data-component="product-item"]');
+    const accent = lt.backgroundColor || '#353434';
+    const STORAGE_KEY = 'pn_light_toggle_state';
+    const ITEM_SELECTOR = '.js-item-product, .product-item, [data-component="product-item"]';
 
-      productItems.forEach(function(item) {
-        const imageContainer = item.querySelector('a[href*="/productos/"], .item-link, .product-image');
-        if (!imageContainer || imageContainer.dataset.pnSecondViewApplied === 'true') return;
+    function readState() {
+      try { return localStorage.getItem(STORAGE_KEY) === 'on'; } catch (e) { return false; }
+    }
+    function saveState(isOn) {
+      try { localStorage.setItem(STORAGE_KEY, isOn ? 'on' : 'off'); } catch (e) {}
+    }
 
-        const images = imageContainer.querySelectorAll('img');
+    let isOn = readState();
+
+    // ---------- Estilos (una sola vez) ----------
+    if (!document.getElementById('pn-light-toggle-styles')) {
+      const css = document.createElement('style');
+      css.id = 'pn-light-toggle-styles';
+      css.textContent = [
+        // Toggle
+        '#pn-light-toggle{--pn-lt-accent:' + accent + ';display:inline-flex;align-items:center;gap:10px;font-family:inherit;margin-right:auto;-webkit-tap-highlight-color:transparent}',
+        '#pn-light-toggle .pn-lt-label{font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:#8a8a8a}',
+        '#pn-light-toggle .pn-lt-seg{position:relative;display:inline-flex;padding:3px;border-radius:999px;background:#f3f2ef;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}',
+        '#pn-light-toggle .pn-lt-thumb{position:absolute;top:3px;bottom:3px;left:0;width:0;border-radius:999px;background:var(--pn-lt-accent);box-shadow:0 1px 2px rgba(0,0,0,.18);transition:transform .38s cubic-bezier(.22,.9,.24,1),width .38s cubic-bezier(.22,.9,.24,1),box-shadow .4s ease}',
+        '#pn-light-toggle.is-on .pn-lt-thumb{box-shadow:0 1px 2px rgba(0,0,0,.18),0 6px 18px -4px rgba(255,176,59,.55)}',
+        '#pn-light-toggle .pn-lt-opt{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;margin:0;padding:7px 14px;border:0;border-radius:999px;background:transparent;font:inherit;font-size:13px;font-weight:500;line-height:1;color:#6b6b6b;cursor:pointer;transition:color .3s ease;white-space:nowrap}',
+        '#pn-light-toggle .pn-lt-opt:hover{color:#222}',
+        '#pn-light-toggle .pn-lt-opt[aria-checked="true"]{color:#fff}',
+        '#pn-light-toggle .pn-lt-opt:focus-visible{outline:2px solid var(--pn-lt-accent);outline-offset:2px}',
+        '#pn-light-toggle svg{width:15px;height:15px;flex:none;overflow:visible}',
+        '#pn-light-toggle .pn-lt-glass{fill:transparent;transition:fill .35s ease}',
+        '#pn-light-toggle .pn-lt-rays{opacity:0;transform:scale(.6);transform-origin:12px 10px;transition:opacity .35s ease,transform .35s ease}',
+        '#pn-light-toggle.is-on .pn-lt-opt-on .pn-lt-glass{fill:#ffc857}',
+        '#pn-light-toggle.is-on .pn-lt-opt-on .pn-lt-rays{opacity:1;transform:scale(1);stroke:#ffc857}',
+        '#pn-light-toggle.is-on .pn-lt-opt-on svg{filter:drop-shadow(0 0 4px rgba(255,200,87,.85))}',
+        // Contenedores donde se inserta
+        '.pn-lt-host{display:flex !important;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:12px}',
+        '.pn-lt-row{display:flex;align-items:center;padding:12px 0 4px}',
+        // Plantillas tipo Ipanema: imagen destacada + imagen secundaria nativas del tema
+        '.pn-lt-item .product-item-image-featured,.pn-lt-item .product-item-image-secondary{transition:opacity .5s ease !important}',
+        'body.pn-second-view-on .pn-lt-item .product-item-image-secondary{display:block !important;opacity:1 !important}',
+        'body.pn-second-view-on .pn-lt-item .product-item-image-featured{opacity:0 !important}',
+        // Prendida + hover: muestra la foto apagada para comparar
+        '@media (hover:hover){body.pn-second-view-on .pn-lt-item:hover .product-item-image-featured{opacity:1 !important}body.pn-second-view-on .pn-lt-item:hover .product-item-image-secondary{opacity:0 !important}}',
+        // Plantillas viejas: dos <img> dentro del link del producto
+        '.pn-second-view-container{position:relative !important;display:block !important}',
+        '.pn-second-view-container img.pn-view-1,.pn-second-view-container img.pn-view-2{transition:opacity .5s ease !important}',
+        '.pn-second-view-container img.pn-view-2{opacity:0;position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:2}',
+        'body.pn-second-view-on .pn-second-view-container img.pn-view-1{opacity:0 !important}',
+        'body.pn-second-view-on .pn-second-view-container img.pn-view-2{opacity:1 !important}',
+        '@media (hover:hover){.pn-second-view-container:hover img.pn-view-2{opacity:1}body.pn-second-view-on .pn-second-view-container:hover img.pn-view-1{opacity:1 !important}body.pn-second-view-on .pn-second-view-container:hover img.pn-view-2{opacity:0 !important}}',
+        '@media (prefers-reduced-motion:reduce){#pn-light-toggle *,.pn-lt-item img,.pn-second-view-container img{transition:none !important}}',
+        '@media (max-width:767px){#pn-light-toggle .pn-lt-opt{padding:7px 12px;font-size:12px}}'
+      ].join('');
+      document.head.appendChild(css);
+    }
+
+    // ---------- Productos ----------
+    function loadImage(img) {
+      if (!img) return;
+      if (img.classList.contains('lazyload') && window.lazySizes && window.lazySizes.loader) {
+        window.lazySizes.loader.unveil(img);
+        return;
+      }
+      if (img.dataset.srcset && !img.getAttribute('srcset')) img.setAttribute('srcset', img.dataset.srcset);
+      if (img.dataset.src && (!img.getAttribute('src') || img.getAttribute('src').indexOf('data:') === 0)) img.src = img.dataset.src;
+    }
+
+    function prepareItems() {
+      document.querySelectorAll(ITEM_SELECTOR).forEach(function(item) {
+        if (item.dataset.pnLtReady === 'true') return;
+
+        // Ipanema y temas nuevos: el tema ya trae la foto secundaria (se carga en el hover)
+        const secondary = item.querySelector('.product-item-image-secondary');
+        const featured = item.querySelector('.product-item-image-featured');
+        if (secondary && featured) {
+          const holder = featured.closest('.product-item-image-container') || featured.parentElement;
+          holder.classList.add('pn-lt-item');
+          item.dataset.pnLtReady = 'true';
+          return;
+        }
+
+        // Temas viejos: primeras dos <img> dentro del link del producto
+        const link = item.querySelector('a[href*="/productos/"], .item-link, .product-image');
+        if (!link) return;
+        const images = link.querySelectorAll('img');
         if (images.length < 2) return;
-
-        const imgVista1 = images[0];
-        const imgVista2 = images[1];
-
-        if (imgVista1.dataset.src && !imgVista1.src) {
-          imgVista1.src = imgVista1.dataset.src;
-        }
-        if (imgVista2.dataset.src && !imgVista2.src) {
-          imgVista2.src = imgVista2.dataset.src;
-        }
-
-        imageContainer.classList.add('pn-second-view-container');
-        imgVista1.classList.add('pn-view-1');
-        imgVista2.classList.add('pn-view-2');
-
-        // Forzar visibilidad para evitar blanco
-        imgVista1.style.display = 'block';
-        imgVista1.style.visibility = 'visible';
-        imgVista2.style.display = 'block';
-        imgVista2.style.visibility = 'visible';
-
-        imageContainer.dataset.pnSecondViewApplied = 'true';
+        link.classList.add('pn-second-view-container');
+        images[0].classList.add('pn-view-1');
+        images[1].classList.add('pn-view-2');
+        loadImage(images[0]);
+        item.dataset.pnLtReady = 'true';
       });
     }
 
-    // Inyectar estilos para hover (solo una vez)
-    if (!document.getElementById('pn-second-view-styles')) {
-      const hoverStyles = document.createElement('style');
-      hoverStyles.id = 'pn-second-view-styles';
-      hoverStyles.textContent =
-        '.pn-second-view-container {\\\\n' +
-        '  position: relative !important;\\\\n' +
-        '  display: block !important;\\\\n' +
-        '}\\\\n' +
-        '.pn-second-view-container img {\\\\n' +
-        '  transition: opacity 0.3s ease !important;\\\\n' +
-        '}\\\\n' +
-        '.pn-second-view-container img.pn-view-1 {\\\\n' +
-        '  opacity: 1;\\\\n' +
-        '  position: relative;\\\\n' +
-        '  z-index: 1;\\\\n' +
-        '}\\\\n' +
-        '.pn-second-view-container img.pn-view-2 {\\\\n' +
-        '  opacity: 0;\\\\n' +
-        '  position: absolute;\\\\n' +
-        '  top: 0;\\\\n' +
-        '  left: 0;\\\\n' +
-        '  width: 100%;\\\\n' +
-        '  height: auto;\\\\n' +
-        '  z-index: 2;\\\\n' +
-        '  display: block;\\\\n' +
-        '  visibility: visible;\\\\n' +
-        '}\\\\n' +
-        '.pn-second-view-on .pn-second-view-container img.pn-view-1 {\\\\n' +
-        '  opacity: 0 !important;\\\\n' +
-        '}\\\\n' +
-        '.pn-second-view-on .pn-second-view-container img.pn-view-2 {\\\\n' +
-        '  opacity: 1 !important;\\\\n' +
-        '  display: block !important;\\\\n' +
-        '  visibility: visible !important;\\\\n' +
-        '}\\\\n' +
-        '.pn-second-view-container:hover img.pn-view-1 {\\\\n' +
-        '  opacity: 0;\\\\n' +
-        '}\\\\n' +
-        '.pn-second-view-container:hover img.pn-view-2 {\\\\n' +
-        '  opacity: 1;\\\\n' +
-        '}\\\\n';
-      document.head.appendChild(hoverStyles);
+    function loadSecondViews() {
+      document.querySelectorAll('.pn-lt-item .product-item-image-secondary, .pn-second-view-container img.pn-view-2').forEach(loadImage);
     }
 
-    applySecondViewHover();
+    // ---------- Toggle ----------
+    const bulbBase = '<path d="M9.5 18.5h5"/><path d="M10.5 21h3"/><path class="pn-lt-glass" d="M12 4a5.5 5.5 0 0 0-3.3 9.9c.6.5 1 1.2 1 2v.6h4.6v-.6c0-.8.4-1.5 1-2A5.5 5.5 0 0 0 12 4z"/>';
+    const bulbSvg = function(withRays) {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        bulbBase +
+        (withRays ? '<g class="pn-lt-rays"><path d="M12 .8v1.4"/><path d="M4.4 3.6l1 1"/><path d="M19.6 3.6l-1 1"/><path d="M2 10.2h1.4"/><path d="M20.6 10.2H22"/></g>' : '') +
+        '</svg>';
+    };
 
-    // Reaplicar si hay carga din�mica de productos
-    const observer = new MutationObserver(() => applySecondViewHover());
-    observer.observe(document.body, { childList: true, subtree: true });
+    const toggle = document.createElement('div');
+    toggle.id = 'pn-light-toggle';
 
-    // Buscar el contenedor donde va el toggle (al lado de DESTACADO)
-    // Algunas plantillas tienen un contenedor "visible-phone" (oculto en desktop) ANTES
-    // del contenedor real en el DOM; querySelector tomaría ese primero y el toggle
-    // quedaría invisible. Recorremos todos los candidatos y usamos el primero que
-    // esté realmente visible en el viewport actual.
-    let filterContainer = null;
-    const filterCandidates = document.querySelectorAll('.js-controls-footer, .filters-container, .category-controls, .d-flex.justify-content-between');
-    for (let fc = 0; fc < filterCandidates.length; fc++) {
-      if (getComputedStyle(filterCandidates[fc]).display !== 'none') {
-        filterContainer = filterCandidates[fc];
-        break;
+    const prefix = document.createElement('span');
+    prefix.className = 'pn-lt-label';
+    prefix.textContent = lt.label || 'Ver:';
+
+    const seg = document.createElement('div');
+    seg.className = 'pn-lt-seg';
+    seg.setAttribute('role', 'radiogroup');
+    seg.setAttribute('aria-label', (lt.label || 'Ver').replace(':', '').trim());
+
+    const thumb = document.createElement('span');
+    thumb.className = 'pn-lt-thumb';
+
+    function makeOption(text, withRays, cls) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pn-lt-opt ' + cls;
+      btn.setAttribute('role', 'radio');
+      btn.innerHTML = bulbSvg(withRays);
+      const span = document.createElement('span');
+      span.textContent = text;
+      btn.appendChild(span);
+      return btn;
+    }
+
+    const offBtn = makeOption(lt.view1Label || 'Apagada', false, 'pn-lt-opt-off');
+    const onBtn = makeOption(lt.view2Label || 'Prendida', true, 'pn-lt-opt-on');
+
+    seg.appendChild(thumb);
+    seg.appendChild(offBtn);
+    seg.appendChild(onBtn);
+    if (lt.label !== '') toggle.appendChild(prefix);
+    toggle.appendChild(seg);
+
+    function moveThumb() {
+      const active = isOn ? onBtn : offBtn;
+      if (!active.offsetWidth) return;
+      thumb.style.width = active.offsetWidth + 'px';
+      thumb.style.transform = 'translateX(' + active.offsetLeft + 'px)';
+    }
+
+    function render() {
+      toggle.classList.toggle('is-on', isOn);
+      offBtn.setAttribute('aria-checked', String(!isOn));
+      onBtn.setAttribute('aria-checked', String(isOn));
+      offBtn.tabIndex = isOn ? -1 : 0;
+      onBtn.tabIndex = isOn ? 0 : -1;
+      document.body.classList.toggle('pn-second-view-on', isOn);
+      moveThumb();
+    }
+
+    function setState(next) {
+      if (next === isOn) return;
+      isOn = next;
+      if (isOn) loadSecondViews();
+      saveState(isOn);
+      render();
+    }
+
+    offBtn.addEventListener('click', function() { setState(false); });
+    onBtn.addEventListener('click', function() { setState(true); });
+    seg.addEventListener('keydown', function(e) {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].indexOf(e.key) === -1) return;
+      e.preventDefault();
+      setState(!isOn);
+      (isOn ? onBtn : offBtn).focus();
+    });
+    // Precargar las fotos prendidas cuando el usuario se acerca al toggle
+    onBtn.addEventListener('pointerenter', loadSecondViews, { once: true });
+
+    // ---------- Ubicacion ----------
+    function isVisible(el) {
+      return !!el && getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0;
+    }
+    function firstVisible(selector) {
+      const list = document.querySelectorAll(selector);
+      for (let i = 0; i < list.length; i++) {
+        if (isVisible(list[i])) return list[i];
       }
+      return null;
     }
 
-    if (!filterContainer) {
-      // Fallback: insertar antes del grid/listado de productos
+    function mount() {
+      // Ipanema desktop: fila de "Ordenar por"
+      const sortBy = firstVisible('.product-list-sort-by');
+      if (sortBy) {
+        sortBy.classList.add('pn-lt-host');
+        sortBy.insertBefore(toggle, sortBy.firstChild);
+        return true;
+      }
+
+      // Ipanema mobile: botones Filtrar / Ordenar (grilla de 2) -> fila propia debajo
+      const mobileControls = firstVisible('.js-category-controls');
+      if (mobileControls) {
+        let row = document.querySelector('.pn-lt-row');
+        if (!row) {
+          row = document.createElement('div');
+          row.className = 'pn-lt-row';
+        }
+        mobileControls.parentNode.insertBefore(row, mobileControls.nextSibling);
+        row.appendChild(toggle);
+        return true;
+      }
+
+      // Temas viejos: contenedor de filtros al lado de DESTACADO
+      const legacy = firstVisible('.js-controls-footer, .filters-container, .category-controls, .d-flex.justify-content-between');
+      if (legacy) {
+        legacy.appendChild(toggle);
+        return true;
+      }
+
+      // Fallback: antes del listado de productos
+      const firstItem = document.querySelector(ITEM_SELECTOR);
       const productsContainer = document.querySelector('.js-products-grid, .products-grid, .product-grid, .js-products-list, .products-list') ||
-        document.querySelector('.js-item-product')?.closest('section, .container, .products, .product-list') ||
+        (firstItem && firstItem.closest('section, .container, .products, .product-list')) ||
         document.querySelector('main');
-      if (productsContainer) {
-        const fallbackWrapper = document.createElement('div');
-        fallbackWrapper.className = 'pn-light-toggle-fallback';
-        fallbackWrapper.style.cssText = 'margin: 10px 0 20px; display: flex; align-items: center; justify-content: flex-start;';
-        productsContainer.insertBefore(fallbackWrapper, productsContainer.firstChild);
-        filterContainer = fallbackWrapper;
-      } else {
-        console.warn('PromoNube: No se encontr� contenedor de filtros ni fallback');
-        return;
+      if (!productsContainer) return false;
+      let row = document.querySelector('.pn-lt-row');
+      if (!row) {
+        row = document.createElement('div');
+        row.className = 'pn-lt-row';
       }
+      productsContainer.insertBefore(row, productsContainer.firstChild);
+      row.appendChild(toggle);
+      return true;
     }
 
-    // Crear el toggle si no existe
-    if (document.getElementById('pn-light-toggle')) {
-      console.log('PromoNube: Toggle ya existe');
+    if (!mount()) {
+      console.warn('PromoNube: No se encontro donde ubicar el Light Toggle');
       return;
     }
 
-    const toggleContainer = document.createElement('div');
-    toggleContainer.id = 'pn-light-toggle';
-    toggleContainer.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-left: 20px; margin-bottom: 24px;';
+    prepareItems();
+    if (isOn) loadSecondViews();
+    render();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(moveThumb);
 
-    const prefixLabel = document.createElement('span');
-    prefixLabel.textContent = CONFIG.lightToggle.label || 'Ver:';
-    prefixLabel.style.cssText = 'font-size: 13px; font-weight: 600; color: #666;';
+    // Productos que llegan despues (paginado infinito, filtros)
+    let mutationTimer = null;
+    new MutationObserver(function() {
+      clearTimeout(mutationTimer);
+      mutationTimer = setTimeout(function() {
+        prepareItems();
+        if (isOn) loadSecondViews();
+      }, 150);
+    }).observe(document.body, { childList: true, subtree: true });
 
-    const view1Label = document.createElement('span');
-    view1Label.id = 'pn-view1-label';
-    view1Label.textContent = CONFIG.lightToggle.view1Label || 'Apagada';
-    view1Label.style.cssText = 'font-size: 13px; font-weight: 700; color: #333; text-decoration: underline; cursor: pointer;';
-
-    const separator = document.createElement('span');
-    separator.textContent = '/';
-    separator.style.cssText = 'font-size: 13px; color: #999; margin: 0 4px;';
-
-    const view2Label = document.createElement('span');
-    view2Label.id = 'pn-view2-label';
-    view2Label.textContent = CONFIG.lightToggle.view2Label || 'Prendida';
-    view2Label.style.cssText = 'font-size: 13px; font-weight: 400; color: #999; cursor: pointer;';
-
-    const switchLabel = document.createElement('label');
-    switchLabel.style.cssText = 'position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer; margin: 0;';
-
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.id = 'pn-light-checkbox';
-    checkbox.style.cssText = 'opacity: 0; width: 0; height: 0;';
-
-    // Cargar estado guardado
-    const savedState = localStorage.getItem('pn_light_toggle_state');
-    if (savedState === 'on') {
-      checkbox.checked = true;
-    }
-
-    const slider = document.createElement('span');
-    slider.style.cssText = 'position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #ddd; transition: all 0.25s ease; border-radius: 20px;';
-    
-    const sliderCircle = document.createElement('span');
-    sliderCircle.style.cssText = 'position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background: white; transition: all 0.25s ease; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2);';
-    slider.appendChild(sliderCircle);
-
-    switchLabel.appendChild(checkbox);
-    switchLabel.appendChild(slider);
-
-    toggleContainer.appendChild(prefixLabel);
-    toggleContainer.appendChild(view1Label);
-    toggleContainer.appendChild(separator);
-    toggleContainer.appendChild(view2Label);
-    toggleContainer.appendChild(switchLabel);
-
-    // Insertar al lado de DESTACADO
-    filterContainer.appendChild(toggleContainer);
-
-    console.log('PromoNube: Toggle creado ?');
-
-    // Funci�n para actualizar apariencia de las etiquetas
-    function updateLabels(isOn) {
-      if (isOn) {
-        view1Label.style.fontWeight = '400';
-        view1Label.style.color = '#999';
-        view1Label.style.textDecoration = 'none';
-        view2Label.style.fontWeight = '700';
-        view2Label.style.color = '#333';
-        view2Label.style.textDecoration = 'underline';
-      } else {
-        view1Label.style.fontWeight = '700';
-        view1Label.style.color = '#333';
-        view1Label.style.textDecoration = 'underline';
-        view2Label.style.fontWeight = '400';
-        view2Label.style.color = '#999';
-        view2Label.style.textDecoration = 'none';
-      }
-    }
-
-    // Estado inicial
-    updateLabels(checkbox.checked);
-
-    // Funci�n para activar/desactivar las luces
-    function toggleLights(isOn) {
-      console.log('PromoNube: Cambiando luces a:', isOn ? 'ON' : 'OFF');
-
-      document.body.classList.toggle('pn-second-view-on', !!isOn);
-      
-      const productItems = document.querySelectorAll('.js-item-product, .product-item, [data-component="product-item"]');
-      console.log('PromoNube: Productos encontrados:', productItems.length);
-
-      productItems.forEach(function(item) {
-        // Buscar el contenedor de im�genes (puede ser un slide o link)
-        const imageContainer = item.querySelector('a[href*="/productos/"], .item-link, .product-image');
-        if (!imageContainer) return;
-        
-        // Configurar contenedor con grid para superponer im�genes
-        imageContainer.style.display = 'grid';
-        imageContainer.style.position = 'relative';
-        
-        // Buscar todas las im�genes dentro del contenedor
-        const images = imageContainer.querySelectorAll('img');
-        console.log('PromoNube: Im�genes en producto:', images.length);
-        
-        if (images.length >= 2) {
-          // Alternar entre la primera (vista 1) y segunda imagen (vista 2)
-          const imgVista1 = images[0];
-          const imgVista2 = images[1];
-          
-          // Forzar carga de im�genes lazy loading
-          if (imgVista1.dataset.src && !imgVista1.src) {
-            imgVista1.src = imgVista1.dataset.src;
-          }
-          if (imgVista2.dataset.src && !imgVista2.src) {
-            imgVista2.src = imgVista2.dataset.src;
-          }
-          
-          // Ambas im�genes en la misma celda del grid
-          imgVista1.style.gridArea = '1 / 1';
-          imgVista1.style.width = '100%';
-          imgVista1.style.height = 'auto';
-          imgVista1.style.transition = 'opacity 0.3s ease';
-          
-          imgVista2.style.gridArea = '1 / 1';
-          imgVista2.style.width = '100%';
-          imgVista2.style.height = 'auto';
-          imgVista2.style.transition = 'opacity 0.3s ease';
-          
-          if (isOn) {
-            // Mostrar vista 2, ocultar vista 1
-            imgVista1.style.opacity = '0';
-            imgVista2.style.opacity = '1';
-            imgVista2.style.display = 'block';
-            imgVista2.style.visibility = 'visible';
-            console.log('PromoNube: Vista 2 ACTIVADA');
-          } else {
-            // Mostrar vista 1, ocultar vista 2
-            imgVista1.style.opacity = '1';
-            imgVista2.style.opacity = '0';
-            imgVista1.style.display = 'block';
-            imgVista1.style.visibility = 'visible';
-            console.log('PromoNube: Vista 1 ACTIVADA');
-          }
-        }
-      });
-
-      // Actualizar apariencia del toggle y etiquetas
-      if (isOn) {
-        slider.style.background = '#353434';
-        sliderCircle.style.transform = 'translateX(16px)';
-      } else {
-        slider.style.background = '#ddd';
-        sliderCircle.style.transform = 'translateX(0)';
-      }
-      
-      updateLabels(isOn);
-
-      // Guardar estado
-      localStorage.setItem('pn_light_toggle_state', isOn ? 'on' : 'off');
-    }
-
-    // Event listeners
-    checkbox.addEventListener('change', function() {
-      toggleLights(this.checked);
+    // Al pasar de desktop a mobile (o al reves) el contenedor visible cambia
+    let resizeTimer = null;
+    window.addEventListener('resize', function() {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function() {
+        if (!isVisible(toggle)) mount();
+        moveThumb();
+      }, 150);
     });
 
-    // Click en las etiquetas para cambiar el estado
-    view1Label.addEventListener('click', function() {
-      checkbox.checked = false;
-      toggleLights(false);
-    });
-
-    view2Label.addEventListener('click', function() {
-      checkbox.checked = true;
-      toggleLights(true);
-    });
-
-    // Aplicar estado inicial
-    if (checkbox.checked) {
-      toggleLights(true);
-    }
-
-    // Inyectar CSS para forzar hover
-    const style = document.createElement('style');
-    style.textContent = '.pn-force-hover img { opacity: 0 !important; } .pn-force-hover img:nth-child(2) { opacity: 1 !important; }';
-    document.head.appendChild(style);
-
-    console.log('PromoNube Light Toggle: ? Completado');
+    console.log('PromoNube Light Toggle: listo');
   }
 
   function customizeTheme() {
