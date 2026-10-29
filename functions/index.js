@@ -11533,18 +11533,28 @@ app.get("/api/style-widget.js", async (req, res) => {
           }, 100);
         }
 
-        // Agregar emoji modificando el innerHTML
-        if (item.emoji) {
+        // Agregar emoji pegado al texto del link. No se toca el innerHTML: en
+        // el menu mobile el link es flex (texto + flecha) y un span suelto
+        // pasaba a ser otro item que mandaba el texto a la derecha y la flecha
+        // abajo; ademas reescribirlo borraba los listeners del theme.
+        if (item.emoji && (item.emojiPosition === 'before' || item.emojiPosition === 'after')) {
           var currentText = targetLink.textContent.trim();
-          
+
           // Verificar si ya tiene el emoji
           if (currentText.indexOf(item.emoji) === -1) {
-            if (item.emojiPosition === 'before') {
-              targetLink.innerHTML = '<span>' + item.emoji + ' </span>' + targetLink.innerHTML;
-            } else if (item.emojiPosition === 'after') {
-              targetLink.innerHTML = targetLink.innerHTML + '<span> ' + item.emoji + '</span>';
+            var walker = document.createTreeWalker(targetLink, NodeFilter.SHOW_TEXT, {
+              acceptNode: function(n) { return n.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP; }
+            });
+            var labelNode = walker.nextNode();
+            if (labelNode) {
+              var label = labelNode.nodeValue.trim();
+              var labelSpan = document.createElement('span');
+              labelSpan.className = 'pn-menu-label';
+              labelSpan.textContent = item.emojiPosition === 'before' ? item.emoji + ' ' + label : label + ' ' + item.emoji;
+              if (item.color) labelSpan.style.setProperty('color', item.color, 'important');
+              labelNode.parentNode.replaceChild(labelSpan, labelNode);
+              console.log('PromoNube: Emoji agregado a posici�n', pos);
             }
-            console.log('PromoNube: Emoji agregado a posici�n', pos);
           }
         }
 
