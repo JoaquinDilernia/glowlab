@@ -37,7 +37,7 @@ const SIZES = {
 // Borde en px; 0 = recto. Con MAX_RADIUS ya queda como pildora a cualquier tamaño.
 const MAX_RADIUS = 30;
 // En celular el cartel se achica a esta proporcion del tamaño elegido.
-const MOBILE_SCALE = 0.6;
+const MOBILE_SCALE = 0.7;
 
 const DEFAULT_CONFIG = {
   enabled: false,
