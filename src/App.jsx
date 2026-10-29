@@ -36,6 +36,7 @@ import CategoryCarouselConfig from './pages/CategoryCarouselConfig';
 import ComingSoonConfig from './pages/ComingSoonConfig';
 import VariantGroupsConfig from './pages/VariantGroupsConfig';
 import TechSheetConfig from './pages/TechSheetConfig';
+import PromoTagConfig from './pages/PromoTagConfig';
 import CombosConfig from './pages/CombosConfig';
 import GiftRegistryConfig from './pages/GiftRegistryConfig';
 import './App.css';
@@ -88,6 +89,7 @@ function App() {
           <Route path="/proximamente" element={<ComingSoonConfig />} />
           <Route path="/grupos-variantes" element={<VariantGroupsConfig />} />
           <Route path="/ficha-tecnica" element={<TechSheetConfig />} />
+          <Route path="/etiqueta-promo" element={<PromoTagConfig />} />
           <Route path="/combos" element={<CombosConfig />} />
           <Route path="/lista-regalos" element={<GiftRegistryConfig />} />
           <Route path="/buscador-inteligente" element={<SearchConfig />} />

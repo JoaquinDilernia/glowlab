@@ -14,6 +14,7 @@ const {
   buildLoaderSnippet: buildGiftRegistryLoader,
 } = require("./gift-registry");
 const { getTechSheetLoader } = require("./tech-sheet");
+const { getPromoTagLoader } = require("./promo-tag");
 const { sanitizeSkuPrefixes, matchesSkuPrefix } = require("./sku-prefixes");
 
 const SKU_SUFFIX_LENGTH = 2;
@@ -748,16 +749,18 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
       if (!(await checkStoreActive(store))) {
         return res.send("// Grupos de Variantes: plan inactivo");
       }
-      // Combos, Lista de regalos y la ficha tecnica no tienen script propio en
-      // Partners: se cargan desde este.
-      const [combosOn, giftRegistryOn, techSheetLoader] = await Promise.all([
+      // Combos, Lista de regalos, la ficha tecnica y la etiqueta promo no tienen
+      // script propio en Partners: se cargan desde este.
+      const [combosOn, giftRegistryOn, techSheetLoader, promoTagLoader] = await Promise.all([
         isCombosEnabled(db, store),
         isGiftRegistryEnabled(db, store),
         getTechSheetLoader(db, store),
+        getPromoTagLoader(db, store),
       ]);
       const combosLoader = (combosOn ? buildLoaderSnippet(store) : "") +
         (giftRegistryOn ? buildGiftRegistryLoader(store) : "") +
-        techSheetLoader;
+        techSheetLoader +
+        promoTagLoader;
       const doc = await db.collection(COLLECTION).doc(String(store)).get();
       const cfg = doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG;
       if (cfg.enabled === false) {

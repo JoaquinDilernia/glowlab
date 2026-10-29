@@ -781,6 +781,8 @@ registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
 const { registerVariantGroupsRoutes } = require('./variant-groups');
 const { registerTechSheetRoutes } = require('./tech-sheet');
 registerTechSheetRoutes(app, { db, FieldValue });
+const { registerPromoTagRoutes } = require('./promo-tag');
+registerPromoTagRoutes(app, { db, FieldValue });
 registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive });
 
 // Combos - descuento por combos de productos/grupos via Discounts API (piloto Alto Rancho)
