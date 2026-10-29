@@ -8,6 +8,9 @@ const {
   sanitizeStyle,
   sanitizeSkus,
   matchSkusToProducts,
+  sanitizeRefs,
+  expandCategoryIds,
+  matchCategoriesToProducts,
   fetchCatalogVariants,
 } = require("./promo-tag");
 
@@ -74,12 +77,22 @@ function el(cls, width, parent) {
     className: cls, offsetWidth: width, parentNode: parent || null, children: [], style: {}, attrs: {},
     getAttribute(n) { return this.attrs[n] || null; },
     appendChild(c) { this.children.push(c); c.parentNode = this; },
-    querySelector(sel) { return sel === ".pn-pt" ? this.children.find((c) => c.className === "pn-pt") || null : null; },
+    // Solo selectores de una clase (".pn-pt-wrap"), buscando en profundidad.
+    querySelector(sel) {
+      const cls = sel.slice(1);
+      for (const c of this.children) {
+        if (String(c.className).split(" ").includes(cls)) return c;
+        const deep = c.querySelector(sel);
+        if (deep) return deep;
+      }
+      return null;
+    },
   };
   return node;
 }
 
-function runLoader({ ids, slots, pdpId }) {
+// Corre uno o varios loaders en la misma pagina.
+function runLoaders(loaders, { slots, pdpId }) {
   const body = el("", 1000);
   const document = {
     readyState: "complete", body,
@@ -90,10 +103,16 @@ function runLoader({ ids, slots, pdpId }) {
     querySelector: () => null,
   };
   const window = { LS: pdpId ? { product: { id: pdpId } } : undefined, getComputedStyle: () => ({ position: "relative" }) };
-  vm.runInNewContext(buildPromoTagLoader("1", { text: "MEGA CYBER" }, ids), {
-    window, document, MutationObserver: function() { this.observe = () => {}; }, setTimeout, clearTimeout,
-  });
+  const ctx = { window, document, MutationObserver: function() { this.observe = () => {}; }, setTimeout, clearTimeout };
+  vm.createContext(ctx);
+  for (const code of loaders) vm.runInContext(code, ctx);
 }
+
+function runLoader({ ids, slots, pdpId }) {
+  runLoaders([buildPromoTagLoader("1", { text: "MEGA CYBER" }, ids)], { slots, pdpId });
+}
+
+const tagsIn = (image) => image.children[0].children.map((t) => [t.className, t.textContent]);
 
 test("loader - etiqueta la foto del producto en la lista", () => {
   const image = el("product-item-image-container", 300, null);
@@ -104,8 +123,8 @@ test("loader - etiqueta la foto del producto en la lista", () => {
   otherSlot.attrs["data-nubesdk-slot-pick"] = "1";
   runLoader({ ids: ["272261523"], slots: [slot, otherSlot] });
   assert.equal(image.children.length, 1);
-  assert.equal(image.children[0].className, "pn-pt");
-  assert.equal(image.children[0].textContent, "MEGA CYBER");
+  assert.equal(image.children[0].className, "pn-pt-wrap");
+  assert.deepEqual(tagsIn(image), [["pn-pt-promo", "MEGA CYBER"]]);
   assert.equal(other.children.length, 0);
 });
 
@@ -120,4 +139,52 @@ test("loader - nunca etiqueta un circulo de variante", () => {
   runLoader({ ids: ["5"], slots: [slotInSwatch, slotTiny] });
   assert.equal(swatch.children.length, 0);
   assert.equal(tiny.children.length, 0);
+});
+
+test("loader - las dos etiquetas se apilan en la misma esquina", () => {
+  const both = el("product-item-image-container", 300, null);
+  const slotBoth = el("js-nubesdk-slot", 0, both);
+  slotBoth.attrs["data-nubesdk-slot-pick"] = "7";
+  const onlyCat = el("product-item-image-container", 300, null);
+  const slotCat = el("js-nubesdk-slot", 0, onlyCat);
+  slotCat.attrs["data-nubesdk-slot-pick"] = "8";
+  runLoaders([
+    buildPromoTagLoader("1", { text: "MEGA CYBER" }, ["7"], "promo"),
+    buildPromoTagLoader("1", { text: "ÚLTIMAS UNIDADES" }, ["7", "8"], "cat"),
+  ], { slots: [slotBoth, slotCat] });
+  assert.equal(both.children.length, 1);
+  assert.deepEqual(tagsIn(both), [["pn-pt-promo", "MEGA CYBER"], ["pn-pt-cat", "ÚLTIMAS UNIDADES"]]);
+  assert.deepEqual(tagsIn(onlyCat), [["pn-pt-cat", "ÚLTIMAS UNIDADES"]]);
+});
+
+test("expandCategoryIds - incluye subcategorias a cualquier profundidad", () => {
+  const cats = [
+    { id: 1, parent: null }, { id: 2, parent: 1 }, { id: 3, parent: 2 }, { id: 4, parent: null }, { id: 5, parent: 4 },
+  ];
+  assert.deepEqual([...expandCategoryIds(cats, ["1"])].sort(), ["1", "2", "3"]);
+  assert.deepEqual([...expandCategoryIds(cats, [5])], ["5"]);
+});
+
+test("matchCategoriesToProducts - categorias + productos a mano, sin repetir", () => {
+  const products = [
+    { id: 10, categories: [3] }, { id: 11, categories: [4] }, { id: 12, categories: [] },
+  ];
+  assert.deepEqual(matchCategoriesToProducts(products, new Set(["3"]), ["12", "10"]).sort(), ["10", "12"]);
+});
+
+test("sanitizeRefs - solo IDs numericos, sin repetir y con tope", () => {
+  const out = sanitizeRefs([{ id: "1", name: "A" }, { id: 1, name: "dup" }, { id: "x" }, null, { id: 2, image: "javascript:x" }], 10, true);
+  assert.deepEqual(out, [{ id: "1", name: "A", image: "" }, { id: "2", name: "", image: "" }]);
+  assert.equal(sanitizeRefs([{ id: 1 }, { id: 2 }, { id: 3 }], 2).length, 2);
+});
+
+test("getPromoTagLoader - con las dos encendidas carga las dos", async () => {
+  const docs = {
+    "2547699": { enabled: true, productIds: ["1"], text: "MEGA CYBER" },
+    "2547699_cat": { enabled: true, productIds: ["2"], text: "ÚLTIMAS UNIDADES", categories: [], resolvedAt: Date.now() },
+  };
+  const db = { collection: () => ({ doc: (id) => ({ get: async () => ({ exists: !!docs[id], data: () => docs[id] }) }) }) };
+  const out = await getPromoTagLoader(db, "2547699");
+  assert.match(out, /pn-pt-promo/);
+  assert.match(out, /pn-pt-cat/);
 });

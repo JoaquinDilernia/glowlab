@@ -755,7 +755,7 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
         isCombosEnabled(db, store),
         isGiftRegistryEnabled(db, store),
         getTechSheetLoader(db, store),
-        getPromoTagLoader(db, store),
+        getPromoTagLoader(db, store, { FieldValue }),
       ]);
       const combosLoader = (combosOn ? buildLoaderSnippet(store) : "") +
         (giftRegistryOn ? buildGiftRegistryLoader(store) : "") +

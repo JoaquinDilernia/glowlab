@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Palette, LogOut, X, MapPin, MessageCircle,
-  ShoppingBag, Percent, Search, Rocket, Layers, LayoutGrid, Zap, Package, Gift, Ruler, Tag
+  ShoppingBag, Percent, Search, Rocket, Layers, LayoutGrid, Zap, Package, Gift, Ruler, Tag, Tags
 } from 'lucide-react';
 import { useSubscription } from '../hooks/useSubscription';
 import './Sidebar.css';
@@ -35,6 +35,7 @@ const STORE_EXCLUSIVE_ITEMS = {
     { path: '/grupos-variantes', icon: Layers, label: 'Grupos de Variantes', exclusive: true },
     { path: '/ficha-tecnica', icon: Ruler, label: 'Ficha Técnica', exclusive: true },
     { path: '/etiqueta-promo', icon: Tag, label: 'Etiqueta Promo', exclusive: true },
+    { path: '/etiqueta-categoria', icon: Tags, label: 'Etiqueta por Categoría', exclusive: true },
     { path: '/combos', icon: Package, label: 'Combos', exclusive: true },
     { path: '/lista-regalos', icon: Gift, label: 'Lista de Regalos', exclusive: true },
   ],
@@ -43,6 +44,7 @@ const STORE_EXCLUSIVE_ITEMS = {
     { path: '/grupos-variantes', icon: Layers, label: 'Grupos de Variantes', exclusive: true },
     { path: '/ficha-tecnica', icon: Ruler, label: 'Ficha Técnica', exclusive: true },
     { path: '/etiqueta-promo', icon: Tag, label: 'Etiqueta Promo', exclusive: true },
+    { path: '/etiqueta-categoria', icon: Tags, label: 'Etiqueta por Categoría', exclusive: true },
     { path: '/combos', icon: Package, label: 'Combos', exclusive: true },
     { path: '/lista-regalos', icon: Gift, label: 'Lista de Regalos', exclusive: true },
   ],
@@ -51,6 +53,7 @@ const STORE_EXCLUSIVE_ITEMS = {
     { path: '/grupos-variantes', icon: Layers, label: 'Grupos de Variantes', exclusive: true },
     { path: '/ficha-tecnica', icon: Ruler, label: 'Ficha Técnica', exclusive: true },
     { path: '/etiqueta-promo', icon: Tag, label: 'Etiqueta Promo', exclusive: true },
+    { path: '/etiqueta-categoria', icon: Tags, label: 'Etiqueta por Categoría', exclusive: true },
     { path: '/combos', icon: Package, label: 'Combos', exclusive: true },
     { path: '/lista-regalos', icon: Gift, label: 'Lista de Regalos', exclusive: true },
   ],

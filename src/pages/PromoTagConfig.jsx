@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import './StyleConfig.css';
 import './VariantGroupsConfig.css';
 import './PromoTagConfig.css';
+import PromoTagCatalogSection from './PromoTagCatalogSection';
 
 // Piloto: solo Alto Rancho (ver Sidebar.jsx STORE_EXCLUSIVE_ITEMS).
 const ALLOWED_STORE_IDS = ['2547699', '5320806', '6854698'];
@@ -28,6 +29,20 @@ const DEFAULT_CONFIG = {
   unmatchedCount: 0,
 };
 
+// Textos por etiqueta: la promo (Excel por SKU) y la de categoría/productos.
+const SLOT_COPY = {
+  promo: {
+    title: 'Etiqueta Promo',
+    subtitle: 'Un cartel en la esquina superior derecha de la foto de los productos del evento (ej. Mega Cyber).',
+    text: 'MEGA CYBER',
+  },
+  cat: {
+    title: 'Etiqueta por Categoría',
+    subtitle: 'Un cartel en la esquina de la foto de los productos de una categoría o elegidos a mano (ej. Últimas unidades). Si un producto también tiene la Etiqueta Promo, van una abajo de la otra.',
+    text: 'ÚLTIMAS UNIDADES',
+  },
+};
+
 const FONT_LABELS = { inherit: 'La de la tienda' };
 // Mismos valores que SIZES en functions/promo-tag.js, para la vista previa.
 const SIZES = { sm: [11, 4, 8], md: [13, 5, 10], lg: [15, 7, 13] };
@@ -43,7 +58,8 @@ async function readSheet(file) {
   return { headers, rows: rows.slice(1).filter(r => r.some(c => String(c).trim())) };
 }
 
-export default function PromoTagConfig() {
+export default function PromoTagConfig({ slot = 'promo' }) {
+  const copy = SLOT_COPY[slot] || SLOT_COPY.promo;
   const navigate = useNavigate();
   const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
@@ -57,7 +73,7 @@ export default function PromoTagConfig() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [config, setConfig] = useState({ ...DEFAULT_CONFIG, text: copy.text });
   const [fonts, setFonts] = useState(['inherit', 'Poppins']);
   // Excel leido en el navegador, antes de aplicarlo
   const [sheet, setSheet] = useState(null);
@@ -67,14 +83,14 @@ export default function PromoTagConfig() {
 
   useEffect(() => {
     if (!ALLOWED_STORE_IDS.includes(String(storeId))) return;
-    apiRequest(`/api/promo-tag-config?storeId=${storeId}`)
+    apiRequest(`/api/promo-tag-config?storeId=${storeId}&slot=${slot}`)
       .then(res => {
         if (res?.success && res.config) setConfig({ ...DEFAULT_CONFIG, ...res.config });
         if (res?.fonts) setFonts(res.fonts);
       })
       .catch(e => console.error(e))
       .finally(() => setLoading(false));
-  }, [storeId]);
+  }, [storeId, slot]);
 
   // Los fonts de Google se cargan para que la vista previa se vea como en la tienda.
   useEffect(() => {
@@ -93,7 +109,7 @@ export default function PromoTagConfig() {
     try {
       const res = await apiRequest('/api/promo-tag-config', {
         method: 'POST',
-        body: JSON.stringify({ storeId, config }),
+        body: JSON.stringify({ storeId, slot, config }),
       });
       if (res?.success) {
         setConfig(c => ({ ...c, ...res.config }));
@@ -104,7 +120,7 @@ export default function PromoTagConfig() {
     } finally {
       setSaving(false);
     }
-  }, [storeId, config, toast]);
+  }, [storeId, slot, config, toast]);
 
   const onFile = async (file) => {
     if (!file) return;
@@ -207,8 +223,8 @@ export default function PromoTagConfig() {
       <div className="vg-hero">
         <div className="vg-hero-icon"><Tag size={22} /></div>
         <div>
-          <h1>Etiqueta Promo</h1>
-          <p>Un cartel en la esquina superior derecha de la foto de los productos del evento (ej. Mega Cyber).</p>
+          <h1>{copy.title}</h1>
+          <p>{copy.subtitle}</p>
         </div>
       </div>
 
@@ -274,13 +290,18 @@ export default function PromoTagConfig() {
 
           <div className="pt-preview" aria-label="Vista previa">
             <div className="pt-preview-img">
-              <span className="pt-preview-tag" style={previewStyle}>{config.text || 'MEGA CYBER'}</span>
+              <span className="pt-preview-tag" style={previewStyle}>{config.text || copy.text}</span>
             </div>
             <span className="vg-hint">Vista previa</span>
           </div>
         </div>
       </div>
 
+      {slot === 'cat' ? (
+        <PromoTagCatalogSection storeId={storeId} config={config}
+          onSaved={({ productCount, categories, products, resolvedAt }) =>
+            setConfig(c => ({ ...c, productCount, categories, products, resolvedAt }))} />
+      ) : (
       <div className="config-section">
         <div className="section-header">
           <h2>Productos</h2>
@@ -343,6 +364,7 @@ export default function PromoTagConfig() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

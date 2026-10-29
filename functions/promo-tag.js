@@ -6,6 +6,10 @@
 // el valor del evento, y aca se traducen esos SKUs a IDs de producto con el
 // catalogo de Tiendanube (las cards del listado solo traen el ID). Viaja
 // pegado al widget de Grupos de Variantes, como la ficha tecnica.
+//
+// Hay una segunda etiqueta ("cat", ej. "ULTIMAS UNIDADES") que funciona igual
+// pero sus productos se eligen por categoria (con subcategorias) o a mano. Si
+// un producto tiene las dos, se apilan en la esquina en vez de pisarse.
 const COLLECTION = "promonube_promo_tag";
 
 // Piloto: solo Alto Rancho (minorista + mayorista) y la tienda demo.
@@ -17,6 +21,11 @@ const PRODUCTS_PER_PAGE = 200;
 const MAX_PAGES = 100;
 const MAX_SKUS = 10000;
 const MAX_TEXT_LENGTH = 30;
+const MAX_CATEGORIES = 50;
+const MAX_MANUAL_PRODUCTS = 500;
+// La etiqueta por categoria se recalcula sola cada tanto, para que los
+// productos nuevos de la categoria tambien la lleven.
+const CATALOG_REFRESH_MS = 6 * 60 * 60 * 1000;
 
 // Fuentes que se pueden elegir; "inherit" usa la de la tienda.
 const FONTS = ["inherit", "Poppins", "Montserrat", "Inter", "Oswald", "Bebas Neue", "Playfair Display"];
@@ -41,25 +50,40 @@ const DEFAULT_CONFIG = {
   showOnPDP: true,
 };
 
+// docSuffix: el doc de Firestore es `${storeId}${docSuffix}`.
+// order: lugar en la pila cuando un producto tiene las dos etiquetas.
+const SLOTS = {
+  promo: { docSuffix: "", order: 0, defaults: DEFAULT_CONFIG },
+  cat: { docSuffix: "_cat", order: 1, defaults: { ...DEFAULT_CONFIG, text: "ÚLTIMAS UNIDADES" } },
+};
+
 const HEX_PATTERN = /^#[0-9a-f]{6}$/i;
 
 function isAllowedStore(storeId) {
   return ALLOWED_STORE_IDS.includes(String(storeId));
 }
 
-function sanitizeStyle(config) {
+function slotKey(slot) {
+  return Object.prototype.hasOwnProperty.call(SLOTS, slot) ? slot : "promo";
+}
+
+function slotDoc(db, store, slot) {
+  return db.collection(COLLECTION).doc(String(store) + SLOTS[slotKey(slot)].docSuffix);
+}
+
+function sanitizeStyle(config, defaults = DEFAULT_CONFIG) {
   const c = config || {};
   const text = String(c.text || "").replace(/\s+/g, " ").trim().slice(0, MAX_TEXT_LENGTH);
   return {
     enabled: c.enabled === true,
-    text: text || DEFAULT_CONFIG.text,
-    bgColor: HEX_PATTERN.test(c.bgColor || "") ? c.bgColor.toLowerCase() : DEFAULT_CONFIG.bgColor,
-    textColor: HEX_PATTERN.test(c.textColor || "") ? c.textColor.toLowerCase() : DEFAULT_CONFIG.textColor,
-    font: FONTS.includes(c.font) ? c.font : DEFAULT_CONFIG.font,
-    size: SIZES[c.size] ? c.size : DEFAULT_CONFIG.size,
+    text: text || defaults.text,
+    bgColor: HEX_PATTERN.test(c.bgColor || "") ? c.bgColor.toLowerCase() : defaults.bgColor,
+    textColor: HEX_PATTERN.test(c.textColor || "") ? c.textColor.toLowerCase() : defaults.textColor,
+    font: FONTS.includes(c.font) ? c.font : defaults.font,
+    size: SIZES[c.size] ? c.size : defaults.size,
     radius: Number.isFinite(Number(c.radius)) && c.radius !== "" && c.radius !== null
       ? Math.min(MAX_RADIUS, Math.max(0, Math.round(Number(c.radius))))
-      : DEFAULT_CONFIG.radius,
+      : defaults.radius,
     bold: c.bold !== false,
     showOnListing: c.showOnListing !== false,
     showOnPDP: c.showOnPDP !== false,
@@ -75,6 +99,22 @@ function sanitizeSkus(list) {
     if (out.size >= MAX_SKUS) break;
   }
   return [...out];
+}
+
+// Categorias / productos elegidos en el panel: { id, name[, image] }, sin repetir.
+function sanitizeRefs(list, max, withImage) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(list) ? list : []) {
+    const id = String((raw && raw.id) == null ? "" : raw.id).trim();
+    if (!/^\d{1,20}$/.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    const ref = { id, name: String(raw.name || "").slice(0, 120) };
+    if (withImage) ref.image = /^https:\/\//.test(raw.image || "") ? String(raw.image).slice(0, 500) : "";
+    out.push(ref);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 // Un producto lleva la etiqueta si cualquiera de sus variantes tiene un SKU
@@ -97,30 +137,99 @@ function matchSkusToProducts(products, skus) {
   return { productIds, unmatched: skus.filter((s) => !found.has(s)) };
 }
 
-async function fetchCatalogVariants({ storeId, accessToken, fetchImpl }) {
+// Las categorias elegidas mas todas sus subcategorias (a cualquier profundidad).
+function expandCategoryIds(allCategories, selectedIds) {
+  const children = new Map();
+  for (const c of allCategories || []) {
+    const parent = c.parent == null ? "" : String(c.parent);
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(String(c.id));
+  }
+  const out = new Set();
+  const stack = (selectedIds || []).map(String);
+  while (stack.length) {
+    const id = stack.pop();
+    if (out.has(id)) continue;
+    out.add(id);
+    stack.push(...(children.get(id) || []));
+  }
+  return out;
+}
+
+// Productos de esas categorias + los elegidos a mano, sin repetir.
+function matchCategoriesToProducts(products, categoryIds, manualIds) {
+  const out = new Set((manualIds || []).map(String));
+  for (const product of products || []) {
+    if ((product.categories || []).some((id) => categoryIds.has(String(id)))) out.add(String(product.id));
+  }
+  return [...out];
+}
+
+async function fetchCatalogPages({ storeId, accessToken, fetchImpl, path, fields }) {
   const doFetch = fetchImpl || globalThis.fetch;
   const headers = { Authentication: `bearer ${accessToken}`, "User-Agent": TN_UA };
   const out = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
     const res = await doFetch(
-      `${TN_V1}/${storeId}/products?page=${page}&per_page=${PRODUCTS_PER_PAGE}&fields=id,variants`,
+      `${TN_V1}/${storeId}/${path}?page=${page}&per_page=${PRODUCTS_PER_PAGE}&fields=${fields}`,
       { headers }
     );
     // TN responde 404 cuando se pide una pagina despues de la ultima
     if (res.status === 404) break;
-    if (!res.ok) throw new Error(`TN GET products page ${page}: ${res.status}`);
+    if (!res.ok) throw new Error(`TN GET ${path} page ${page}: ${res.status}`);
     const items = await res.json();
     if (!Array.isArray(items) || items.length === 0) break;
-    for (const p of items) {
-      out.push({ id: p.id, variants: (p.variants || []).map((v) => ({ sku: v.sku })) });
-    }
+    out.push(...items);
     if (items.length < PRODUCTS_PER_PAGE) break;
   }
   return out;
 }
 
-function buildPromoTagLoader(store, style, productIds) {
-  const s = sanitizeStyle(style);
+async function fetchCatalogVariants(opts) {
+  const items = await fetchCatalogPages({ ...opts, path: "products", fields: "id,variants" });
+  return items.map((p) => ({ id: p.id, variants: (p.variants || []).map((v) => ({ sku: v.sku })) }));
+}
+
+async function fetchCatalogCategories(opts) {
+  const items = await fetchCatalogPages({ ...opts, path: "products", fields: "id,categories" });
+  return items.map((p) => ({ id: p.id, categories: (p.categories || []).map((c) => (c && c.id != null ? c.id : c)) }));
+}
+
+async function fetchStoreCategories(opts) {
+  const items = await fetchCatalogPages({ ...opts, path: "categories", fields: "id,parent" });
+  return items.map((c) => ({ id: c.id, parent: c.parent }));
+}
+
+async function getAccessToken(db, storeId) {
+  const storeDoc = await db.collection("promonube_stores").doc(String(storeId)).get();
+  return storeDoc.exists ? storeDoc.data().accessToken : null;
+}
+
+// Recalcula los productos de la etiqueta por categoria y los guarda.
+async function resolveCatalogSlot({ db, FieldValue, fetchImpl, storeId, categories, products }) {
+  const accessToken = await getAccessToken(db, storeId);
+  if (!accessToken) throw new Error("La tienda no tiene token de Tiendanube");
+  let productIds = products.map((p) => p.id);
+  if (categories.length) {
+    const opts = { storeId, accessToken, fetchImpl };
+    const [allCategories, catalog] = await Promise.all([fetchStoreCategories(opts), fetchCatalogCategories(opts)]);
+    const wanted = expandCategoryIds(allCategories, categories.map((c) => c.id));
+    productIds = matchCategoriesToProducts(catalog, wanted, productIds);
+  }
+  const ref = slotDoc(db, storeId, "cat");
+  await ref.set({
+    categories,
+    products,
+    productIds,
+    resolvedAt: Date.now(),
+    updatedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(),
+  }, { merge: true });
+  return ref;
+}
+
+function buildPromoTagLoader(store, style, productIds, slot = "promo") {
+  const key = slotKey(slot);
+  const s = sanitizeStyle(style, SLOTS[key].defaults);
   const size = SIZES[s.size];
   const ids = {};
   for (const id of productIds || []) ids[String(id)] = 1;
@@ -128,8 +237,11 @@ function buildPromoTagLoader(store, style, productIds) {
   const fontHref = s.font === "inherit"
     ? ""
     : `https://fonts.googleapis.com/css2?family=${encodeURIComponent(s.font).replace(/%20/g, "+")}:wght@400;600;700&display=swap`;
+  // La pila de la esquina es comun a las dos etiquetas; cada una pone su cartel adentro.
   const css = [
-    ".pn-pt { position: absolute !important; top: 10px !important; right: 10px !important; z-index: 100 !important;",
+    ".pn-pt-wrap { position: absolute !important; top: 10px !important; right: 10px !important; z-index: 100 !important;",
+    " display: flex !important; flex-direction: column !important; align-items: flex-end !important; gap: 6px !important; pointer-events: none !important; }",
+    `.pn-pt-${key} { display: block !important; order: ${SLOTS[key].order} !important;`,
     ` background: ${s.bgColor} !important; color: ${s.textColor} !important;`,
     ` font-family: ${fontFamily} !important; font-size: ${size.font}px !important; font-weight: ${s.bold ? 700 : 400} !important;`,
     ` line-height: 1 !important; letter-spacing: 0.03em !important; padding: ${size.padY}px ${size.padX}px !important;`,
@@ -140,11 +252,13 @@ function buildPromoTagLoader(store, style, productIds) {
   const json = (v) => JSON.stringify(v).replace(/</g, "\\u003c");
 
   return `
-/* Etiqueta Promo - tienda ${store} */
+/* Etiqueta Promo (${key}) - tienda ${store} */
 (function() {
   'use strict';
-  if (window.__pnPromoTagLoaded) return;
-  window.__pnPromoTagLoaded = true;
+  var SLOT = ${json(key)};
+  window.__pnPromoTagLoaded = window.__pnPromoTagLoaded || {};
+  if (window.__pnPromoTagLoaded[SLOT]) return;
+  window.__pnPromoTagLoaded[SLOT] = true;
 
   var IDS = ${json(ids)};
   var TEXT = ${json(s.text)};
@@ -152,9 +266,10 @@ function buildPromoTagLoader(store, style, productIds) {
   var SHOW_PDP = ${s.showOnPDP};
   var FONT_HREF = ${json(fontHref)};
   var CSS = ${json(css)};
+  var TAG_CLASS = 'pn-pt-' + SLOT;
 
   function injectStyles() {
-    if (document.getElementById('pn-pt-styles')) return;
+    if (document.getElementById('pn-pt-styles-' + SLOT)) return;
     if (FONT_HREF) {
       var font = document.createElement('link');
       font.rel = 'stylesheet';
@@ -162,7 +277,7 @@ function buildPromoTagLoader(store, style, productIds) {
       document.head.appendChild(font);
     }
     var st = document.createElement('style');
-    st.id = 'pn-pt-styles';
+    st.id = 'pn-pt-styles-' + SLOT;
     st.textContent = CSS;
     document.head.appendChild(st);
   }
@@ -181,15 +296,21 @@ function buildPromoTagLoader(store, style, productIds) {
   }
 
   function addTag(container) {
-    if (!container || container.querySelector('.pn-pt')) return;
+    if (!container || container.querySelector('.' + TAG_CLASS)) return;
     // Ancho 0 = todavia sin layout (carrusel oculto): se etiqueta igual.
     var width = container.offsetWidth;
     if (isVariantSwatch(container) || (width > 0 && width < MIN_IMAGE_PX)) return;
     if (window.getComputedStyle(container).position === 'static') container.style.position = 'relative';
+    var wrap = container.querySelector('.pn-pt-wrap');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'pn-pt-wrap';
+      container.appendChild(wrap);
+    }
     var tag = document.createElement('span');
-    tag.className = 'pn-pt';
+    tag.className = TAG_CLASS;
     tag.textContent = TEXT;
-    container.appendChild(tag);
+    wrap.appendChild(tag);
   }
 
   function runListing() {
@@ -235,24 +356,59 @@ function buildPromoTagLoader(store, style, productIds) {
 `;
 }
 
+// Recalculos en curso, para no lanzar dos a la vez por la misma tienda.
+const refreshing = new Set();
+
+// La etiqueta por categoria se recalcula en segundo plano si quedo vieja;
+// mientras tanto se sirve la lista que ya estaba.
+function refreshCatalogSlotIfStale({ db, FieldValue, fetchImpl }, store, data) {
+  if (!Array.isArray(data.categories) || !data.categories.length) return;
+  if (Date.now() - (data.resolvedAt || 0) < CATALOG_REFRESH_MS || refreshing.has(store)) return;
+  refreshing.add(store);
+  resolveCatalogSlot({
+    db, FieldValue, fetchImpl, storeId: store,
+    categories: data.categories, products: Array.isArray(data.products) ? data.products : [],
+  })
+    .catch((e) => console.error("[PromoTag cat refresh]", store, e.message))
+    .finally(() => refreshing.delete(store));
+}
+
 // Script para pegar al widget de variantes, o "" si esta apagado o sin productos.
-async function getPromoTagLoader(db, store) {
+async function getPromoTagLoader(db, store, { FieldValue, fetchImpl } = {}) {
   if (!isAllowedStore(store)) return "";
-  const doc = await db.collection(COLLECTION).doc(String(store)).get();
-  if (!doc.exists) return "";
-  const data = doc.data();
-  if (data.enabled !== true || !Array.isArray(data.productIds) || !data.productIds.length) return "";
-  return buildPromoTagLoader(store, data, data.productIds);
+  const docs = await Promise.all(Object.keys(SLOTS).map((slot) => slotDoc(db, store, slot).get()));
+  let out = "";
+  Object.keys(SLOTS).forEach((slot, i) => {
+    if (!docs[i].exists) return;
+    const data = docs[i].data();
+    if (data.enabled !== true) return;
+    if (slot === "cat") refreshCatalogSlotIfStale({ db, FieldValue, fetchImpl }, String(store), data);
+    if (!Array.isArray(data.productIds) || !data.productIds.length) return;
+    out += buildPromoTagLoader(store, data, data.productIds, slot);
+  });
+  return out;
 }
 
 // Lo que ve el panel: estilo + resumen de la carga (no la lista entera).
-function publicConfig(data) {
+function publicConfig(data, slot = "promo") {
   const d = data || {};
+  const key = slotKey(slot);
+  const base = {
+    ...sanitizeStyle({ ...SLOTS[key].defaults, ...d }, SLOTS[key].defaults),
+    productCount: Array.isArray(d.productIds) ? d.productIds.length : 0,
+  };
+  if (key === "cat") {
+    return {
+      ...base,
+      categories: Array.isArray(d.categories) ? d.categories : [],
+      products: Array.isArray(d.products) ? d.products : [],
+      resolvedAt: d.resolvedAt || null,
+    };
+  }
   return {
-    ...sanitizeStyle({ ...DEFAULT_CONFIG, ...d }),
+    ...base,
     source: d.source || null,
     skuCount: Array.isArray(d.skus) ? d.skus.length : 0,
-    productCount: Array.isArray(d.productIds) ? d.productIds.length : 0,
     unmatchedSample: Array.isArray(d.unmatched) ? d.unmatched.slice(0, 30) : [],
     unmatchedCount: Array.isArray(d.unmatched) ? d.unmatched.length : 0,
   };
@@ -271,13 +427,23 @@ function registerPromoTagRoutes(app, { db, FieldValue, fetchImpl }) {
     return true;
   }
 
-  // GET /api/promo-tag-config?storeId=X
+  // GET /api/promo-tag-config?storeId=X[&slot=cat]
   app.get("/api/promo-tag-config", async (req, res) => {
     const { storeId } = req.query;
+    const slot = slotKey(req.query.slot);
     if (!guard(storeId, res)) return;
     try {
-      const doc = await db.collection(COLLECTION).doc(String(storeId)).get();
-      res.json({ success: true, config: publicConfig(doc.exists ? doc.data() : null), fonts: FONTS });
+      const doc = await slotDoc(db, storeId, slot).get();
+      let data = doc.exists ? doc.data() : null;
+      // La etiqueta nueva arranca con el diseño de la promo (mismos colores),
+      // con su propio texto y apagada.
+      if (!data && slot !== "promo") {
+        const promo = await slotDoc(db, storeId, "promo").get();
+        if (promo.exists) {
+          data = { ...sanitizeStyle(promo.data()), text: SLOTS[slot].defaults.text, enabled: false };
+        }
+      }
+      res.json({ success: true, config: publicConfig(data, slot), fonts: FONTS });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -286,15 +452,16 @@ function registerPromoTagRoutes(app, { db, FieldValue, fetchImpl }) {
   // POST /api/promo-tag-config - solo el estilo y el interruptor
   app.post("/api/promo-tag-config", async (req, res) => {
     const { storeId, config } = req.body || {};
+    const slot = slotKey((req.body || {}).slot);
     if (!guard(storeId, res)) return;
     if (!config || typeof config !== "object") {
       return res.status(400).json({ success: false, message: "config requerido" });
     }
     try {
-      const ref = db.collection(COLLECTION).doc(String(storeId));
-      await ref.set({ ...sanitizeStyle(config), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      const ref = slotDoc(db, storeId, slot);
+      await ref.set({ ...sanitizeStyle(config, SLOTS[slot].defaults), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       const doc = await ref.get();
-      res.json({ success: true, config: publicConfig(doc.data()) });
+      res.json({ success: true, config: publicConfig(doc.data(), slot) });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -307,14 +474,13 @@ function registerPromoTagRoutes(app, { db, FieldValue, fetchImpl }) {
     const clean = sanitizeSkus(skus);
     if (!clean.length) return res.status(400).json({ success: false, message: "No hay SKUs para cargar" });
     try {
-      const storeDoc = await db.collection("promonube_stores").doc(String(storeId)).get();
-      const accessToken = storeDoc.exists ? storeDoc.data().accessToken : null;
+      const accessToken = await getAccessToken(db, storeId);
       if (!accessToken) return res.status(400).json({ success: false, message: "La tienda no tiene token de Tiendanube" });
 
       const products = await fetchCatalogVariants({ storeId, accessToken, fetchImpl });
       const { productIds, unmatched } = matchSkusToProducts(products, clean);
       const src = source && typeof source === "object" ? source : {};
-      const ref = db.collection(COLLECTION).doc(String(storeId));
+      const ref = slotDoc(db, storeId, "promo");
       await ref.set({
         skus: clean,
         productIds,
@@ -334,6 +500,23 @@ function registerPromoTagRoutes(app, { db, FieldValue, fetchImpl }) {
       res.status(500).json({ success: false, message: error.message });
     }
   });
+
+  // POST /api/promo-tag-catalog - categorias y productos de la etiqueta "cat";
+  // se recalcula la lista de productos con el catalogo actual.
+  app.post("/api/promo-tag-catalog", async (req, res) => {
+    const { storeId } = req.body || {};
+    if (!guard(storeId, res)) return;
+    const categories = sanitizeRefs((req.body || {}).categories, MAX_CATEGORIES, false);
+    const products = sanitizeRefs((req.body || {}).products, MAX_MANUAL_PRODUCTS, true);
+    try {
+      const ref = await resolveCatalogSlot({ db, FieldValue, fetchImpl, storeId: String(storeId), categories, products });
+      const doc = await ref.get();
+      res.json({ success: true, config: publicConfig(doc.data(), "cat") });
+    } catch (error) {
+      console.error("[PromoTag catalog]", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
 }
 
 module.exports = {
@@ -342,7 +525,10 @@ module.exports = {
   registerPromoTagRoutes,
   sanitizeStyle,
   sanitizeSkus,
+  sanitizeRefs,
   matchSkusToProducts,
+  expandCategoryIds,
+  matchCategoriesToProducts,
   fetchCatalogVariants,
   FONTS,
 };

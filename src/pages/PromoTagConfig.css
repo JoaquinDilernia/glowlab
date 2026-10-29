@@ -12,3 +12,23 @@
 .pt-import .vg-row { margin: 0; }
 .pt-unmatched summary { cursor: pointer; font-size: 13px; opacity: 0.75; }
 .pt-radius input[type="range"] { width: 160px; accent-color: var(--gl-accent, #6366f1); }
+.pt-cat-block { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+.pt-cat-block .vg-row { margin: 0; align-items: flex-end; }
+.pt-cat-grow { flex: 1; min-width: 240px; }
+.pt-cat-add { height: 42px; display: inline-flex; align-items: center; gap: 6px; }
+.pt-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pt-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px 6px 12px; font-size: 13px;
+  border-radius: 999px; background: var(--gl-bg-secondary, rgba(127,127,127,0.12)); color: var(--gl-text-secondary);
+}
+.pt-chip button, .pt-prod-row button { display: inline-flex; background: none; border: 0; padding: 2px; cursor: pointer; color: inherit; opacity: 0.7; }
+.pt-chip button:hover, .pt-prod-row button:hover { opacity: 1; }
+.pt-prod-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.pt-prod-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; text-align: left; font: inherit; color: inherit;
+  border-radius: var(--gl-radius-sm); background: var(--gl-bg-secondary, rgba(127,127,127,0.08)); border: 1px solid transparent;
+}
+button.pt-prod-row { cursor: pointer; }
+button.pt-prod-row:hover { border-color: var(--gl-accent, #6366f1); }
+.pt-prod-row img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.pt-prod-name { flex: 1; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
