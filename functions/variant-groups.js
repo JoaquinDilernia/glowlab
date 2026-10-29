@@ -4,6 +4,7 @@ const {
   extractColorLabels,
   resolveColors,
   resolveTextures,
+  resolveSwatchImage,
   sanitizePalette,
   collectDetectedColors,
 } = require("./variant-colors");
@@ -12,6 +13,7 @@ const {
   isGiftRegistryEnabled,
   buildLoaderSnippet: buildGiftRegistryLoader,
 } = require("./gift-registry");
+const { buildTechSheetLoader } = require("./tech-sheet");
 
 const SKU_SUFFIX_LENGTH = 2;
 const MIN_GROUP_KEY_LENGTH = 3;
@@ -168,6 +170,7 @@ function buildWidgetIndex(groups, palette, hiddenProductIds, colorSkuPrefixes) {
           colorName: colorLabels[i],
           colors: resolveColors(colorLabels[i], palette),
           textures: resolveTextures(colorLabels[i], palette),
+          swatchImage: resolveSwatchImage(colorLabels[i], palette),
           active: String(p.productId) === String(product.productId),
         })),
       };
@@ -378,9 +381,16 @@ function buildWidgetScript(store, cfg) {
         var fill = document.createElement('span');
         fill.className = 'pn-vg-fill';
         var textures = sib.textures || [];
-        // Cada color va en su propia capa para que la textura no cruce la
-        // diagonal del bicolor: el segundo ocupa el triangulo de abajo.
-        colors.slice(0, 2).forEach(function(hex, i) {
+        // Con foto subida en la paleta se muestra esa foto; el color de
+        // atras queda de respaldo mientras carga.
+        if (sib.swatchImage) {
+          var photo = document.createElement('span');
+          photo.className = 'pn-vg-layer';
+          photo.style.background = 'url(' + sib.swatchImage + ') center / cover no-repeat, ' + colors[0];
+          fill.appendChild(photo);
+        } else colors.slice(0, 2).forEach(function(hex, i) {
+          // Cada color va en su propia capa para que la textura no cruce la
+          // diagonal del bicolor: el segundo ocupa el triangulo de abajo.
           var layer = document.createElement('span');
           layer.className = 'pn-vg-layer' + (i === 1 ? ' pn-vg-layer-2' : '');
           layer.style.background = paint(hex, textures[i]);
@@ -755,13 +765,15 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
       if (!(await checkStoreActive(store))) {
         return res.send("// Grupos de Variantes: plan inactivo");
       }
-      // Combos y Lista de regalos no tienen script propio en Partners: se cargan desde este.
+      // Combos, Lista de regalos y la ficha tecnica no tienen script propio en
+      // Partners: se cargan desde este.
       const [combosOn, giftRegistryOn] = await Promise.all([
         isCombosEnabled(db, store),
         isGiftRegistryEnabled(db, store),
       ]);
       const combosLoader = (combosOn ? buildLoaderSnippet(store) : "") +
-        (giftRegistryOn ? buildGiftRegistryLoader(store) : "");
+        (giftRegistryOn ? buildGiftRegistryLoader(store) : "") +
+        buildTechSheetLoader(store);
       const doc = await db.collection(COLLECTION).doc(String(store)).get();
       const cfg = doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG;
       if (cfg.enabled === false) {

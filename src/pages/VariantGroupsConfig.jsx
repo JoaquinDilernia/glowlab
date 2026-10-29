@@ -10,6 +10,29 @@ import './VariantGroupsConfig.css';
 // TODO: quitar este guard cuando se libere a todas las tiendas.
 const ALLOWED_STORE_IDS = ['2547699', '5320806', '6854698'];
 
+// El circulo mide 44px como maximo: se recorta al centro en cuadrado y se
+// guarda a 160px (alcanza para pantallas retina y pesa pocos KB por swatch).
+const SWATCH_PHOTO_PX = 160;
+
+function prepareSwatchPhoto(file) {
+  return new Promise((resolve, reject) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      return reject(new Error('Subí una foto JPG, PNG o WebP.'));
+    }
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.width, img.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = SWATCH_PHOTO_PX;
+      canvas.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, SWATCH_PHOTO_PX, SWATCH_PHOTO_PX);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL('image/jpeg', 0.9));
+    };
+    img.onerror = () => reject(new Error('No pudimos leer la foto.'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 const DEFAULT_CONFIG = {
   enabled: false,
   showOnListing: true,
@@ -88,6 +111,26 @@ export default function VariantGroupsConfig() {
     if (value === null) delete next[field];
     return { ...c, colorPalette: { ...c.colorPalette, [item.key]: next } };
   });
+
+  const [uploadingKey, setUploadingKey] = useState(null);
+
+  const uploadPalettePhoto = async (item, file) => {
+    if (!file) return;
+    setUploadingKey(item.key);
+    try {
+      const dataUrl = await prepareSwatchPhoto(file);
+      const res = await apiRequest('/api/upload-image-base64', {
+        method: 'POST',
+        body: JSON.stringify({ storeId, fileName: `${item.key.replace(/\s+/g, '-')}.jpg`, fileData: dataUrl, folder: 'variant-swatches' }),
+      });
+      if (!res?.success || !res.url) throw new Error('No pudimos subir la foto.');
+      setPaletteColor(item, 'image', res.url);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setUploadingKey(null);
+    }
+  };
 
   const resetPaletteColor = (key) => setConfig(c => {
     const next = { ...c.colorPalette };
@@ -421,9 +464,12 @@ export default function VariantGroupsConfig() {
               {paletteItems.map(item => {
                 const colors = effectiveColors(item);
                 const edited = !!config.colorPalette?.[item.key];
+                const photo = config.colorPalette?.[item.key]?.image;
                 return (
                   <div key={item.key} className="vg-palette-row">
-                    {colors.length > 0
+                    {photo
+                      ? <span className="vg-palette-swatch" style={{ background: `url(${photo}) center / cover` }} />
+                      : colors.length > 0
                       ? <span className="vg-palette-swatch" style={{ background: swatchBackground(colors) }} />
                       : <span className="vg-palette-swatch vg-palette-swatch--image"
                           style={item.sampleImage ? { backgroundImage: `url(${item.sampleImage})` } : undefined} />}
@@ -445,6 +491,15 @@ export default function VariantGroupsConfig() {
                       </>
                     ) : (
                       <button className="btn-back" onClick={() => setPaletteColor(item, 'hex2', '#ffffff')}>+ 2º color</button>
+                    )}
+                    {photo ? (
+                      <button className="btn-back" onClick={() => setPaletteColor(item, 'image', null)}>Quitar foto</button>
+                    ) : (
+                      <label className="btn-back vg-palette-upload" title="Foto de la textura (madera, tela...). Se recorta en cuadrado.">
+                        {uploadingKey === item.key ? 'Subiendo…' : 'Subir foto'}
+                        <input type="file" accept="image/jpeg,image/png,image/webp" hidden disabled={uploadingKey === item.key}
+                          onChange={e => { uploadPalettePhoto(item, e.target.files[0]); e.target.value = ''; }} />
+                      </label>
                     )}
                     {edited && (
                       <button className="btn-back" onClick={() => resetPaletteColor(item.key)}>Restablecer</button>

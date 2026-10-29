@@ -9,6 +9,7 @@ const {
   sanitizePalette,
   resolveColors,
   resolveTextures,
+  resolveSwatchImage,
   collectDetectedColors,
 } = require("./variant-colors");
 
@@ -117,4 +118,19 @@ test("resolveTextures - retocar el tono en la paleta mantiene la textura", () =>
   assert.deepEqual(resolveTextures("Petiribi", palette), ["wood"]);
   // Si la paleta deja un solo color, la textura del segundo no sobra
   assert.deepEqual(resolveTextures("Madera y Blanco", { "madera y blanco": { hex: "#ffffff" } }), ["wood"]);
+});
+
+test("sanitizePalette / resolveSwatchImage - solo fotos de nuestro Storage", () => {
+  const ok = "https://storage.googleapis.com/bucket/variant-swatches/2547699/1-petiribi.webp";
+  const palette = sanitizePalette({
+    petiribi: { hex: "#a6764a", image: ok },
+    negro: { hex: "#000000", image: "https://evil.com/x.png" },
+    roble: { hex: "#b08657", image: "https://storage.googleapis.com/b/x.png) , url(javascript:1" },
+  });
+  assert.equal(palette.petiribi.image, ok);
+  assert.equal(palette.negro.image, undefined);
+  assert.equal(palette.roble.image, undefined);
+  assert.equal(resolveSwatchImage("Petiribi", palette), ok);
+  assert.equal(resolveSwatchImage("Negro", palette), "");
+  assert.equal(resolveSwatchImage("Verde", palette), "");
 });

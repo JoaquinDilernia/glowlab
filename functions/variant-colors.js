@@ -215,6 +215,9 @@ function extractColorLabels(names) {
 
 const HEX_PATTERN = /^#[0-9a-f]{6}$/i;
 const MAX_PALETTE_ENTRIES = 1000;
+// Foto de textura subida desde el admin: solo nuestro Storage, y sin comillas
+// ni parentesis porque va dentro de un url() en la tienda.
+const SWATCH_IMAGE_PATTERN = /^https:\/\/storage\.googleapis\.com\/[\w.\-/%]{1,400}$/;
 
 function sanitizePalette(palette) {
   const out = {};
@@ -224,6 +227,7 @@ function sanitizePalette(palette) {
     if (!HEX_PATTERN.test(entry.hex || "")) continue;
     out[key] = { hex: entry.hex.toLowerCase() };
     if (HEX_PATTERN.test(entry.hex2 || "")) out[key].hex2 = entry.hex2.toLowerCase();
+    if (SWATCH_IMAGE_PATTERN.test(entry.image || "")) out[key].image = entry.image;
   }
   return out;
 }
@@ -234,6 +238,13 @@ function resolveColors(label, palette) {
   const override = palette && palette[colorKey(label)];
   if (override && override.hex) return [override.hex, override.hex2].filter(Boolean);
   return findColors(label);
+}
+
+// Foto que el admin subio para ese color ("" si no hay). Pisa colores y
+// texturas en el circulo; el hex queda como respaldo mientras carga.
+function resolveSwatchImage(label, palette) {
+  const override = palette && palette[colorKey(label)];
+  return override && SWATCH_IMAGE_PATTERN.test(override.image || "") ? override.image : "";
 }
 
 // Textura de cada color de resolveColors (misma posicion, null = liso). Sale
@@ -271,5 +282,6 @@ module.exports = {
   sanitizePalette,
   resolveColors,
   resolveTextures,
+  resolveSwatchImage,
   collectDetectedColors,
 };
