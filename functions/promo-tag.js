@@ -36,6 +36,8 @@ const SIZES = {
 };
 // Borde en px; 0 = recto. Con MAX_RADIUS ya queda como pildora a cualquier tamaño.
 const MAX_RADIUS = 30;
+// En celular el cartel se achica a esta proporcion del tamaño elegido.
+const MOBILE_SCALE = 0.7;
 
 const DEFAULT_CONFIG = {
   enabled: false,
@@ -246,6 +248,13 @@ function buildPromoTagLoader(store, style, productIds, slot = "promo") {
     ` font-family: ${fontFamily} !important; font-size: ${size.font}px !important; font-weight: ${s.bold ? 700 : 400} !important;`,
     ` line-height: 1 !important; letter-spacing: 0.03em !important; padding: ${size.padY}px ${size.padX}px !important;`,
     ` border-radius: ${s.radius}px !important; white-space: nowrap !important; pointer-events: none !important; }`,
+    // En celular las cards son angostas (2 por fila): el cartel va mas chico.
+    "@media (max-width: 767px) {",
+    " .pn-pt-wrap { top: 6px !important; right: 6px !important; gap: 4px !important; }",
+    ` .pn-pt-${key} { font-size: ${Math.round(size.font * MOBILE_SCALE)}px !important;`,
+    ` padding: ${Math.round(size.padY * MOBILE_SCALE)}px ${Math.round(size.padX * MOBILE_SCALE)}px !important;`,
+    ` border-radius: ${Math.round(s.radius * MOBILE_SCALE)}px !important; }`,
+    "}",
   ].join("");
   // JSON dentro de un <script>/JS: se escapa "<" para que un texto como
   // "</script>" no corte nada.
