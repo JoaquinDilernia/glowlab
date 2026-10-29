@@ -13,7 +13,10 @@ const {
   isGiftRegistryEnabled,
   buildLoaderSnippet: buildGiftRegistryLoader,
 } = require("./gift-registry");
-const { buildTechSheetLoader } = require("./tech-sheet");
+const {
+  buildTechSheetLoader,
+  DEFAULT_SKU_PREFIXES: DEFAULT_TECH_SHEET_PREFIXES,
+} = require("./tech-sheet");
 
 const SKU_SUFFIX_LENGTH = 2;
 const MIN_GROUP_KEY_LENGTH = 3;
@@ -511,6 +514,10 @@ const DEFAULT_CONFIG = {
   // Grupos cuyo SKU empieza con alguno de estos prefijos usan el circulo de
   // color aunque swatchMode sea "image" (para probar en algunas lineas).
   colorSkuPrefixes: [],
+  // Desplegable "Dimensiones" en la PDP (ver tech-sheet.js). Es independiente
+  // de enabled: se puede tener la ficha tecnica sin los swatches.
+  techSheetEnabled: false,
+  techSheetSkuPrefixes: DEFAULT_TECH_SHEET_PREFIXES,
   hideUnpublished: true,
   colorPalette: {},
   groups: [],
@@ -630,6 +637,8 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
         swatchSize: ["sm", "md", "lg"].includes(config.swatchSize) ? config.swatchSize : "md",
         swatchMode: config.swatchMode === "color" ? "color" : "image",
         colorSkuPrefixes: sanitizeSkuPrefixes(config.colorSkuPrefixes),
+        techSheetEnabled: config.techSheetEnabled === true,
+        techSheetSkuPrefixes: sanitizeSkuPrefixes(config.techSheetSkuPrefixes),
         hideUnpublished: config.hideUnpublished !== false,
         colorPalette: sanitizePalette(config.colorPalette),
         updatedAt: FieldValue.serverTimestamp(),
@@ -771,11 +780,14 @@ function registerVariantGroupsRoutes(app, { db, FieldValue, checkStoreActive }) 
         isCombosEnabled(db, store),
         isGiftRegistryEnabled(db, store),
       ]);
-      const combosLoader = (combosOn ? buildLoaderSnippet(store) : "") +
-        (giftRegistryOn ? buildGiftRegistryLoader(store) : "") +
-        buildTechSheetLoader(store);
       const doc = await db.collection(COLLECTION).doc(String(store)).get();
       const cfg = doc.exists ? { ...DEFAULT_CONFIG, ...doc.data() } : DEFAULT_CONFIG;
+      const techSheetPrefixes = sanitizeSkuPrefixes(cfg.techSheetSkuPrefixes);
+      const combosLoader = (combosOn ? buildLoaderSnippet(store) : "") +
+        (giftRegistryOn ? buildGiftRegistryLoader(store) : "") +
+        (cfg.techSheetEnabled === true && techSheetPrefixes.length
+          ? buildTechSheetLoader(store, { skuPrefixes: techSheetPrefixes })
+          : "");
       if (cfg.enabled === false) {
         return res.send("// Grupos de Variantes: deshabilitado" + combosLoader);
       }

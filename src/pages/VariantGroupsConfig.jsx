@@ -40,6 +40,8 @@ const DEFAULT_CONFIG = {
   swatchSize: 'md',
   swatchMode: 'image',
   colorSkuPrefixes: [],
+  techSheetEnabled: false,
+  techSheetSkuPrefixes: ['M', 'I'],
   hideUnpublished: true,
   colorPalette: {},
   groups: [],
@@ -438,6 +440,31 @@ export default function VariantGroupsConfig() {
         <p className="vg-hint">
           {config.lastScanAt ? 'Último escaneo publicado.' : 'Todavía no escaneaste el catálogo.'}
         </p>
+      </div>
+
+      <div className="config-section">
+        <div className="section-header">
+          <h2>Ficha técnica</h2>
+          <label className="toggle-switch" title="Mostrar desplegable de Dimensiones">
+            <input type="checkbox" checked={config.techSheetEnabled === true}
+              onChange={e => setConfig(c => ({ ...c, techSheetEnabled: e.target.checked }))} />
+            <span className="toggle-slider"></span>
+          </label>
+        </div>
+        <p className="vg-hint">
+          Agrega un desplegable "Dimensiones" arriba de la descripción del producto con la
+          <b> última foto cargada</b> (la ficha técnica). Funciona aunque los grupos estén deshabilitados.
+        </p>
+        {config.techSheetEnabled && (
+          <div className="vg-row">
+            <div className="vg-field" title="Separados por coma. Ej: M, I">
+              <label>Solo en SKU que empiezan con</label>
+              <input type="text" placeholder="Ej: M, I"
+                value={(config.techSheetSkuPrefixes || []).join(',')}
+                onChange={e => setConfig(c => ({ ...c, techSheetSkuPrefixes: e.target.value ? e.target.value.split(',') : [] }))} />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="config-section">
