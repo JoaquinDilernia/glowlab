@@ -364,7 +364,7 @@ function CountdownConfig() {
             <div className="cd-placements">
               {[
                 ['header', 'Pegada al header', 'Arriba del logo, debajo de los avisos (recomendado)'],
-                ['top', 'Arriba de todo', 'Encima de los avisos; se va al scrollear'],
+                ['top', 'Arriba de todo', 'Primera, encima de la barra de cuotas y de todo'],
                 ['bottom', 'Abajo, flotante', 'Fija en el borde inferior de la pantalla'],
               ].map(([value, title, desc]) => (
                 <button key={value} type="button" className={`cd-placement ${config.placement === value ? 'active' : ''}`}
@@ -375,7 +375,7 @@ function CountdownConfig() {
                 </button>
               ))}
             </div>
-            {config.placement === 'header' && (
+            {config.placement !== 'bottom' && (
               <label className="vg-check">
                 <input type="checkbox" checked={config.sticky} onChange={e => set('sticky', e.target.checked)} />
                 Queda fija arriba al bajar (si no, se va con la página al scrollear)

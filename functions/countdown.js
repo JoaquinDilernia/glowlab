@@ -306,6 +306,8 @@ function storefrontCountdown(LIST, API, SIZES, MOBILE_SCALE) {
       "background:transparent;border:0;padding:0;margin:0;color:" + c.fg + ";opacity:.7;cursor:pointer;border-radius:50%}",
       bar + " .pn-cd-close:hover{opacity:1;background:" + hexA(c.fg, 0.12) + "}",
       bar + ".pn-cd-bottom .pn-cd-close{top:12px;transform:none}",
+      ".sticky-header-wrapper.hide-announcements>" + bar + ".pn-cd-top-sticky{transform:translateY(calc(-1 * var(--announcements-height-negative, 0px)))}",
+      bar + ".pn-cd-top-sticky{transition:transform var(--transition-normal, .3s ease)}",
       "@keyframes pnCdIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}",
       "@keyframes pnCdUp{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:none}}",
       "@media " + MOBILE_MQ + "{",
@@ -356,10 +358,23 @@ function storefrontCountdown(LIST, API, SIZES, MOBILE_SCALE) {
     }
     var head = document.querySelector(".js-head-main");
     var header = document.querySelector(".js-header") || document.querySelector("header");
-    if (c.placement === "header" && head && head.parentNode) {
+    var w = document.querySelector(".sticky-header-wrapper");
+    // Ipanema: "top" va primera adentro del wrapper fijo (arriba de los avisos de
+    // la plantilla y de todo lo demas); "header" justo arriba del logo.
+    var inWrapper = false;
+    if (c.placement === "top" && w) {
+      w.insertBefore(bar, w.firstChild);
+      inWrapper = true;
+    } else if (c.placement === "header" && head && head.parentNode) {
       head.parentNode.insertBefore(bar, head);
-      var w = document.querySelector(".sticky-header-wrapper");
-      if (c.sticky === false && w && w.contains(bar)) {
+      inWrapper = !!(w && w.contains(bar));
+    } else if (header && header.parentNode) {
+      header.parentNode.insertBefore(bar, header);
+    } else {
+      document.body.insertBefore(bar, document.body.firstChild);
+    }
+    if (inWrapper) {
+      if (c.sticky === false) {
         // "No fija": mismo lugar, pero cuando el header de Ipanema pasa a fijo
         // la barra se oculta, como si se hubiera ido con el scroll. El tema
         // reserva el alto (con la barra) justo antes de fijarse, asi no salta.
@@ -367,11 +382,12 @@ function storefrontCountdown(LIST, API, SIZES, MOBILE_SCALE) {
         var sync = function () { bar.style.display = w.classList.contains("is-fixed") ? "none" : ""; };
         new MutationObserver(sync).observe(w, { attributes: true, attributeFilter: ["class"] });
         sync();
+      } else if (c.placement === "top") {
+        // Al bajar, Ipanema sube el wrapper el alto de sus avisos para esconderlos.
+        // La barra esta arriba de esos avisos: se baja lo mismo y queda visible,
+        // tapando los avisos, pegada al logo.
+        bar.classList.add("pn-cd-top-sticky");
       }
-    } else if (header && header.parentNode) {
-      header.parentNode.insertBefore(bar, header);
-    } else {
-      document.body.insertBefore(bar, document.body.firstChild);
     }
     fixStickyPlaceholder();
     // El tema recalcula donde arranca el header fijo en el resize.
