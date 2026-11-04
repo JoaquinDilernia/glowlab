@@ -73,3 +73,10 @@ test("tamaño de letra a mano: se limita y viaja al widget", () => {
   assert.equal(p.msgPx, 20);
   assert.equal(p.digitPx, null);
 });
+
+test("fija al bajar: por defecto si, opcional", () => {
+  assert.equal(cd.normalize({}).sticky, true);
+  assert.equal(cd.normalize({ sticky: false }).sticky, false);
+  const p = cd.widgetPayload("x", { ...cd.normalize({ endDate: "2026-12-01T00:00:00Z", sticky: false }), updatedAt: "u" });
+  assert.equal(p.sticky, false);
+});

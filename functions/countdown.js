@@ -59,6 +59,7 @@ const DEFAULTS = {
   buttonTextColor: "#353434",
   showLabels: true,
   showCloseButton: true,
+  sticky: true,
   hideButtonOnMobile: false,
   pages: "all",
 };
@@ -145,6 +146,7 @@ function normalize(input) {
     buttonTextColor: hex(c.buttonTextColor, DEFAULTS.buttonTextColor),
     showLabels: c.showLabels !== false,
     showCloseButton: c.showCloseButton !== false,
+    sticky: c.sticky !== false,
     hideButtonOnMobile: c.hideButtonOnMobile === true,
     pages: pick(c.pages, PAGES, DEFAULTS.pages),
   };
@@ -208,6 +210,7 @@ function widgetPayload(id, raw) {
     btnFg: cd.buttonTextColor,
     labels: cd.showLabels,
     close: cd.showCloseButton,
+    sticky: cd.sticky,
     hideBtnMobile: cd.hideButtonOnMobile,
     pages: cd.pages,
   };
@@ -335,7 +338,11 @@ function storefrontCountdown(LIST, API, SIZES, MOBILE_SCALE) {
 
   // Ipanema: si el header ya esta fijo, el placeholder que reserva su lugar
   // quedo medido sin la barra; se corrige para que no tape el contenido.
+  // Con "no fija" (ver mount) el placeholder lo mide el tema con la barra
+  // visible, que es justo lo que queremos: no se toca.
+  var keepPlaceholder = false;
   function fixStickyPlaceholder() {
+    if (keepPlaceholder) return;
     var w = document.querySelector(".sticky-header-wrapper");
     var ph = document.querySelector(".sticky-header-placeholder");
     if (w && ph && w.classList.contains("is-fixed")) ph.style.height = w.offsetHeight + "px";
@@ -351,6 +358,16 @@ function storefrontCountdown(LIST, API, SIZES, MOBILE_SCALE) {
     var header = document.querySelector(".js-header") || document.querySelector("header");
     if (c.placement === "header" && head && head.parentNode) {
       head.parentNode.insertBefore(bar, head);
+      var w = document.querySelector(".sticky-header-wrapper");
+      if (c.sticky === false && w && w.contains(bar)) {
+        // "No fija": mismo lugar, pero cuando el header de Ipanema pasa a fijo
+        // la barra se oculta, como si se hubiera ido con el scroll. El tema
+        // reserva el alto (con la barra) justo antes de fijarse, asi no salta.
+        keepPlaceholder = true;
+        var sync = function () { bar.style.display = w.classList.contains("is-fixed") ? "none" : ""; };
+        new MutationObserver(sync).observe(w, { attributes: true, attributeFilter: ["class"] });
+        sync();
+      }
     } else if (header && header.parentNode) {
       header.parentNode.insertBefore(bar, header);
     } else {

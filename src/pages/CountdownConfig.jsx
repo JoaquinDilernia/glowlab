@@ -32,6 +32,7 @@ const DEFAULTS = {
   buttonTextColor: '#353434',
   showLabels: true,
   showCloseButton: true,
+  sticky: true,
   hideButtonOnMobile: false,
   pages: 'all',
 };
@@ -362,7 +363,7 @@ function CountdownConfig() {
           <div className="cd-fields">
             <div className="cd-placements">
               {[
-                ['header', 'Pegada al header', 'Queda fija arriba al bajar (recomendado)'],
+                ['header', 'Pegada al header', 'Arriba del logo, debajo de los avisos (recomendado)'],
                 ['top', 'Arriba de todo', 'Encima de los avisos; se va al scrollear'],
                 ['bottom', 'Abajo, flotante', 'Fija en el borde inferior de la pantalla'],
               ].map(([value, title, desc]) => (
@@ -374,6 +375,12 @@ function CountdownConfig() {
                 </button>
               ))}
             </div>
+            {config.placement === 'header' && (
+              <label className="vg-check">
+                <input type="checkbox" checked={config.sticky} onChange={e => set('sticky', e.target.checked)} />
+                Queda fija arriba al bajar (si no, se va con la página al scrollear)
+              </label>
+            )}
             <div className="vg-field">
               <label>Páginas</label>
               <select value={config.pages} onChange={e => set('pages', e.target.value)}>
