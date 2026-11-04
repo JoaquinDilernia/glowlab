@@ -1,31 +1,40 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Palette, MessageSquare, Menu as MenuIcon, Eye, Upload, Image } from 'lucide-react';
+import { ArrowLeft, Save, Palette, MessageSquare, Eye } from 'lucide-react';
 import { apiRequest } from '../config';
 import './StyleConfig.css';
 import EmojiPicker from '../components/EmojiPicker';
 import { useToast } from '../context/ToastContext';
 import TopAnnouncementBarEditor from './style/TopAnnouncementBarEditor';
+import MenuEditor from './style/MenuEditor';
 import './CountdownList.css';
 
-const MENU_IMG_TARGET_WIDTH = 1080;
-const MENU_IMG_TARGET_HEIGHT = 1350;
+const STYLE_TAB_LABELS = {
+  menu: 'Menú principal', banners: 'Banners', topHeader: 'Barra de encabezado', topAnnouncementBar: 'Barra de anuncios',
+  announcementBar: 'Menú inferior', whatsapp: 'WhatsApp', shopTheLook: 'Shop the Look', lightToggle: 'Cambio de vista',
+  themeSwitch: 'Tema claro/oscuro', scrollReveal: 'Animaciones al scrollear', customCursor: 'Cursor', tabTitle: 'Título de pestaña', backToTop: 'Volver arriba',
+};
 
-function getMenuImageDimensions(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new window.Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+// Ctrl/Cmd+S guarda; avisa si se cierra la pestaña con cambios sin guardar.
+function StyleShortcuts({ dirty, onSave }) {
+  const saveRef = useRef(onSave);
+  useEffect(() => { saveRef.current = onSave; });
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveRef.current(); }
     };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('No se pudo leer la imagen'));
-    };
-    img.src = url;
-  });
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const onUnload = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [dirty]);
+  return null;
 }
+
 
 function StyleConfig() {
   const navigate = useNavigate();
@@ -46,11 +55,8 @@ function StyleConfig() {
   const [activeTab, setActiveTab] = useState('whatsapp');
   const [tabSearch, setTabSearch] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
-  const [loadingMenus, setLoadingMenus] = useState(false);
-  const [uploadingKey, setUploadingKey] = useState(null);
-  const [uploadMessages, setUploadMessages] = useState({});
-  const fileInputRefs = useRef({});
-  const [tiendanubeMenus, setTiendanubeMenus] = useState([]);
+  // JSON de lo ultimo guardado/cargado, para saber si hay cambios sin guardar
+  const [savedJson, setSavedJson] = useState(null);
   
   const [config, setConfig] = useState({
     whatsapp: {
@@ -259,23 +265,8 @@ function StyleConfig() {
     }
     
     loadConfig();
-    loadTiendanubeMenus();
   }, []);
 
-  const loadTiendanubeMenus = async () => {
-    setLoadingMenus(true);
-    try {
-      const data = await apiRequest(`/api/tiendanube/menus?storeId=${storeId}`);
-      if (data.success && data.menus) {
-        setTiendanubeMenus(data.menus);
-      }
-    } catch (error) {
-      console.error('Error loading TiendaNube menus:', error);
-      // Silent fail - menus import is optional
-    } finally {
-      setLoadingMenus(false);
-    }
-  };
 
   const loadConfig = async () => {
     try {
@@ -328,6 +319,7 @@ function StyleConfig() {
           backToTop: data.config.backToTop || { enabled: false, size: 48, position: 'bottom-right', offset: 30, borderRadius: 50, showAfter: 400, bgColor: '#111111', iconColor: '#ffffff' }
         };
         setConfig(loadedConfig);
+        setSavedJson(JSON.stringify(loadedConfig));
         if (data.config.updatedAt) setLastSaved(new Date(data.config.updatedAt));
         console.log('Config cargado:', loadedConfig);
       }
@@ -360,6 +352,7 @@ function StyleConfig() {
           : '';
         toast.success(`Configuración guardada!${scriptMsg} Los cambios se verán en tu tienda en 1-2 minutos.`);
         setLastSaved(new Date());
+        setSavedJson(JSON.stringify(config));
       } else {
         toast.error('Error al guardar configuración: ' + (data.message || 'Error desconocido'));
       }
@@ -406,265 +399,7 @@ function StyleConfig() {
     }));
   };
 
-  const updateMenu = (field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      menu: { ...prev.menu, [field]: value }
-    }));
-  };
 
-  const addMenuItem = () => {
-    const currentItems = config.menu.items || [];
-    const newItem = {
-      position: (currentItems.length + 1).toString(),
-      emoji: '',
-      emojiPosition: 'before', // 'before' o 'after'
-      color: '',
-      fontWeight: 'normal', // 'normal' o 'bold'
-      fontSize: '',
-      imageUrl: '' // URL de la imagen para mostrar en el dropdown
-    };
-    setConfig(prev => ({
-      ...prev,
-      menu: {
-        ...prev.menu,
-        items: [...currentItems, newItem]
-      }
-    }));
-  };
-
-  const removeMenuItem = (index) => {
-    setConfig(prev => ({
-      ...prev,
-      menu: {
-        ...prev.menu,
-        items: prev.menu.items.filter((_, i) => i !== index)
-      }
-    }));
-  };
-
-  const updateMenuItem = (index, field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      menu: {
-        ...prev.menu,
-        items: prev.menu.items.map((item, i) => 
-          i === index ? { ...item, [field]: value } : item
-        )
-      }
-    }));
-  };
-
-  const uploadMenuImage = async (index, file, field) => {
-    if (!file) return;
-    const key = `${index}-${field}`;
-
-    if (!file.type.startsWith('image/')) {
-      setUploadMessages(prev => ({ ...prev, [key]: { type: 'error', text: 'Seleccioná una imagen válida (JPG, PNG, WebP)' } }));
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadMessages(prev => ({ ...prev, [key]: { type: 'error', text: 'La imagen supera 5MB. Usá una más liviana.' } }));
-      return;
-    }
-
-    try {
-      const { width, height } = await getMenuImageDimensions(file);
-      if (width !== MENU_IMG_TARGET_WIDTH || height !== MENU_IMG_TARGET_HEIGHT) {
-        toast.info(`Esta imagen mide ${width}×${height}px. Se recomienda ${MENU_IMG_TARGET_WIDTH}×${MENU_IMG_TARGET_HEIGHT}px.`);
-      }
-    } catch (e) {
-      // No se pudo leer la medida — no bloquea la subida.
-    }
-
-    try {
-      setUploadingKey(key);
-      setUploadMessages(prev => ({ ...prev, [key]: null }));
-
-      const reader = new FileReader();
-      const base64Data = await new Promise((resolve, reject) => {
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const response = await apiRequest('/api/upload-image-base64', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId: storeId,
-          fileName: file.name,
-          fileData: base64Data,
-          folder: 'menu-images'
-        })
-      });
-
-      if (!response.success) {
-        throw new Error(response.message || 'Error al subir imagen');
-      }
-
-      updateMenuItem(index, field, response.url);
-      setUploadMessages(prev => ({ ...prev, [key]: { type: 'success', text: 'Imagen subida correctamente' } }));
-      setTimeout(() => {
-        setUploadMessages(prev => ({ ...prev, [key]: null }));
-      }, 3000);
-    } catch (error) {
-      console.error('Error:', error);
-      setUploadMessages(prev => ({ ...prev, [key]: { type: 'error', text: 'Error al subir la imagen. Intentá de nuevo.' } }));
-    } finally {
-      setUploadingKey(null);
-    }
-  };
-
-  const renderMenuImageUpload = (index, item, field, label, deviceHint) => {
-    const value = item[field] || '';
-    const key = `${index}-${field}`;
-    return (
-      <div style={{ marginBottom: '14px' }}>
-        <div style={{ fontSize: '12px', fontWeight: '600', color: 'rgba(255,255,255,0.75)', marginBottom: deviceHint ? '2px' : '6px' }}>
-          {label}
-        </div>
-        {deviceHint && (
-          <p style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.45)', marginTop: 0, marginBottom: '8px' }}>
-            {deviceHint}
-          </p>
-        )}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => updateMenuItem(index, field, e.target.value)}
-            placeholder="https://mitienda.com/imagen.jpg"
-            style={{ flex: 1 }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRefs.current[key]?.click()}
-            disabled={uploadingKey === key}
-            style={{
-              cursor: uploadingKey === key ? 'not-allowed' : 'pointer',
-              padding: '10px 14px',
-              background: uploadingKey === key
-                ? 'rgba(102, 126, 234, 0.25)'
-                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              color: '#ffffff',
-              borderRadius: '8px',
-              border: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '13px',
-              fontWeight: '600',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.2s ease',
-              minWidth: '88px',
-              justifyContent: 'center'
-            }}
-          >
-            {uploadingKey === key ? (
-              <>
-                <span style={{
-                  display: 'inline-block',
-                  width: '12px',
-                  height: '12px',
-                  border: '2px solid rgba(255,255,255,0.3)',
-                  borderTopColor: '#fff',
-                  borderRadius: '50%',
-                  animation: 'spin 0.8s linear infinite',
-                  flexShrink: 0
-                }} />
-                Subiendo
-              </>
-            ) : (
-              <>
-                <Upload size={14} />
-                Subir
-              </>
-            )}
-          </button>
-          <input
-            ref={el => { fileInputRefs.current[key] = el; }}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const file = e.target.files[0];
-              if (file) uploadMenuImage(index, file, field);
-              e.target.value = '';
-            }}
-          />
-        </div>
-
-        {uploadMessages[key] && (
-          <div style={{
-            marginTop: '10px',
-            padding: '8px 12px',
-            borderRadius: '8px',
-            fontSize: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: uploadMessages[key].type === 'success'
-              ? 'rgba(34, 197, 94, 0.12)'
-              : 'rgba(239, 68, 68, 0.12)',
-            color: uploadMessages[key].type === 'success' ? '#4ade80' : '#f87171',
-            border: `1px solid ${uploadMessages[key].type === 'success' ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`
-          }}>
-            <span style={{ fontWeight: '700' }}>
-              {uploadMessages[key].type === 'success' ? '✓' : '✕'}
-            </span>
-            {uploadMessages[key].text}
-          </div>
-        )}
-
-        {value && (
-          <div style={{ marginTop: '14px', position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
-            <img
-              src={value}
-              alt="Preview"
-              style={{
-                maxWidth: '100%',
-                maxHeight: '160px',
-                borderRadius: '8px',
-                border: '1px solid rgba(102, 126, 234, 0.25)',
-                display: 'block',
-                objectFit: 'cover'
-              }}
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => updateMenuItem(index, field, '')}
-              title="Eliminar imagen"
-              style={{
-                position: 'absolute',
-                top: '6px',
-                right: '6px',
-                background: 'rgba(0,0,0,0.65)',
-                border: 'none',
-                borderRadius: '50%',
-                width: '22px',
-                height: '22px',
-                cursor: 'pointer',
-                color: '#fff',
-                fontSize: '13px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                lineHeight: 1,
-                padding: 0
-              }}
-            >
-              ×
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const updateBanners = (field, value) => {
     setConfig(prev => ({
@@ -794,42 +529,43 @@ function StyleConfig() {
     }));
   };
 
+  const dirty = savedJson !== null && JSON.stringify(config) !== savedJson;
+
   return (
     <div className="style-config-container">
-      <header className="page-header-modern">
-        <div className="header-content-modern">
-          <div className="header-top-modern">
-            <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
-              {lastSaved && (
-                <span style={{fontSize: '12px', color: 'rgba(255,255,255,0.55)', paddingRight: '4px'}}>
-                  Guardado: {lastSaved.toLocaleTimeString('es-AR', {hour: '2-digit', minute: '2-digit'})}
-                </span>
-              )}
-              <button 
-                className="btn-primary-gradient" 
-                onClick={saveConfig}
-                disabled={loading}
-              >
-                <Save size={18} />
-                <span>{loading ? 'Guardando...' : 'Guardar Cambios'}</span>
-              </button>
-              <button
-                type="button"
-                className="btn-secondary-outline"
-                onClick={() => { setPreviewKey(k => k + 1); setPreviewOpen(true); }}
-                disabled={!storeUrl}
-                title={storeUrl ? 'Ver tu tienda con los cambios aplicados' : 'No se pudo obtener la URL de tu tienda'}
-                style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', cursor: storeUrl ? 'pointer' : 'not-allowed', display: 'inline-flex', gap: 6, alignItems: 'center' }}
-              >
-                <Eye size={16} />
-                <span>Vista previa</span>
-              </button>
-            </div>
+      <StyleShortcuts dirty={dirty} onSave={saveConfig} />
+      <header className="sx-head">
+        <div className="sx-head-left">
+          <div className="sx-head-icon"><Palette size={18} /></div>
+          <div className="sx-head-text">
+            <h1>Style</h1>
+            <p>Cómo se ve tu tienda{STYLE_TAB_LABELS[activeTab] ? <> · <b>{STYLE_TAB_LABELS[activeTab]}</b></> : null}</p>
           </div>
-          <div className="header-info-section">
-            <h1 className="page-title-gradient">🎨 Style - Personalización Avanzada</h1>
-            <p className="page-subtitle-modern">Personaliza WhatsApp, Menú y Banners de tu tienda</p>
-          </div>
+        </div>
+        <div className="sx-head-actions">
+          <span className={`sx-save-state ${dirty ? 'dirty' : ''}`}>
+            {dirty ? 'Cambios sin guardar' : lastSaved ? `Guardado ${lastSaved.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+          </span>
+          <button
+            type="button"
+            className="sx-btn"
+            onClick={() => { setPreviewKey(k => k + 1); setPreviewOpen(true); }}
+            disabled={!storeUrl}
+            title={storeUrl ? 'Ver tu tienda con los cambios aplicados' : 'No se pudo obtener la URL de tu tienda'}
+          >
+            <Eye size={16} />
+            <span>Ver en la tienda</span>
+          </button>
+          <button
+            type="button"
+            className={`sx-btn sx-btn-primary ${dirty ? 'is-dirty' : ''}`}
+            onClick={saveConfig}
+            disabled={loading}
+            title="Guardar (Ctrl+S)"
+          >
+            <Save size={16} />
+            <span>{loading ? 'Guardando…' : 'Guardar'}</span>
+          </button>
         </div>
       </header>
 
@@ -1258,252 +994,12 @@ function StyleConfig() {
         )}
 
         {/* Menu Tab */}
+        {/* Menu principal - editor nuevo para Ipanema */}
         {activeTab === 'menu' && (
-          <div className="config-section">
-            <div className="section-header">
-              <h2>📋 Menú de Navegación</h2>
-              <label className="toggle-switch">
-                <input
-                  type="checkbox"
-                  checked={config.menu.enabled}
-                  onChange={(e) => updateMenu('enabled', e.target.checked)}
-                />
-                <span className="toggle-slider"></span>
-              </label>
-            </div>
-
-            {config.menu.enabled && (
-              <>
-                <div className="info-box" style={{marginBottom: '20px'}}>
-                  <p style={{margin: 0, fontSize: '14px'}}>
-                    🎯 Personalizá tu menú, destacá categorías y agregá emojis, imágenes y más. Configurá cada item por posición y diferenciá títulos de subcategorías.
-                  </p>
-                </div>
-
-                {(!config.menu.items || config.menu.items.length === 0) ? (
-                  <div style={{textAlign: 'center', padding: '40px 20px'}}>
-                    <p style={{color: 'rgba(255, 255, 255, 0.6)', marginBottom: '20px'}}>
-                      No hay items configurados. Agrega el primer item del menú.
-                    </p>
-                    <button className="btn-add" onClick={addMenuItem}>
-                      + Agregar Item del Menú
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {config.menu.items.map((item, index) => {
-                      const isSubcategory = item.position && item.position.toString().includes('.');
-                      return (
-                      <div key={index} style={{
-                        background: isSubcategory 
-                          ? 'linear-gradient(135deg, #f3f4f615 0%, #e5e7eb15 100%)' 
-                          : 'linear-gradient(135deg, #667eea15 0%, #764ba215 100%)',
-                        padding: '25px',
-                        borderRadius: '16px',
-                        marginBottom: '20px',
-                        border: isSubcategory ? '2px dashed #d1d5db' : '2px solid #667eea',
-                        marginLeft: isSubcategory ? '30px' : '0'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '20px'
-                        }}>
-                          <h3 style={{margin: 0, fontSize: '18px', fontWeight: '700'}}>
-                            {isSubcategory ? '📎 Subcategoría' : '📍 Categoría Principal'} (Posición {item.position})
-                          </h3>
-                          <button 
-                            className="btn-remove-small"
-                            onClick={() => removeMenuItem(index)}
-                            style={{fontSize: '18px', padding: '8px 14px'}}
-                          >
-                            🗑️
-                          </button>
-                        </div>
-
-                        <div className="form-row">
-                          <div className="form-group">
-                            <label>🔢 Posición en el Menú</label>
-                            <input
-                              type="text"
-                              value={item.position}
-                              onChange={(e) => updateMenuItem(index, 'position', e.target.value)}
-                              placeholder="1, 2, 3 o 1.1, 2.3 para subcategorías"
-                            />
-                            <small style={{color: 'rgba(255, 255, 255, 0.6)', fontSize: '11px', display: 'block', marginTop: '4px'}}>
-                              Categoría: 1, 2, 3... | Subcategoría: 1.1, 1.2, 2.1, 2.2...
-                            </small>
-                          </div>
-
-                          <div className="form-group">
-                            <label>😀 Emoji</label>
-                            <EmojiPicker
-                              value={item.emoji}
-                              onChange={(emoji) => updateMenuItem(index, 'emoji', emoji)}
-                              placeholder="🎉 🔥 ⭐ 💎"
-                            />
-                          </div>
-                        </div>
-
-
-
-                        <div className="form-row">
-                          <div className="form-group">
-                            <label>📍 Posición del Emoji</label>
-                            <select
-                              value={item.emojiPosition}
-                              onChange={(e) => updateMenuItem(index, 'emojiPosition', e.target.value)}
-                              style={{width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd'}}
-                            >
-                              <option value="before">Antes del texto</option>
-                              <option value="after">Después del texto</option>
-                            </select>
-                          </div>
-
-                          <div className="form-group">
-                            <label>🎨 Color del Texto</label>
-                            <div className="color-input-group">
-                              <input
-                                type="color"
-                                value={item.color || '#000000'}
-                                onChange={(e) => updateMenuItem(index, 'color', e.target.value)}
-                              />
-                              <input
-                                type="text"
-                                value={item.color}
-                                onChange={(e) => updateMenuItem(index, 'color', e.target.value)}
-                                placeholder="#FF5733 o rgba(255,87,51,1)"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="form-row">
-                          <div className="form-group">
-                            <label>📏 Negrita</label>
-                            <select
-                              value={item.fontWeight}
-                              onChange={(e) => updateMenuItem(index, 'fontWeight', e.target.value)}
-                              style={{width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd'}}
-                            >
-                              <option value="normal">Normal</option>
-                              <option value="bold">Negrita</option>
-                              <option value="600">Semi-negrita (600)</option>
-                              <option value="700">Negrita (700)</option>
-                              <option value="800">Extra negrita (800)</option>
-                            </select>
-                          </div>
-
-                          <div className="form-group">
-                            <label>📐 Tamaño de Fuente</label>
-                            <input
-                              type="text"
-                              value={item.fontSize}
-                              onChange={(e) => updateMenuItem(index, 'fontSize', e.target.value)}
-                              placeholder="16px, 18px, 1.2rem"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Imagen del Dropdown */}
-                        <div style={{
-                          marginTop: '20px',
-                          padding: '18px',
-                          background: 'rgba(102, 126, 234, 0.07)',
-                          borderRadius: '12px',
-                          border: '1px solid rgba(102, 126, 234, 0.2)'
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                            <Image size={15} color="#667eea" />
-                            <h4 style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: 'rgba(255, 255, 255, 0.9)' }}>
-                              Imagen del Dropdown
-                            </h4>
-                          </div>
-                          <p style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.45)', marginBottom: '4px', marginTop: '4px', lineHeight: 1.4 }}>
-                            Desktop: aparece dentro del dropdown · Mobile: debajo de las subcategorías
-                          </p>
-                          <p style={{ fontSize: '11px', color: '#667eea', marginTop: 0, marginBottom: '14px' }}>
-                            📐 Medida recomendada: 1080 × 1350 px
-                          </p>
-
-                          {renderMenuImageUpload(index, item, 'imageUrl', 'Imagen desktop', null)}
-                          {renderMenuImageUpload(index, item, 'imageMobileUrl', 'Imagen mobile (opcional)', 'Si no la subís, no se muestra en mobile.')}
-
-                          {/* Campos extra para personalizar la imagen */}
-                          {item.imageUrl && (
-                            <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px dashed rgba(102,126,234,0.25)' }}>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                                <div>
-                                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' }}>🔗 Link al hacer click</label>
-                                  <input
-                                    type="text"
-                                    value={item.imageLink || ''}
-                                    onChange={(e) => updateMenuItem(index, 'imageLink', e.target.value)}
-                                    placeholder="/categoria/verano  o  https://..."
-                                    style={{ width: '100%', boxSizing: 'border-box' }}
-                                  />
-                                </div>
-                                <div>
-                                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' }}>💬 Caption / CTA (opcional)</label>
-                                  <input
-                                    type="text"
-                                    value={item.imageCaption || ''}
-                                    onChange={(e) => updateMenuItem(index, 'imageCaption', e.target.value)}
-                                    placeholder="Ver colección →"
-                                    style={{ width: '100%', boxSizing: 'border-box' }}
-                                  />
-                                </div>
-                              </div>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '10px 12px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', fontSize: '13px' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={item.megaMenu || false}
-                                  onChange={(e) => updateMenuItem(index, 'megaMenu', e.target.checked)}
-                                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                                />
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontWeight: '600', color: '#4ade80' }}>✨ Mostrar como Mega-Menú flotante</div>
-                                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.55)', marginTop: '2px' }}>
-                                    Activalo si tu plantilla no tiene dropdown nativo o si la imagen no se ve bien dentro. Crea un panel grande al hacer hover con la imagen + las subcategorías.
-                                  </div>
-                                </div>
-                              </label>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Vista previa */}
-                        <div style={{
-                          marginTop: '20px',
-                          padding: '15px',
-                          background: 'rgba(26, 26, 46, 0.8)',
-                          borderRadius: '8px',
-                          border: '1px solid #ddd'
-                        }}>
-                          <h4 style={{fontSize: '14px', marginBottom: '10px', color: 'rgba(255, 255, 255, 0.6)'}}>Vista Previa:</h4>
-                          <span style={{
-                            color: item.color || 'inherit',
-                            fontWeight: item.fontWeight || 'normal',
-                            fontSize: item.fontSize || 'inherit'
-                          }}>
-                            {item.emoji && item.emojiPosition === 'before' && <span>{item.emoji} </span>}
-                            Item del Menú
-                            {item.emoji && item.emojiPosition === 'after' && <span> {item.emoji}</span>}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                    })}
-
-                    <button className="btn-add" onClick={addMenuItem}>
-                      + Agregar Otro Item del Menú
-                    </button>
-                  </>
-                )}
-              </>
-            )}
-          </div>
+          <MenuEditor
+            value={config.menu}
+            onChange={(next) => setConfig(prev => ({ ...prev, menu: next }))}
+          />
         )}
 
         {/* Banners Tab */}

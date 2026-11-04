@@ -11,6 +11,7 @@ const sharp = require('sharp');
 const { MercadoPagoConfig, PreApproval, Payment } = require('mercadopago');
 const { evaluateAccess, SUBSCRIPTION_PRICE_ARS } = require('./subscriptionAccess');
 const { getClientSelectorMap } = require('./theme-menu-selectors');
+const { buildMenuScript, registerStyleMenuRoutes } = require('./style-menu');
 
 // ============================================
 // LOG GATE - reduce costos de Cloud Logging
@@ -780,6 +781,12 @@ registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
 // Style > Barra de anuncios (ex "Menu superior"), rehecha para Ipanema
 const { registerTopAnnouncementRoutes } = require('./top-announcement');
 registerTopAnnouncementRoutes(app, { checkStoreActive, getCachedDoc: (c, id) => getCachedDoc(c, id), legacyHandler: legacyTopAnnouncementBarWidget });
+
+// Style > Menu principal (editor v2): menu real de la tienda para el selector del panel
+registerStyleMenuRoutes(app, {
+  getStoreDoc: async (id) => { const d = await db.collection('promonube_stores').doc(String(id)).get(); return d.exists ? d.data() : null; },
+  getCachedData: (key, fn) => getCachedData(key, fn),
+});
 
 // Cuenta Regresiva - barra con contador (ubicacion pensada para Ipanema / Alto Rancho)
 const { registerCountdownRoutes } = require('./countdown');
@@ -10666,6 +10673,8 @@ app.get("/api/style-widget.js", async (req, res) => {
   }
 
   function customizeMenu() {
+    // Menu nuevo (editor v2): lo maneja ./style-menu.js, agregado al final del script.
+    if (CONFIG.menu && CONFIG.menu.version === 2) return;
     if (!CONFIG.menu || !CONFIG.menu.enabled) {
       console.log('PromoNube: Men? deshabilitado o no configurado');
       return;
@@ -13429,7 +13438,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 })();
 `;
 
-    res.send(script);
+    res.send(script + buildMenuScript(config.menu));
   } catch (error) {
     console.error("Error generando style-widget:", error);
     res.status(500).send("// Error interno: " + error.message);
