@@ -10,6 +10,7 @@ import MenuEditor from './style/MenuEditor';
 import WhatsAppEditor from './style/WhatsAppEditor';
 import BannersEditor from './style/BannersEditor';
 import TopHeaderEditor from './style/TopHeaderEditor';
+import ShopTheLookEditor from './style/ShopTheLookEditor';
 import './CountdownList.css';
 
 const STYLE_TAB_LABELS = {
@@ -2349,19 +2350,11 @@ function StyleConfig() {
 
         {/* Shop the Look Tab — módulo propio */}
         {activeTab === 'shopTheLook' && (
-          <div className="config-section" style={{ textAlign: 'center', padding: '48px 24px' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📍</div>
-            <h2 style={{ margin: '0 0 8px', fontSize: 20 }}>Shop the Look tiene su propio módulo</h2>
-            <p style={{ margin: '0 0 24px', color: '#6b7280', fontSize: 14 }}>
-              Ahora podés acceder directamente desde el menú lateral o desde el botón de abajo.
-            </p>
-            <button
-              onClick={() => navigate('/shop-the-look')}
-              style={{ padding: '12px 28px', background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 15 }}
-            >
-              Ir a Shop the Look →
-            </button>
-          </div>
+          <ShopTheLookEditor
+            value={config.shopTheLook}
+            onChange={(next) => setConfig(prev => ({ ...prev, shopTheLook: next }))}
+            notify={(m) => toast.error(m)}
+          />
         )}
           </div>
         </main>

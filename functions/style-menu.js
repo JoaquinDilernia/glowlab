@@ -490,6 +490,25 @@ function registerStyleMenuRoutes(app, { getStoreDoc, getCachedData }) {
     }
   });
 
+  // Shop the Look (editor v2): todas las secciones de la home, para elegir donde va.
+  app.get("/api/style/home-sections", async (req, res) => {
+    const storeId = String(req.query.storeId || "");
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+    try {
+      const url = await resolveStoreUrl(storeId, { getStoreDoc, getCachedData });
+      if (!url) return res.json({ success: true, sections: [], message: "La tienda no tiene URL cargada" });
+      const sections = await getCachedData(`home-sections:${storeId}`, async () => {
+        const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (GlowLab section reader)" }, redirect: "follow" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return require("./style-shop-the-look").parseHomeSections(await r.text());
+      });
+      res.json({ success: true, url, sections });
+    } catch (error) {
+      console.error("home-sections:", error.message);
+      res.json({ success: false, sections: [], message: "No se pudieron leer las secciones de la tienda" });
+    }
+  });
+
   app.get("/api/style/menu-tree", async (req, res) => {
     const storeId = String(req.query.storeId || "");
     if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });

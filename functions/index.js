@@ -14,6 +14,21 @@ const { getClientSelectorMap } = require('./theme-menu-selectors');
 const { buildMenuScript, registerStyleMenuRoutes } = require('./style-menu');
 const { buildWhatsAppScript } = require('./style-whatsapp');
 const { buildBannersScript } = require('./style-banners');
+const { buildShopTheLookScript } = require('./style-shop-the-look');
+
+// Producto de Tiendanube (Admin API) con cache, para Shop the Look v2
+async function fetchStoreProduct(storeId, productId) {
+  return getCachedData(`tn-product:${storeId}:${productId}`, async () => {
+    const sd = await getCachedDoc('promonube_stores', String(storeId));
+    const token = sd.exists ? sd.data().accessToken : null;
+    if (!token) return null;
+    const r = await fetch(`https://api.tiendanube.com/v1/${storeId}/products/${productId}`, {
+      headers: { Authentication: `bearer ${token}`, 'User-Agent': 'GlowLab (info@techdi.com.ar)' },
+      signal: AbortSignal.timeout(8000),
+    });
+    return r.ok ? r.json() : null;
+  });
+}
 
 // ============================================
 // LOG GATE - reduce costos de Cloud Logging
@@ -12879,6 +12894,7 @@ app.get("/api/style-widget.js", async (req, res) => {
   }
 
   function customizeShopTheLook() {
+    if (CONFIG.shopTheLook && CONFIG.shopTheLook.version === 2) return; // editor nuevo: functions/style-shop-the-look.js
     if (!CONFIG.shopTheLook || !CONFIG.shopTheLook.enabled) return;
     const stl = CONFIG.shopTheLook;
     const looks = Array.isArray(stl.looks) ? stl.looks.filter(function(l){ return l && l.imageUrl; }) : [];
@@ -13446,7 +13462,8 @@ app.get("/api/style-widget.js", async (req, res) => {
 })();
 `;
 
-    res.send(script + buildMenuScript(config.menu) + buildWhatsAppScript(config.whatsapp) + buildBannersScript(config.banners));
+    const stlScript = await buildShopTheLookScript(config.shopTheLook, { fetchProduct: (id) => fetchStoreProduct(store, id) }).catch((e) => { console.error('shop the look v2:', e.message); return ''; });
+    res.send(script + buildMenuScript(config.menu) + buildWhatsAppScript(config.whatsapp) + buildBannersScript(config.banners) + stlScript);
   } catch (error) {
     console.error("Error generando style-widget:", error);
     res.status(500).send("// Error interno: " + error.message);
