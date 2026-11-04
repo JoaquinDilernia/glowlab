@@ -173,10 +173,11 @@ function widgetPayload(cfg) {
 // Script de la tienda (se serializa con toString(); no corre en el servidor).
 // ---------------------------------------------------------------------------
 function storefrontAnnouncement(C) {
-  if (window.__pnTopAnnInit) return;
-  window.__pnTopAnnInit = true;
-
-  var ID = "pn-top-announcement-bar";
+  // Una instancia por barra: "Barra de anuncios" y "Menú inferior" usan este motor.
+  var ID = C.barId || "pn-top-announcement-bar";
+  var FLAG = "__pnAnnInit_" + ID;
+  if (window[FLAG]) return;
+  window[FLAG] = true;
   var MQ = window.matchMedia ? window.matchMedia("(max-width: 767px)") : { matches: window.innerWidth < 768 };
 
   function active(now) {
@@ -345,7 +346,7 @@ function storefrontAnnouncement(C) {
     if (C.placement === "top" && w) {
       // Despues de la Cuenta Regresiva, si esta arriba de todo
       var first = w.firstChild;
-      while (first && first.id === "pn-countdown-bar") first = first.nextSibling;
+      while (first && (first.id === "pn-countdown-bar" || first.id === "pn-top-announcement-bar")) first = first.nextSibling;
       w.insertBefore(bar, first);
       bar.classList.add("pn-ta-lift");
       inSticky = true;
@@ -386,7 +387,7 @@ function storefrontAnnouncement(C) {
       document.head.appendChild(l);
     }
     var st = document.createElement("style");
-    st.id = "pn-ta-style";
+    st.id = "pn-ta-style-" + ID;
     st.textContent = css();
     document.head.appendChild(st);
     bar = document.createElement("div");
@@ -409,16 +410,17 @@ function storefrontAnnouncement(C) {
   else init();
 }
 
-function buildWidgetScript(cfg) {
-  return `(${storefrontAnnouncement.toString()})(${JSON.stringify(widgetPayload(cfg))});`;
+function buildWidgetScript(cfg, barId) {
+  const payload = { ...widgetPayload(cfg), barId: barId || "pn-top-announcement-bar" };
+  return `(${storefrontAnnouncement.toString()})(${JSON.stringify(payload)});`;
 }
 
 // Config guardada con el editor nuevo => version 2. Todo lo demas sigue con el
 // widget viejo (legacyHandler) para no cambiar tiendas que nadie volvio a guardar.
 const usesNewWidget = (cfg) => !!cfg && cfg.version === 2;
 
-function registerTopAnnouncementRoutes(app, { checkStoreActive, getCachedDoc, legacyHandler }) {
-  app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
+function registerAnnouncementRoute(app, { path, configKey, barId, checkStoreActive, getCachedDoc, legacyHandler }) {
+  app.get(path, async (req, res) => {
     const { store } = req.query;
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=60, s-maxage=60");
@@ -429,16 +431,29 @@ function registerTopAnnouncementRoutes(app, { checkStoreActive, getCachedDoc, le
         return res.send("// plan inactivo");
       }
       const doc = await getCachedDoc("promonube_style_config", store);
-      const cfg = doc.exists ? doc.data().topAnnouncementBar : null;
+      const cfg = doc.exists ? doc.data()[configKey] : null;
       if (legacyHandler && !usesNewWidget(cfg)) return legacyHandler(req, res);
-      if (!cfg || cfg.enabled !== true) return res.send("// barra de anuncios apagada");
+      if (!cfg || cfg.enabled !== true) return res.send("// barra apagada");
       const payload = widgetPayload(cfg);
       if (!payload.messages.length) return res.send("// sin mensajes");
-      res.send(buildWidgetScript(cfg));
+      res.send(buildWidgetScript(cfg, barId));
     } catch (error) {
-      console.error("Error generando top-announcement-bar-widget:", error);
+      console.error("Error generando " + path + ":", error);
       res.status(500).send("// error");
     }
+  });
+}
+
+function registerTopAnnouncementRoutes(app, { checkStoreActive, getCachedDoc, legacyHandler, legacyBottomHandler }) {
+  // Barra de anuncios (ex "Menu superior")
+  registerAnnouncementRoute(app, {
+    path: "/api/top-announcement-bar-widget.js", configKey: "topAnnouncementBar", barId: "pn-top-announcement-bar",
+    checkStoreActive, getCachedDoc, legacyHandler,
+  });
+  // Segunda franja (ex "Menu inferior"): mismo motor, otra config.
+  registerAnnouncementRoute(app, {
+    path: "/api/announcement-bar-widget.js", configKey: "announcementBar", barId: "pn-second-announcement-bar",
+    checkStoreActive, getCachedDoc, legacyHandler: legacyBottomHandler,
   });
 }
 

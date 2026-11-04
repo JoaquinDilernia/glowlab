@@ -781,7 +781,7 @@ registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
 
 // Style > Barra de anuncios (ex "Menu superior"), rehecha para Ipanema
 const { registerTopAnnouncementRoutes } = require('./top-announcement');
-registerTopAnnouncementRoutes(app, { checkStoreActive, getCachedDoc: (c, id) => getCachedDoc(c, id), legacyHandler: legacyTopAnnouncementBarWidget });
+registerTopAnnouncementRoutes(app, { checkStoreActive, getCachedDoc: (c, id) => getCachedDoc(c, id), legacyHandler: legacyTopAnnouncementBarWidget, legacyBottomHandler: legacyAnnouncementBarWidget });
 
 // Style > Menu principal (editor v2): menu real de la tienda para el selector del panel
 registerStyleMenuRoutes(app, {
@@ -14156,7 +14156,8 @@ async function legacyTopAnnouncementBarWidget(req, res) {
 }
 
 // GET /api/announcement-bar-widget.js - Barra de ofertas con rotaci�n
-app.get("/api/announcement-bar-widget.js", async (req, res) => {
+// Version vieja, intacta: configs del Menu inferior sin version: 2.
+async function legacyAnnouncementBarWidget(req, res) {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -14453,7 +14454,7 @@ app.get("/api/announcement-bar-widget.js", async (req, res) => {
     console.error("Error generando announcement-bar-widget:", error);
     res.status(500).send("// Error interno: " + error.message);
   }
-});
+}
 
 // ============================================
 // ENDPOINTS DE INTEGRACIONES

@@ -39,7 +39,12 @@ const fromLocalInput = (v) => (v ? new Date(v).toISOString() : null);
 
 const STATUS = { live: ['Visible', 'ok'], scheduled: ['Programado', 'info'], ended: ['Vencido', 'warn'] };
 
-export default function TopAnnouncementBarEditor({ value, onChange, storeName = 'tu tienda' }) {
+const DEFAULT_TITLE = 'Barra de anuncios';
+const DEFAULT_DESCRIPTION = 'Mensajes cortos con link en una franja del header: novedades, envío gratis, cuotas. Se ve en computadora y en celular.';
+
+// Tambien se usa para la segunda franja (config "announcementBar", ex "Menu inferior"):
+// mismo motor en la tienda (functions/top-announcement.js), otra config.
+export default function TopAnnouncementBarEditor({ value, onChange, storeName = 'tu tienda', title = DEFAULT_TITLE, description = DEFAULT_DESCRIPTION }) {
   const c = useMemo(() => normalizeTopBar(value), [value]);
   const now = useNow();
   const [device, setDevice] = useState('desktop');
@@ -67,8 +72,8 @@ export default function TopAnnouncementBarEditor({ value, onChange, storeName = 
         <div className="se-title">
           <div className="vg-hero-icon"><Megaphone size={20} /></div>
           <div>
-            <h2>Barra de anuncios</h2>
-            <p>Mensajes cortos con link en una franja del header: novedades, envío gratis, cuotas. Se ve en computadora y en celular.</p>
+            <h2>{title}</h2>
+            <p>{description}</p>
           </div>
         </div>
         <label className="toggle-switch" title={c.enabled ? 'Activa' : 'Apagada'}>

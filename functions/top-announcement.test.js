@@ -91,3 +91,33 @@ test("la ruta manda las configs viejas al handler viejo", async () => {
   assert.equal(legacyCalled, 1);
   assert.notEqual(r2.out, "// legacy");
 });
+
+test("la segunda franja (Menu inferior) usa su config y su propio id", async () => {
+  const routes = {};
+  const app = { get: (p, h) => { routes[p] = h; } };
+  const calls = { top: 0, bottom: 0 };
+  const style = {
+    topAnnouncementBar: LEGACY,
+    announcementBar: { version: 2, enabled: true, messages: [{ text: "Tendencia Timeless." }] },
+  };
+  ta.registerTopAnnouncementRoutes(app, {
+    checkStoreActive: async () => true,
+    getCachedDoc: async () => ({ exists: true, data: () => style }),
+    legacyHandler: (req, res) => { calls.top++; res.send("// legacy top"); },
+    legacyBottomHandler: (req, res) => { calls.bottom++; res.send("// legacy bottom"); },
+  });
+  const res = () => ({ out: "", setHeader() {}, status() { return this; }, send(x) { this.out = x; } });
+  const r1 = res();
+  await routes["/api/announcement-bar-widget.js"]({ query: { store: "1" } }, r1);
+  assert.match(r1.out, /pn-second-announcement-bar/);
+  assert.match(r1.out, /Tendencia Timeless/);
+  assert.doesNotThrow(() => new Function(r1.out));
+  style.announcementBar = { enabled: true, messages: [{ text: "vieja" }] };
+  const r2 = res();
+  await routes["/api/announcement-bar-widget.js"]({ query: { store: "1" } }, r2);
+  assert.equal(r2.out, "// legacy bottom");
+  const r3 = res();
+  await routes["/api/top-announcement-bar-widget.js"]({ query: { store: "1" } }, r3);
+  assert.equal(r3.out, "// legacy top");
+  assert.deepEqual(calls, { top: 1, bottom: 1 });
+});
