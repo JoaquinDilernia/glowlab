@@ -7,6 +7,7 @@ import EmojiPicker from '../components/EmojiPicker';
 import { useToast } from '../context/ToastContext';
 import TopAnnouncementBarEditor from './style/TopAnnouncementBarEditor';
 import MenuEditor from './style/MenuEditor';
+import WhatsAppEditor from './style/WhatsAppEditor';
 import './CountdownList.css';
 
 const STYLE_TAB_LABELS = {
@@ -364,12 +365,6 @@ function StyleConfig() {
     }
   };
 
-  const updateWhatsApp = (field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      whatsapp: { ...prev.whatsapp, [field]: value }
-    }));
-  };
 
   const updateScrollReveal = (field, value) => {
     setConfig(prev => ({
@@ -643,92 +638,12 @@ function StyleConfig() {
         <main className="style-main">
           <div className="config-content">
             {/* WhatsApp Tab */}
-            {activeTab === 'whatsapp' && (
-          <div className="config-section">
-            <div className="section-header">
-              <h2>💬 Botón de WhatsApp</h2>
-              <label className="toggle-switch">
-                <input
-                  type="checkbox"
-                  checked={config.whatsapp.enabled}
-                  onChange={(e) => updateWhatsApp('enabled', e.target.checked)}
-                />
-                <span className="toggle-slider"></span>
-              </label>
-            </div>
-
-            {config.whatsapp.enabled && (
-              <>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Color de Fondo</label>
-                    <div className="color-input-group">
-                      <input
-                        type="color"
-                        value={config.whatsapp.backgroundColor}
-                        onChange={(e) => updateWhatsApp('backgroundColor', e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        value={config.whatsapp.backgroundColor}
-                        onChange={(e) => updateWhatsApp('backgroundColor', e.target.value)}
-                        placeholder="#25D366"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Color Hover</label>
-                    <div className="color-input-group">
-                      <input
-                        type="color"
-                        value={config.whatsapp.hoverColor}
-                        onChange={(e) => updateWhatsApp('hoverColor', e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        value={config.whatsapp.hoverColor}
-                        onChange={(e) => updateWhatsApp('hoverColor', e.target.value)}
-                        placeholder="#128C7E"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="preview-box" style={{marginTop: '30px'}}>
-                  <h3 style={{marginBottom: '20px', fontSize: '14px', color: 'rgba(255, 255, 255, 0.6)'}}>Vista Previa</h3>
-                  <div className="whatsapp-preview">
-                    <div
-                      style={{
-                        width: '60px',
-                        height: '60px',
-                        backgroundColor: config.whatsapp.backgroundColor,
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = config.whatsapp.hoverColor;
-                        e.currentTarget.style.transform = 'scale(1.05)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = config.whatsapp.backgroundColor;
-                        e.currentTarget.style.transform = 'scale(1)';
-                      }}
-                    >
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
-                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+        {/* WhatsApp - editor nuevo para Ipanema */}
+        {activeTab === 'whatsapp' && (
+          <WhatsAppEditor
+            value={config.whatsapp}
+            onChange={(next) => setConfig(prev => ({ ...prev, whatsapp: next }))}
+          />
         )}
 
         {/* Scroll Reveal Tab */}

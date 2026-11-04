@@ -12,6 +12,7 @@ const { MercadoPagoConfig, PreApproval, Payment } = require('mercadopago');
 const { evaluateAccess, SUBSCRIPTION_PRICE_ARS } = require('./subscriptionAccess');
 const { getClientSelectorMap } = require('./theme-menu-selectors');
 const { buildMenuScript, registerStyleMenuRoutes } = require('./style-menu');
+const { buildWhatsAppScript } = require('./style-whatsapp');
 
 // ============================================
 // LOG GATE - reduce costos de Cloud Logging
@@ -10352,6 +10353,8 @@ app.get("/api/style-widget.js", async (req, res) => {
 
   function customizeWhatsApp() {
     if (!CONFIG.whatsapp || !CONFIG.whatsapp.enabled) return;
+    // WhatsApp nuevo (editor v2): lo maneja ./style-whatsapp.js, agregado al final del script.
+    if (CONFIG.whatsapp.version === 2) return;
     
     const wa = CONFIG.whatsapp;
     const selectors = [
@@ -13438,7 +13441,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 })();
 `;
 
-    res.send(script + buildMenuScript(config.menu));
+    res.send(script + buildMenuScript(config.menu) + buildWhatsAppScript(config.whatsapp));
   } catch (error) {
     console.error("Error generando style-widget:", error);
     res.status(500).send("// Error interno: " + error.message);
