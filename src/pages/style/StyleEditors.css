@@ -197,3 +197,20 @@
 .bn-radius { margin-top: 14px; max-width: 360px; }
 .bn-foot { display: flex; justify-content: flex-end; margin-top: 12px; }
 @media (max-width: 760px) { .bn-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } }
+
+/* ---- Barra de encabezado (v2) ---- */
+.th-mock .th-bar { line-height: 1.3; }
+.th-bar-m { overflow-x: auto; scrollbar-width: none; }
+.th-row { display: flex; align-items: center; gap: 20px; }
+.th-bar-m .th-row { width: max-content; min-width: 100%; }
+.th-group { display: flex; align-items: center; flex-wrap: nowrap; }
+.th-cell { display: inline-flex; align-items: center; }
+.th-sep { opacity: .35; padding: 0 9px; font-weight: 300; }
+.th-item { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; opacity: .78; }
+.th-cur { opacity: 1; }
+.th-cur.th-bold { font-weight: 700; }
+.th-cur.th-underline { text-decoration: underline; text-underline-offset: 3px; }
+.th-cur.th-pill { padding: 2px 8px; border-radius: 999px; }
+.th-hidden { opacity: .55; }
+.th-auto { font-size: 11px; color: #22c55e; border-color: rgba(34,197,94,.4); }
+.th-autocheck { margin-top: 14px; }

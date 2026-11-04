@@ -784,6 +784,9 @@ registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
 const { registerTopAnnouncementRoutes } = require('./top-announcement');
 registerTopAnnouncementRoutes(app, { checkStoreActive, getCachedDoc: (c, id) => getCachedDoc(c, id), legacyHandler: legacyTopAnnouncementBarWidget, legacyBottomHandler: legacyAnnouncementBarWidget });
 
+// Style > Barra de encabezado (editor v2); las configs viejas siguen con legacyTopHeaderWidget
+require('./style-top-header').registerTopHeaderRoute(app, { checkStoreActive, getCachedDoc: (c, id) => getCachedDoc(c, id), legacyHandler: legacyTopHeaderWidget });
+
 // Style > Menu principal (editor v2): menu real de la tienda para el selector del panel
 registerStyleMenuRoutes(app, {
   getStoreDoc: async (id) => { const d = await db.collection('promonube_stores').doc(String(id)).get(); return d.exists ? d.data() : null; },
@@ -13450,8 +13453,9 @@ app.get("/api/style-widget.js", async (req, res) => {
   }
 });
 
-// GET /api/top-header-widget.js - Header superior personalizado
-app.get("/api/top-header-widget.js", async (req, res) => {
+// GET /api/top-header-widget.js - Header superior personalizado (version vieja, intacta).
+// La ruta la registra functions/style-top-header.js; las configs viejas caen aca.
+async function legacyTopHeaderWidget(req, res) {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -13734,7 +13738,7 @@ app.get("/api/top-header-widget.js", async (req, res) => {
     console.error("Error generando top-header-widget:", error);
     res.status(500).send("// Error interno: " + error.message);
   }
-});
+}
 
 // GET /api/top-announcement-bar-widget.js - Barra de ofertas SUPERIOR
 // Version vieja, intacta: se sigue sirviendo a las configs que no se guardaron
