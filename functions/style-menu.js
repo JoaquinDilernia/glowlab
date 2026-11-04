@@ -455,22 +455,46 @@ function storeHomeUrl(store) {
   try { return new URL(u).origin + "/"; } catch (e) { return null; }
 }
 
+// URL publica de la tienda: del doc, o (si no la tiene) de la API de Tiendanube.
+async function resolveStoreUrl(storeId, { getStoreDoc, getCachedData }) {
+  const store = await getStoreDoc(storeId);
+  let url = storeHomeUrl(store);
+  if (!url && store && store.accessToken) {
+    url = await getCachedData(`store-url:${storeId}`, async () => {
+      const r = await fetch(`https://api.tiendanube.com/v1/${storeId}/store`, {
+        headers: { Authentication: `bearer ${store.accessToken}`, "User-Agent": "GlowLab (info@techdi.com.ar)" },
+      });
+      return r.ok ? storeHomeUrl(await r.json()) : null;
+    });
+  }
+  return url;
+}
+
 function registerStyleMenuRoutes(app, { getStoreDoc, getCachedData }) {
+  // Style > Banners (editor v2): bloques de banner de la home para elegir en el panel.
+  app.get("/api/style/home-banners", async (req, res) => {
+    const storeId = String(req.query.storeId || "");
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+    try {
+      const url = await resolveStoreUrl(storeId, { getStoreDoc, getCachedData });
+      if (!url) return res.json({ success: true, banners: [], message: "La tienda no tiene URL cargada" });
+      const banners = await getCachedData(`home-banners:${storeId}`, async () => {
+        const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (GlowLab banner reader)" }, redirect: "follow" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return require("./style-banners").parseHomeBanners(await r.text());
+      });
+      res.json({ success: true, url, banners });
+    } catch (error) {
+      console.error("home-banners:", error.message);
+      res.json({ success: false, banners: [], message: "No se pudieron leer los banners de la tienda" });
+    }
+  });
+
   app.get("/api/style/menu-tree", async (req, res) => {
     const storeId = String(req.query.storeId || "");
     if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
     try {
-      const store = await getStoreDoc(storeId);
-      let url = storeHomeUrl(store);
-      // El doc de la tienda no siempre guarda la URL: se la pedimos a Tiendanube.
-      if (!url && store && store.accessToken) {
-        url = await getCachedData(`store-url:${storeId}`, async () => {
-          const r = await fetch(`https://api.tiendanube.com/v1/${storeId}/store`, {
-            headers: { Authentication: `bearer ${store.accessToken}`, "User-Agent": "GlowLab (info@techdi.com.ar)" },
-          });
-          return r.ok ? storeHomeUrl(await r.json()) : null;
-        });
-      }
+      const url = await resolveStoreUrl(storeId, { getStoreDoc, getCachedData });
       if (!url) return res.json({ success: true, tree: [], message: "La tienda no tiene URL cargada" });
       const tree = await getCachedData(`menu-tree:${storeId}`, async () => {
         const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (GlowLab menu reader)" }, redirect: "follow" });

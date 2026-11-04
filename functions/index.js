@@ -13,6 +13,7 @@ const { evaluateAccess, SUBSCRIPTION_PRICE_ARS } = require('./subscriptionAccess
 const { getClientSelectorMap } = require('./theme-menu-selectors');
 const { buildMenuScript, registerStyleMenuRoutes } = require('./style-menu');
 const { buildWhatsAppScript } = require('./style-whatsapp');
+const { buildBannersScript } = require('./style-banners');
 
 // ============================================
 // LOG GATE - reduce costos de Cloud Logging
@@ -10411,6 +10412,7 @@ app.get("/api/style-widget.js", async (req, res) => {
   }
 
   function customizeBanners() {
+    if (CONFIG.banners && CONFIG.banners.version === 2) return; // editor nuevo: functions/style-banners.js
     if (!CONFIG.banners || !CONFIG.banners.enabled) {
       console.log('PromoNube: Banners deshabilitado o no configurado');
       return;
@@ -13441,7 +13443,7 @@ app.get("/api/style-widget.js", async (req, res) => {
 })();
 `;
 
-    res.send(script + buildMenuScript(config.menu) + buildWhatsAppScript(config.whatsapp));
+    res.send(script + buildMenuScript(config.menu) + buildWhatsAppScript(config.whatsapp) + buildBannersScript(config.banners));
   } catch (error) {
     console.error("Error generando style-widget:", error);
     res.status(500).send("// Error interno: " + error.message);
@@ -16452,6 +16454,8 @@ function isLocalStockAllowed(storeId) {
 const localStockOdoo = require('./local-stock');
 const _localStockOdooCfg = localStockOdoo.odooConfigFromEnv();
 const _localStockOdooClient = _localStockOdooCfg ? localStockOdoo.createOdooClient(_localStockOdooCfg) : null;
+// Diagnostico visible en /api/odoo-stock: 'off' (faltan variables) | 'ok' | 'error: ...'
+let _localStockOdooStatus = _localStockOdooClient ? 'pending' : 'off';
 
 async function fetchOdooStock(sku) {
   // Cache hit
@@ -16465,8 +16469,10 @@ async function fetchOdooStock(sku) {
       const rows = await localStockOdoo.getLocalStock(_localStockOdooClient, sku);
       const data = rows.map(r => ({ ...r, byLocation: true }));
       localStockCache.set(sku, { data, expiresAt: Date.now() + LOCAL_STOCK_CACHE_MS });
+      _localStockOdooStatus = 'ok';
       return data;
     } catch (e) {
+      _localStockOdooStatus = 'error: ' + String(e.message).slice(0, 120);
       console.error('[LocalStock] Odoo directo fallo, uso la API vieja:', e.message);
     }
   }
@@ -16552,7 +16558,8 @@ app.get("/api/odoo-stock", async (req, res) => {
       stock: filtered,
       totalQty: filtered.reduce((sum, s) => sum + s.qty, 0),
       hasStock: filtered.some(s => s.qty > 0),
-      byLocation: filtered.some(s => s.byLocation === true)
+      byLocation: filtered.some(s => s.byLocation === true),
+      odoo: _localStockOdooStatus
     });
   } catch (error) {
     console.error('[LocalStock] Error:', error.message);
