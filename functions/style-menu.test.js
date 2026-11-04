@@ -88,3 +88,9 @@ test("URL de la home de la tienda", () => {
   assert.equal(sm.storeHomeUrl({ storeUrl: "https://altorancho.com/algo" }), "https://altorancho.com/");
   assert.equal(sm.storeHomeUrl({}), null);
 });
+
+test("URL de la home desde la respuesta de Tiendanube", () => {
+  assert.equal(sm.storeHomeUrl({ url_with_protocol: "https://altorancho.com" }), "https://altorancho.com/");
+  assert.equal(sm.storeHomeUrl({ domains: ["altorancho.com"], original_domain: "altorancho.mitiendanube.com" }), "https://altorancho.com/");
+  assert.equal(sm.storeHomeUrl({ original_domain: "altorancho.mitiendanube.com" }), "https://altorancho.mitiendanube.com/");
+});

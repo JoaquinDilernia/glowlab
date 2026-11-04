@@ -16438,7 +16438,7 @@ app.get("/api/popup-widget.js", async (req, res) => {
 
 const LOCAL_STOCK_ALLOWED_STORES = ['2547699']; // Solo Altorancho
 const LOCAL_STOCK_API_BASE = 'https://lett.exemax.ar/odoo-api/get-product';
-const LOCAL_STOCK_DEFAULT_WAREHOUSES = ['Belgrano', 'Las Lomas']; // filtros por nombre (partial match, case-insensitive)
+const LOCAL_STOCK_DEFAULT_WAREHOUSES = ['Belgrano', 'Las Lomas', 'Alcorta']; // filtros por nombre (partial match, case-insensitive)
 const LOCAL_STOCK_LOW_THRESHOLD = 5; // < esta cantidad => 'Quedan pocos'
 const LOCAL_STOCK_CACHE_MS = 2 * 60 * 1000; // 2 minutos
 const localStockCache = new Map(); // sku -> { data, expiresAt }

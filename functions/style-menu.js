@@ -447,7 +447,9 @@ function parseMenuTree(html) {
 }
 
 function storeHomeUrl(store) {
-  const raw = String((store && (store.storeUrl || store.url || store.domain)) || "").trim();
+  const c = store || {};
+  const domains = Array.isArray(c.domains) ? c.domains : [];
+  const raw = String(c.storeUrl || c.url || c.domain || c.url_with_protocol || domains[0] || c.original_domain || "").trim();
   if (!raw) return null;
   const u = /^https?:\/\//i.test(raw) ? raw : "https://" + raw;
   try { return new URL(u).origin + "/"; } catch (e) { return null; }
@@ -459,7 +461,16 @@ function registerStyleMenuRoutes(app, { getStoreDoc, getCachedData }) {
     if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
     try {
       const store = await getStoreDoc(storeId);
-      const url = storeHomeUrl(store);
+      let url = storeHomeUrl(store);
+      // El doc de la tienda no siempre guarda la URL: se la pedimos a Tiendanube.
+      if (!url && store && store.accessToken) {
+        url = await getCachedData(`store-url:${storeId}`, async () => {
+          const r = await fetch(`https://api.tiendanube.com/v1/${storeId}/store`, {
+            headers: { Authentication: `bearer ${store.accessToken}`, "User-Agent": "GlowLab (info@techdi.com.ar)" },
+          });
+          return r.ok ? storeHomeUrl(await r.json()) : null;
+        });
+      }
       if (!url) return res.json({ success: true, tree: [], message: "La tienda no tiene URL cargada" });
       const tree = await getCachedData(`menu-tree:${storeId}`, async () => {
         const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (GlowLab menu reader)" }, redirect: "follow" });
