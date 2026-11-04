@@ -1,4 +1,4 @@
-import { SIZES, MOBILE_SCALE } from '../utils/countdown';
+import { MOBILE_SCALE, effectiveSizes } from '../utils/countdown';
 
 const UNITS = [
   { k: 'd', lbl: 'días', short: 'd' },
@@ -22,7 +22,7 @@ function splitTime(ms) {
 // Barra de cuenta regresiva tal como la dibuja la tienda.
 // endMs: fecha de fin (ms). Si no hay fecha, muestra 2d 04:58:31 de ejemplo.
 export default function CountdownBarPreview({ config: c, endMs, now, mobile = false, compact = false }) {
-  const s = SIZES[c.size] || SIZES.md;
+  const s = effectiveSizes(c);
   const k = mobile ? MOBILE_SCALE : 1;
   const px = (n) => `${Math.round(n * k)}px`;
   const left = Number.isFinite(endMs) ? endMs - now : (2 * 86400 + 4 * 3600 + 58 * 60 + 31) * 1000;

@@ -32,6 +32,8 @@ const SIZES = {
   md: { msg: 15, digit: 18, label: 10, padY: 9, box: 40, btn: 13 },
   lg: { msg: 17, digit: 22, label: 11, padY: 12, box: 48, btn: 14 },
 };
+// Tamaño de letra a mano (px), pisa al del tamaño elegido. null = el del tamaño.
+const FONT_PX = { msg: [10, 36], digit: [10, 48] };
 // En celular todo se achica a esta proporcion.
 const MOBILE_SCALE = 0.85;
 
@@ -46,6 +48,8 @@ const DEFAULTS = {
   placement: "header",
   timerStyle: "boxes",
   size: "md",
+  messageSize: null,
+  digitSize: null,
   font: "inherit",
   backgroundColor: "#353434",
   textColor: "#ffffff",
@@ -61,6 +65,12 @@ const DEFAULTS = {
 
 const HEX = /^#[0-9a-f]{6}$/i;
 const LOCAL_DT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
+function fontPx(value, [min, max]) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null;
+}
 
 function pick(value, allowed, fallback) {
   return allowed.includes(value) ? value : fallback;
@@ -124,6 +134,8 @@ function normalize(input) {
     placement: legacyPlacement(c),
     timerStyle: pick(c.timerStyle, TIMER_STYLES, DEFAULTS.timerStyle),
     size: pick(c.size, SIZE_KEYS, DEFAULTS.size),
+    messageSize: fontPx(c.messageSize, FONT_PX.msg),
+    digitSize: fontPx(c.digitSize, FONT_PX.digit),
     font: pick(c.font, FONTS, DEFAULTS.font),
     backgroundColor: hex(c.backgroundColor, DEFAULTS.backgroundColor),
     textColor: hex(c.textColor, DEFAULTS.textColor),
@@ -185,6 +197,8 @@ function widgetPayload(id, raw) {
     placement: cd.placement,
     timerStyle: cd.timerStyle,
     size: cd.size,
+    msgPx: cd.messageSize,
+    digitPx: cd.digitSize,
     font: cd.font,
     bg: cd.backgroundColor,
     fg: cd.textColor,
@@ -254,7 +268,13 @@ function storefrontCountdown(LIST, API, SIZES, MOBILE_SCALE) {
   }
 
   function css(c) {
-    var s = SIZES[c.size] || SIZES.md;
+    var base = SIZES[c.size] || SIZES.md;
+    // Letra a mano: las cajitas y las etiquetas acompañan el tamaño de los numeros.
+    var digit = c.digitPx || base.digit;
+    var s = {
+      msg: c.msgPx || base.msg, digit: digit, padY: base.padY, btn: base.btn,
+      box: Math.max(base.box, Math.round(digit * 2.2)), label: Math.max(base.label, Math.round(digit * 0.5)),
+    };
     var m = MOBILE_SCALE;
     var font = c.font === "inherit" ? "inherit" : '"' + c.font + '", sans-serif';
     var r = function (n) { return Math.round(n * m) + "px"; };

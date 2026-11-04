@@ -63,3 +63,13 @@ test("buildWidgetScript genera JS valido", () => {
   assert.doesNotThrow(() => new Function(js));
   assert.ok(!/promonube|glowlab/i.test(js.replace(/__pnCountdownInit|pn-|pn_/g, "")), "sin branding en la tienda");
 });
+
+test("tamaño de letra a mano: se limita y viaja al widget", () => {
+  const n = cd.normalize({ messageSize: "22", digitSize: 999 });
+  assert.equal(n.messageSize, 22);
+  assert.equal(n.digitSize, 48);
+  assert.equal(cd.normalize({}).messageSize, null);
+  const p = cd.widgetPayload("x", { ...cd.normalize({ endDate: "2026-12-01T00:00:00Z", messageSize: 20 }), updatedAt: "u" });
+  assert.equal(p.msgPx, 20);
+  assert.equal(p.digitPx, null);
+});

@@ -41,3 +41,14 @@ export function loadFont(name) {
   l.href = 'https://fonts.googleapis.com/css2?family=' + name.replace(/ /g, '+') + ':wght@400;500;600;700&display=swap';
   document.head.appendChild(l);
 }
+
+// Igual que en functions/countdown.js: la letra a mano pisa la del tamaño y
+// las cajitas / etiquetas acompañan a los numeros.
+export function effectiveSizes(c) {
+  const base = SIZES[c.size] || SIZES.md;
+  const digit = c.digitSize || base.digit;
+  return {
+    msg: c.messageSize || base.msg, digit, padY: base.padY, btn: base.btn,
+    box: Math.max(base.box, Math.round(digit * 2.2)), label: Math.max(base.label, Math.round(digit * 0.5)),
+  };
+}

@@ -4,7 +4,7 @@ import { ArrowLeft, Save, Timer, Monitor, Smartphone } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
 import CountdownBarPreview from '../components/CountdownBarPreview';
-import { useNow, formatDate, formatDuration, loadFont } from '../utils/countdown';
+import { useNow, formatDate, formatDuration, loadFont, effectiveSizes, MOBILE_SCALE } from '../utils/countdown';
 import './StyleConfig.css';
 import './VariantGroupsConfig.css';
 import './CountdownConfig.css';
@@ -21,6 +21,8 @@ const DEFAULTS = {
   placement: 'header',
   timerStyle: 'boxes',
   size: 'md',
+  messageSize: null,
+  digitSize: null,
   font: 'inherit',
   backgroundColor: '#353434',
   textColor: '#ffffff',
@@ -165,6 +167,7 @@ function CountdownConfig() {
   }
 
   const endMs = Date.parse(config.endDate);
+  const sizes = effectiveSizes(config);
   const mobile = device === 'mobile';
   const bar = <CountdownBarPreview config={config} endMs={endMs} now={now} mobile={mobile} />;
 
@@ -314,8 +317,8 @@ function CountdownConfig() {
                 </select>
               </div>
               <div className="vg-field">
-                <label>Tamaño</label>
-                <select value={config.size} onChange={e => set('size', e.target.value)}>
+                <label>Tamaño de la barra</label>
+                <select value={config.size} onChange={e => setConfig(c => ({ ...c, size: e.target.value, messageSize: null, digitSize: null }))}>
                   <option value="sm">Chico</option>
                   <option value="md">Mediano</option>
                   <option value="lg">Grande</option>
@@ -328,6 +331,22 @@ function CountdownConfig() {
                 </select>
               </div>
             </div>
+            <div className="cd-sliders">
+              {[
+                ['messageSize', 'Letra del mensaje', 10, 36, sizes.msg],
+                ['digitSize', 'Letra de los números', 10, 48, sizes.digit],
+              ].map(([key, label, min, max, value]) => (
+                <div key={key} className="vg-field cd-slider">
+                  <label>
+                    {label} · {value}px
+                    {config[key] != null && <button type="button" className="cd-reset" onClick={() => set(key, null)}>restablecer</button>}
+                  </label>
+                  <input type="range" min={min} max={max} step={1} value={value}
+                    onChange={e => set(key, Number(e.target.value))} />
+                </div>
+              ))}
+            </div>
+            <p className="vg-hint cd-hint-tight">En celular la letra se achica un poco ({Math.round(MOBILE_SCALE * 100)}%) para que entre.</p>
             {config.timerStyle === 'boxes' && (
               <label className="vg-check">
                 <input type="checkbox" checked={config.showLabels} onChange={e => set('showLabels', e.target.checked)} />
