@@ -777,6 +777,10 @@ setSearchScriptId(SEARCH_SCRIPT_ID);
 const { registerComingSoonRoutes, startComingSoonScheduler } = require('./coming-soon');
 registerComingSoonRoutes(app, { db, FieldValue, checkStoreActive });
 
+// Style > Barra de anuncios (ex "Menu superior"), rehecha para Ipanema
+const { registerTopAnnouncementRoutes } = require('./top-announcement');
+registerTopAnnouncementRoutes(app, { checkStoreActive, getCachedDoc: (c, id) => getCachedDoc(c, id), legacyHandler: legacyTopAnnouncementBarWidget });
+
 // Cuenta Regresiva - barra con contador (ubicacion pensada para Ipanema / Alto Rancho)
 const { registerCountdownRoutes } = require('./countdown');
 registerCountdownRoutes(app, {
@@ -13719,7 +13723,9 @@ app.get("/api/top-header-widget.js", async (req, res) => {
 });
 
 // GET /api/top-announcement-bar-widget.js - Barra de ofertas SUPERIOR
-app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
+// Version vieja, intacta: se sigue sirviendo a las configs que no se guardaron
+// con el editor nuevo (sin version: 2), asi la tienda no cambia sola al deployar.
+async function legacyTopAnnouncementBarWidget(req, res) {
   const { store } = req.query;
   
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -14135,7 +14141,7 @@ app.get("/api/top-announcement-bar-widget.js", async (req, res) => {
     console.error("Error generando top-announcement-bar-widget:", error);
     res.status(500).send("// Error interno: " + error.message);
   }
-});
+}
 
 // GET /api/announcement-bar-widget.js - Barra de ofertas con rotaci�n
 app.get("/api/announcement-bar-widget.js", async (req, res) => {
