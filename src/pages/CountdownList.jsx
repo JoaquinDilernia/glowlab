@@ -1,261 +1,175 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Clock, Zap, Calendar, Eye, Settings, Trash2, Copy } from 'lucide-react';
+import { Plus, Timer, Pencil, Trash2, Copy, Eye, MousePointerClick } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
+import CountdownBarPreview from '../components/CountdownBarPreview';
+import { useNow, formatDate, formatDuration, loadFont } from '../utils/countdown';
+import './StyleConfig.css';
+import './VariantGroupsConfig.css';
+import './CountdownConfig.css';
 import './CountdownList.css';
+
+// Mismo criterio que statusOf en functions/countdown.js, recalculado en vivo.
+function statusOf(c, now) {
+  if (c.enabled === false) return 'paused';
+  const end = Date.parse(c.endDate);
+  if (!Number.isFinite(end) || end <= now) return 'ended';
+  const start = Date.parse(c.startDate);
+  if (Number.isFinite(start) && start > now) return 'scheduled';
+  return 'live';
+}
+
+const STATUS_LABEL = { live: 'En vivo', scheduled: 'Programada', ended: 'Terminada', paused: 'Pausada' };
 
 function CountdownList() {
   const navigate = useNavigate();
   const toast = useToast();
   const storeId = localStorage.getItem('promonube_store_id');
-  
+  const now = useNow();
+
   const [loading, setLoading] = useState(true);
   const [countdowns, setCountdowns] = useState([]);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
-  useEffect(() => {
-    loadCountdowns();
-  }, []);
-
-  const loadCountdowns = async () => {
-    setLoading(true);
+  const load = async () => {
     try {
-      console.log('⏰ Loading countdowns for storeId:', storeId);
       const data = await apiRequest(`/api/countdowns?storeId=${storeId}`);
-      if (data.success) {
-        console.log('✅ Countdowns cargados:', data.countdowns);
-        setCountdowns(data.countdowns || []);
-      }
-    } catch (error) {
-      console.error('Error loading countdowns:', error);
+      if (data.success) setCountdowns(data.countdowns || []);
+    } catch (e) {
+      toast.error(e.message || 'No se pudieron cargar las cuentas regresivas');
     } finally {
       setLoading(false);
     }
   };
 
-  const deleteCountdown = async (countdownId) => {
-    if (!window.confirm('¿Eliminar esta cuenta regresiva?')) return;
-    
-    try {
-      const data = await apiRequest(`/api/countdowns/${countdownId}?storeId=${storeId}`, {
-        method: 'DELETE'
-      });
+  useEffect(() => { load(); loadFont('Poppins'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-      if (data.success) {
-        setCountdowns(prev => prev.filter(c => c.countdownId !== countdownId));
-        toast.success('Cuenta regresiva eliminada');
-      } else {
-        toast.error('Error al eliminar');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Error al eliminar');
-    }
-  };
-
-  const toggleStatus = async (countdownId, currentStatus) => {
+  const toggle = async (c) => {
     try {
-      const data = await apiRequest(`/api/countdowns/${countdownId}/toggle`, {
+      const data = await apiRequest(`/api/countdowns/${c.countdownId}/toggle`, {
         method: 'PATCH',
-        body: JSON.stringify({ storeId })
+        body: JSON.stringify({ storeId, enabled: !c.enabled }),
       });
+      if (data.success) setCountdowns(prev => prev.map(x => x.countdownId === c.countdownId ? { ...x, enabled: data.enabled } : x));
+    } catch (e) {
+      toast.error(e.message || 'No se pudo cambiar el estado');
+    }
+  };
 
+  const duplicate = async (c) => {
+    try {
+      const data = await apiRequest(`/api/countdowns/${c.countdownId}/duplicate`, {
+        method: 'POST', body: JSON.stringify({ storeId }),
+      });
+      if (data.success) navigate(`/countdown/${data.countdownId}/config`);
+    } catch (e) {
+      toast.error(e.message || 'No se pudo duplicar');
+    }
+  };
+
+  const remove = async (c) => {
+    try {
+      const data = await apiRequest(`/api/countdowns/${c.countdownId}?storeId=${storeId}`, { method: 'DELETE' });
       if (data.success) {
-        setCountdowns(prev => prev.map(c => 
-          c.countdownId === countdownId ? { ...c, enabled: data.enabled } : c
-        ));
+        setCountdowns(prev => prev.filter(x => x.countdownId !== c.countdownId));
+        toast.success('Cuenta regresiva eliminada');
       }
-    } catch (error) {
-      console.error('Error:', error);
+    } catch (e) {
+      toast.error(e.message || 'No se pudo eliminar');
+    } finally {
+      setConfirmDelete(null);
     }
   };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getStatusBadge = (countdown) => {
-    if (!countdown.enabled) {
-      return <span className="status-badge inactive">⭕ Pausado</span>;
-    }
-
-    const now = new Date();
-    const endDate = new Date(countdown.endDate);
-    
-    if (countdown.type === 'upcoming') {
-      const startDate = new Date(countdown.startDate);
-      if (now < startDate) {
-        return <span className="status-badge upcoming">🕐 Próximo</span>;
-      }
-      return <span className="status-badge started">🚀 Iniciado</span>;
-    }
-
-    if (now > endDate) {
-      return <span className="status-badge expired">❌ Finalizado</span>;
-    }
-
-    return <span className="status-badge active">✅ Activo</span>;
-  };
-
-  const quickActions = [
-    {
-      icon: Zap,
-      title: 'Finalización',
-      description: 'Cierre de promo, flash sale o evento activo',
-      action: () => navigate('/countdown/create?type=active'),
-      color: '#f59e0b'
-    },
-    {
-      icon: Calendar,
-      title: 'Próximamente',
-      description: 'Lanzamientos, eventos o promos futuras',
-      action: () => navigate('/countdown/create?type=upcoming'),
-      color: '#8b5cf6'
-    }
-  ];
 
   if (loading) {
     return (
-      <div className="countdown-container">
-        <div className="loading-state">
-          <div className="spinner"></div>
-          <p>Cargando cuentas regresivas...</p>
-        </div>
+      <div className="page-container vg-page">
+        <div className="vg-loading"><div className="vg-spinner" /><p>Cargando…</p></div>
       </div>
     );
   }
 
+  // La que se ve ahora en la tienda: en vivo y que termina antes.
+  const live = countdowns.filter(c => statusOf(c, now) === 'live')
+    .sort((a, b) => Date.parse(a.endDate) - Date.parse(b.endDate));
+  const shownId = live[0]?.countdownId;
+  const order = { live: 0, scheduled: 1, paused: 2, ended: 3 };
+  const sorted = [...countdowns].sort((a, b) => order[statusOf(a, now)] - order[statusOf(b, now)]);
+
   return (
-    <div className="countdown-container">
-      <header className="page-header-modern">
-        <div className="header-content-modern">
-          <div className="header-top-modern">
-            <button className="btn-primary-gradient" onClick={() => navigate('/countdown/create')}>
-              <Plus size={18} />
-              <span>Nueva Cuenta Regresiva</span>
-            </button>
-          </div>
-          <div className="header-info-section">
-            <h1 className="page-title-gradient">⏰ Cuenta Regresiva</h1>
-            <p className="page-subtitle-modern">Crea urgencia con timers de promociones limitadas</p>
-          </div>
+    <div className="page-container vg-page cd-page">
+      <div className="vg-topbar">
+        <div />
+        <button className="vg-btn-save" onClick={() => navigate('/countdown/create')}>
+          <Plus size={16} /> Nueva cuenta regresiva
+        </button>
+      </div>
+
+      <div className="vg-hero">
+        <div className="vg-hero-icon"><Timer size={22} /></div>
+        <div>
+          <h1>Cuenta Regresiva</h1>
+          <p>Barras con contador para el cierre de una promo o el lanzamiento de un evento. Se muestra una a la vez: la que termina antes.</p>
         </div>
-      </header>
+      </div>
 
       {countdowns.length === 0 ? (
-        <div className="empty-state-modern">
-          <div className="empty-icon-large">⏰</div>
-          <h2 className="empty-title">Crea Tu Primera Cuenta Regresiva</h2>
-          <p className="empty-description">Generá urgencia real y aumentá conversiones con contadores en tu tienda</p>
-
-          <div className="quick-actions-modern" style={{marginTop: '40px'}}>
-            {quickActions.map((action) => (
-              <div key={action.title} className="quick-action-card-modern" onClick={action.action} style={{cursor: 'pointer'}}>
-                <div className="action-icon-modern" style={{ color: action.color }}>
-                  <action.icon size={40} strokeWidth={2.5} />
-                </div>
-                <h3 style={{fontSize: '20px', marginTop: '16px'}}>{action.title}</h3>
-                <p style={{fontSize: '15px', marginTop: '8px'}}>{action.description}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="em-usecases-box">
-            <h4 className="em-usecases-title">💡 ¿Cuándo usar cada tipo?</h4>
-            <div className="em-usecases-list">
-              <div className="em-usecase-item">
-                <span className="em-usecase-icon">⚡</span>
-                <div>
-                  <strong>Finalización</strong>
-                  <p>Flash sales, últimas horas de promo, stock limitado, cierre de eventos</p>
-                </div>
-              </div>
-              <div className="em-usecase-item">
-                <span className="em-usecase-icon">🚀</span>
-                <div>
-                  <strong>Próximamente</strong>
-                  <p>Lanzamiento de productos, Black Friday, preventa exclusiva, eventos futuros</p>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="config-section cdl-empty">
+          <Timer size={36} />
+          <h2>Todavía no hay cuentas regresivas</h2>
+          <p>Creá una para el próximo evento (Hot Days, Cyber, un lanzamiento) y programá cuándo aparece y cuándo termina.</p>
+          <button className="vg-btn-save" onClick={() => navigate('/countdown/create')}>
+            <Plus size={16} /> Crear la primera
+          </button>
         </div>
       ) : (
-        <div className="countdowns-list-modern">
-          <div className="countdowns-grid-modern">
-            {countdowns.map(countdown => (
-              <div key={countdown.countdownId} className="countdown-card-modern">
-                <div className="countdown-card-header">
-                  <div className="countdown-type-badge" style={{
-                    background: countdown.type === 'active' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'
-                  }}>
-                    {countdown.type === 'active' ? (
-                      <><Zap size={14} /> Flash Sale</>
+        <div className="cdl-list">
+          {sorted.map(c => {
+            const st = statusOf(c, now);
+            const end = Date.parse(c.endDate), start = Date.parse(c.startDate);
+            const ctr = c.impressions > 0 ? ((c.clicks / c.impressions) * 100).toFixed(1) : null;
+            return (
+              <div key={c.countdownId} className={`cdl-card cdl-${st}`}>
+                <div className="cdl-bar" onClick={() => navigate(`/countdown/${c.countdownId}/config`)}>
+                  <CountdownBarPreview config={{ ...c, showCloseButton: false }} endMs={end > now ? end : NaN} now={now} compact />
+                </div>
+                <div className="cdl-body">
+                  <div className="cdl-info">
+                    <div className="cdl-title">
+                      <span className={`cdl-badge cdl-badge-${st}`}>{STATUS_LABEL[st]}</span>
+                      {c.countdownId === shownId && <span className="cdl-badge cdl-badge-shown">Se ve ahora en la tienda</span>}
+                      <h3>{c.name}</h3>
+                    </div>
+                    <p className="cdl-dates">
+                      {st === 'scheduled' && <>Aparece {formatDate(c.startDate)} (en {formatDuration(start - now)}) · </>}
+                      {st === 'live' ? <>Termina {formatDate(c.endDate)} (en {formatDuration(end - now)})</> : <>Termina {formatDate(c.endDate)}</>}
+                    </p>
+                    <p className="cdl-stats">
+                      <span><Eye size={13} /> {c.impressions || 0} vistas</span>
+                      <span><MousePointerClick size={13} /> {c.clicks || 0} clics{ctr ? ` (${ctr}%)` : ''}</span>
+                    </p>
+                  </div>
+                  <div className="cdl-actions">
+                    <label className="toggle-switch" title={c.enabled ? 'Pausar' : 'Activar'}>
+                      <input type="checkbox" checked={c.enabled} onChange={() => toggle(c)} />
+                      <span className="toggle-slider"></span>
+                    </label>
+                    <button className="cdl-btn" onClick={() => navigate(`/countdown/${c.countdownId}/config`)} title="Editar"><Pencil size={15} /></button>
+                    <button className="cdl-btn" onClick={() => duplicate(c)} title="Duplicar"><Copy size={15} /></button>
+                    {confirmDelete === c.countdownId ? (
+                      <>
+                        <button className="cdl-btn cdl-danger cdl-confirm" onClick={() => remove(c)}>Eliminar</button>
+                        <button className="cdl-btn" onClick={() => setConfirmDelete(null)}>No</button>
+                      </>
                     ) : (
-                      <><Calendar size={14} /> Próximo</>
+                      <button className="cdl-btn cdl-danger" onClick={() => setConfirmDelete(c.countdownId)} title="Eliminar"><Trash2 size={15} /></button>
                     )}
                   </div>
-                  {getStatusBadge(countdown)}
-                </div>
-
-                <div className="countdown-info-modern">
-                  <h3 className="countdown-title">{countdown.name}</h3>
-                  <p className="countdown-subtitle">{countdown.message}</p>
-                  
-                  <div className="countdown-dates">
-                    {countdown.type === 'upcoming' && (
-                      <div className="date-item">
-                        <Calendar size={14} />
-                        <span>Inicia: {formatDate(countdown.startDate)}</span>
-                      </div>
-                    )}
-                    <div className="date-item">
-                      <Clock size={14} />
-                      <span>Termina: {formatDate(countdown.endDate)}</span>
-                    </div>
-                  </div>
-
-                  {countdown.buttonText && (
-                    <div className="countdown-cta">
-                      <span className="cta-label">Botón:</span>
-                      <span className="cta-text">"{countdown.buttonText}"</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="countdown-actions-modern">
-                  <button 
-                    className={`btn-toggle-small ${countdown.enabled ? 'active' : ''}`}
-                    onClick={() => toggleStatus(countdown.countdownId, countdown.enabled)}
-                    title={countdown.enabled ? 'Pausar' : 'Activar'}
-                  >
-                    <span className="toggle-dot-small"></span>
-                    {countdown.enabled ? 'Activo' : 'Pausado'}
-                  </button>
-                  <button 
-                    className="btn-action-modern"
-                    onClick={() => navigate(`/countdown/${countdown.countdownId}/config`)}
-                  >
-                    <Settings size={16} />
-                    <span>Editar</span>
-                  </button>
-                  <button 
-                    className="btn-action-modern btn-danger"
-                    onClick={() => deleteCountdown(countdown.countdownId)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       )}
     </div>

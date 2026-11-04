@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Palette, LogOut, X, MapPin, MessageCircle,
-  ShoppingBag, Percent, Search, Rocket, Layers, LayoutGrid, Zap, Package, Gift, Ruler, Tag, Tags
+  ShoppingBag, Percent, Search, Rocket, Layers, LayoutGrid, Zap, Package, Gift, Ruler, Tag, Tags, Timer
 } from 'lucide-react';
 import { useSubscription } from '../hooks/useSubscription';
 import './Sidebar.css';
@@ -9,7 +9,8 @@ import './Sidebar.css';
 // Simplificado a pedido del usuario (2026-09-02): solo los módulos activos hoy.
 // Flash Sale se reactivó el 2026-09-17 tras revisión (backend y frontend
 // completos desde 2026-06-26, solo estaba oculto del nav).
-// El resto (Vidriera Shoppable, Banner Home, Barra ML, Countdowns,
+// Cuenta Regresiva volvio el 2026-11-04, rehecha para la plantilla Ipanema.
+// El resto (Vidriera Shoppable, Banner Home, Barra ML,
 // Badges, Ruleta, Popups, Integraciones) queda oculto del nav — no se borró
 // nada, las rutas siguen andando, se van a retrabajar desde cero más adelante.
 const BASE_NAV_ITEMS = [
@@ -20,6 +21,7 @@ const BASE_NAV_ITEMS = [
   { path: '/carrusel-categorias', icon: LayoutGrid, label: 'Carrusel de Categorías' },
   { path: '/precios-cuotas', icon: Percent, label: 'Precios y Cuotas' },
   { path: '/flash-sale', icon: Zap, label: 'Flash Sale' },
+  { path: '/countdown', icon: Timer, label: 'Cuenta Regresiva' },
   { path: '/proximamente', icon: Rocket, label: 'Próximamente' },
   { path: '/shop-the-look',  icon: ShoppingBag,   label: 'Shop the Look' },
 ];
