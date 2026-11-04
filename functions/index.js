@@ -16447,11 +16447,28 @@ function isLocalStockAllowed(storeId) {
   return LOCAL_STOCK_ALLOWED_STORES.includes(String(storeId));
 }
 
+// Odoo directo (functions/local-stock.js): separa XX/Stock (se lleva) de
+// XX/Exhibicion (solo se ve). Requiere ODOO_URL, ODOO_DB, ODOO_LOGIN, ODOO_PASSWORD.
+const localStockOdoo = require('./local-stock');
+const _localStockOdooCfg = localStockOdoo.odooConfigFromEnv();
+const _localStockOdooClient = _localStockOdooCfg ? localStockOdoo.createOdooClient(_localStockOdooCfg) : null;
+
 async function fetchOdooStock(sku) {
   // Cache hit
   const cached = localStockCache.get(sku);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.data;
+  }
+
+  if (_localStockOdooClient) {
+    try {
+      const rows = await localStockOdoo.getLocalStock(_localStockOdooClient, sku);
+      const data = rows.map(r => ({ ...r, byLocation: true }));
+      localStockCache.set(sku, { data, expiresAt: Date.now() + LOCAL_STOCK_CACHE_MS });
+      return data;
+    } catch (e) {
+      console.error('[LocalStock] Odoo directo fallo, uso la API vieja:', e.message);
+    }
   }
 
   // Odoo requiere GET con body raw {} (JSON-RPC). undici fetch no permite body en GET,
@@ -16534,7 +16551,8 @@ app.get("/api/odoo-stock", async (req, res) => {
       sku,
       stock: filtered,
       totalQty: filtered.reduce((sum, s) => sum + s.qty, 0),
-      hasStock: filtered.length > 0
+      hasStock: filtered.some(s => s.qty > 0),
+      byLocation: filtered.some(s => s.byLocation === true)
     });
   } catch (error) {
     console.error('[LocalStock] Error:', error.message);
@@ -16958,6 +16976,7 @@ app.get("/api/local-stock-widget.js", async (req, res) => {
   }
 
   function buildBodyHtml(stock, sku) {
+    if ((stock || []).some(function(s) { return s.byLocation; })) return buildBodyByLocation(stock);
     var displayOnly = sku && CFG.displayOnlyPrefix && new RegExp('^' + CFG.displayOnlyPrefix, 'i').test(String(sku).trim());
 
     // Quedarse con la mayor cantidad por dep�sito permitido (match parcial, case-insensitive)
@@ -17020,6 +17039,65 @@ app.get("/api/local-stock-widget.js", async (req, res) => {
     });
     listHtml += '</ul>';
 
+    return bannerHtml + listHtml;
+  }
+
+  // Datos de Odoo por ubicacion: stockQty (XX/Stock, se lleva) y exhibitedQty (XX/Exhibicion).
+  function buildBodyByLocation(stock) {
+    var rows = CFG.allowedWarehouses.map(function(name) {
+      var hit = null;
+      (stock || []).forEach(function(s) {
+        if (!hit && s.warehouse.toLowerCase().indexOf(name.toLowerCase()) !== -1) hit = s;
+      });
+      return { name: name, stock: hit ? hit.stockQty : 0, shown: hit ? hit.exhibitedQty : 0 };
+    });
+    var anyStock = rows.some(function(r) { return r.stock > 0; });
+    var anyShown = rows.some(function(r) { return r.shown > 0; });
+
+    var bannerHtml = '';
+    if (!anyStock && anyShown) {
+      bannerHtml = [
+        '<div class="pnls-banner pnls-banner--display">',
+        '  <div class="pnls-banner__icon">' + ICON_INFO + '</div>',
+        '  <div class="pnls-banner__text">',
+        '    <strong>' + CFG.displayOnlyTitle + '</strong>',
+        '    <span>' + CFG.displayOnlyText + '</span>',
+        '  </div>',
+        '</div>'
+      ].join('');
+    }
+
+    var listHtml = '<ul class="pnls-list">';
+    rows.forEach(function(r) {
+      var status, label, icon, note = '';
+      if (r.stock > 0) {
+        status = classifyStock(r.stock);
+        label = labelForStatus(status);
+        icon = iconForStatus(status);
+        note = r.shown > 0 ? 'Para llevar y en exhibici\u00f3n' : 'Para llevar en el momento';
+      } else if (r.shown > 0) {
+        status = 'display';
+        label = CFG.displayOnlyExhibitedLabel;
+        icon = ICON_INFO;
+        note = 'Se puede ver en el local';
+      } else {
+        status = 'out';
+        label = CFG.outOfStockLabel;
+        icon = ICON_X;
+        note = 'Sucursal Altorancho';
+      }
+      listHtml += '<li class="pnls-item pnls-item--' + status + '">';
+      listHtml +=   '<div class="pnls-item__left">';
+      listHtml +=     '<div class="pnls-item__pin">' + ICON_PIN + '</div>';
+      listHtml +=     '<div>';
+      listHtml +=       '<p class="pnls-item__name">' + r.name + '</p>';
+      listHtml +=       '<p class="pnls-item__city">' + note + '</p>';
+      listHtml +=     '</div>';
+      listHtml +=   '</div>';
+      listHtml +=   '<span class="pnls-badge pnls-badge--' + status + '">' + icon + '<span>' + label + '</span></span>';
+      listHtml += '</li>';
+    });
+    listHtml += '</ul>';
     return bannerHtml + listHtml;
   }
 
