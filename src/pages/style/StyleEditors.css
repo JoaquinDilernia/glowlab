@@ -287,3 +287,7 @@
 .stl-prev-price { font-size: 12px; font-weight: 600; }
 .stl-prev-item u { font-size: 10px; opacity: .7; text-underline-offset: 2px; }
 @media (max-width: 900px) { .stl-look { grid-template-columns: 1fr; } }
+
+/* La vista previa de Shop the Look es alta: no queda pegada arriba (taparia el editor de puntos) */
+.cd-preview-card.stl-preview-card, .style-config-container .cd-preview-card.stl-preview-card { position: static !important; }
+.stl-preview-card .stl-prev { max-height: none; }

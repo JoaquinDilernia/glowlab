@@ -203,7 +203,7 @@ export default function ShopTheLookEditor({ value, onChange, notify }) {
         </label>
       </div>
 
-      <div className="cd-preview-card">
+      <div className="cd-preview-card stl-preview-card">
         <div className="cd-preview-toolbar">
           <span className={`cd-status cd-status-${status[0]}`}>{status[1]}</span>
           <div className="cd-device">
