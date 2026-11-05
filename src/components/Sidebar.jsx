@@ -38,6 +38,7 @@ const STORE_EXCLUSIVE_ITEMS = {
     { path: '/ficha-tecnica', icon: Ruler, label: 'Ficha Técnica', exclusive: true },
     { path: '/etiqueta-promo', icon: Tag, label: 'Etiqueta Promo', exclusive: true },
     { path: '/etiqueta-categoria', icon: Tags, label: 'Etiqueta por Categoría', exclusive: true },
+    { path: '/etiqueta-extra', icon: Tags, label: 'Etiqueta Extra', exclusive: true },
     { path: '/combos', icon: Package, label: 'Combos', exclusive: true },
     { path: '/lista-regalos', icon: Gift, label: 'Lista de Regalos', exclusive: true },
   ],

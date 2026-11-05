@@ -41,6 +41,11 @@ const SLOT_COPY = {
     subtitle: 'Un cartel en la esquina de la foto de los productos de una categoría o elegidos a mano (ej. Últimas unidades). Si un producto también tiene la Etiqueta Promo, van una abajo de la otra.',
     text: 'ÚLTIMAS UNIDADES',
   },
+  cat2: {
+    title: 'Etiqueta Extra',
+    subtitle: 'Una tercera etiqueta (ej. New in) para una categoría, productos sueltos o todos los SKUs que empiezan con un código. Si un producto tiene otras etiquetas, van una abajo de la otra.',
+    text: 'NEW IN',
+  },
 };
 
 const FONT_LABELS = { inherit: 'La de la tienda' };
@@ -297,10 +302,10 @@ export default function PromoTagConfig({ slot = 'promo' }) {
         </div>
       </div>
 
-      {slot === 'cat' ? (
-        <PromoTagCatalogSection storeId={storeId} config={config}
-          onSaved={({ productCount, categories, products, resolvedAt }) =>
-            setConfig(c => ({ ...c, productCount, categories, products, resolvedAt }))} />
+      {slot !== 'promo' ? (
+        <PromoTagCatalogSection storeId={storeId} slot={slot} config={config}
+          onSaved={({ productCount, categories, products, skuPrefixes, resolvedAt }) =>
+            setConfig(c => ({ ...c, productCount, categories, products, skuPrefixes, resolvedAt }))} />
       ) : (
       <div className="config-section">
         <div className="section-header">

@@ -10,6 +10,8 @@
 // Hay una segunda etiqueta ("cat", ej. "ULTIMAS UNIDADES") que funciona igual
 // pero sus productos se eligen por categoria (con subcategorias) o a mano. Si
 // un producto tiene las dos, se apilan en la esquina en vez de pisarse.
+// La tercera ("cat2", ej. "NEW IN") es igual a "cat" y ademas acepta SKUs que
+// empiezan con un codigo (ej. "MSI044" = todos los colores de esa silla).
 const COLLECTION = "promonube_promo_tag";
 
 // Piloto: solo Alto Rancho (minorista + mayorista) y la tienda demo.
@@ -23,6 +25,7 @@ const MAX_SKUS = 10000;
 const MAX_TEXT_LENGTH = 30;
 const MAX_CATEGORIES = 50;
 const MAX_MANUAL_PRODUCTS = 500;
+const MAX_SKU_PREFIXES = 50;
 // La etiqueta por categoria se recalcula sola cada tanto, para que los
 // productos nuevos de la categoria tambien la lleven.
 const CATALOG_REFRESH_MS = 6 * 60 * 60 * 1000;
@@ -53,11 +56,20 @@ const DEFAULT_CONFIG = {
 };
 
 // docSuffix: el doc de Firestore es `${storeId}${docSuffix}`.
-// order: lugar en la pila cuando un producto tiene las dos etiquetas.
+// order: lugar en la pila cuando un producto tiene varias etiquetas.
+// catalog: los productos se eligen por categoria / a mano / prefijo de SKU.
 const SLOTS = {
   promo: { docSuffix: "", order: 0, defaults: DEFAULT_CONFIG },
-  cat: { docSuffix: "_cat", order: 1, defaults: { ...DEFAULT_CONFIG, text: "ÚLTIMAS UNIDADES" } },
+  cat: { docSuffix: "_cat", order: 1, catalog: true, defaults: { ...DEFAULT_CONFIG, text: "ÚLTIMAS UNIDADES" } },
+  cat2: {
+    docSuffix: "_cat2", order: 2, catalog: true,
+    defaults: { ...DEFAULT_CONFIG, text: "NEW IN", bgColor: "#353434", textColor: "#ffffff" },
+  },
 };
+
+function isCatalogSlot(slot) {
+  return SLOTS[slotKey(slot)].catalog === true;
+}
 
 const HEX_PATTERN = /^#[0-9a-f]{6}$/i;
 
@@ -99,6 +111,17 @@ function sanitizeSkus(list) {
     const sku = String(raw == null ? "" : raw).trim().toUpperCase();
     if (sku && sku.length <= 64) out.add(sku);
     if (out.size >= MAX_SKUS) break;
+  }
+  return [...out];
+}
+
+// Prefijos de SKU: mayuscula, sin espacios, sin repetir.
+function sanitizeSkuPrefixes(list) {
+  const out = new Set();
+  for (const raw of Array.isArray(list) ? list : []) {
+    const p = String(raw == null ? "" : raw).replace(/\s+/g, "").toUpperCase().slice(0, 32);
+    if (p) out.add(p);
+    if (out.size >= MAX_SKU_PREFIXES) break;
   }
   return [...out];
 }
@@ -158,11 +181,16 @@ function expandCategoryIds(allCategories, selectedIds) {
   return out;
 }
 
-// Productos de esas categorias + los elegidos a mano, sin repetir.
-function matchCategoriesToProducts(products, categoryIds, manualIds) {
+// Productos de esas categorias + los elegidos a mano + los que tienen alguna
+// variante con un SKU que empieza con uno de los prefijos, sin repetir.
+function matchCategoriesToProducts(products, categoryIds, manualIds, skuPrefixes = []) {
   const out = new Set((manualIds || []).map(String));
   for (const product of products || []) {
     if ((product.categories || []).some((id) => categoryIds.has(String(id)))) out.add(String(product.id));
+    else if (skuPrefixes.length && (product.variants || []).some((v) => {
+      const sku = String(v.sku || "").trim().toUpperCase();
+      return sku && skuPrefixes.some((p) => sku.startsWith(p));
+    })) out.add(String(product.id));
   }
   return [...out];
 }
@@ -192,9 +220,14 @@ async function fetchCatalogVariants(opts) {
   return items.map((p) => ({ id: p.id, variants: (p.variants || []).map((v) => ({ sku: v.sku })) }));
 }
 
-async function fetchCatalogCategories(opts) {
-  const items = await fetchCatalogPages({ ...opts, path: "products", fields: "id,categories" });
-  return items.map((p) => ({ id: p.id, categories: (p.categories || []).map((c) => (c && c.id != null ? c.id : c)) }));
+async function fetchCatalogCategories(opts, withVariants = false) {
+  const fields = withVariants ? "id,categories,variants" : "id,categories";
+  const items = await fetchCatalogPages({ ...opts, path: "products", fields });
+  return items.map((p) => ({
+    id: p.id,
+    categories: (p.categories || []).map((c) => (c && c.id != null ? c.id : c)),
+    variants: (p.variants || []).map((v) => ({ sku: v.sku })),
+  }));
 }
 
 async function fetchStoreCategories(opts) {
@@ -207,21 +240,25 @@ async function getAccessToken(db, storeId) {
   return storeDoc.exists ? storeDoc.data().accessToken : null;
 }
 
-// Recalcula los productos de la etiqueta por categoria y los guarda.
-async function resolveCatalogSlot({ db, FieldValue, fetchImpl, storeId, categories, products }) {
+// Recalcula los productos de una etiqueta por categoria y los guarda.
+async function resolveCatalogSlot({ db, FieldValue, fetchImpl, storeId, slot = "cat", categories, products, skuPrefixes = [] }) {
   const accessToken = await getAccessToken(db, storeId);
   if (!accessToken) throw new Error("La tienda no tiene token de Tiendanube");
   let productIds = products.map((p) => p.id);
-  if (categories.length) {
+  if (categories.length || skuPrefixes.length) {
     const opts = { storeId, accessToken, fetchImpl };
-    const [allCategories, catalog] = await Promise.all([fetchStoreCategories(opts), fetchCatalogCategories(opts)]);
+    const [allCategories, catalog] = await Promise.all([
+      categories.length ? fetchStoreCategories(opts) : Promise.resolve([]),
+      fetchCatalogCategories(opts, skuPrefixes.length > 0),
+    ]);
     const wanted = expandCategoryIds(allCategories, categories.map((c) => c.id));
-    productIds = matchCategoriesToProducts(catalog, wanted, productIds);
+    productIds = matchCategoriesToProducts(catalog, wanted, productIds, skuPrefixes);
   }
-  const ref = slotDoc(db, storeId, "cat");
+  const ref = slotDoc(db, storeId, slot);
   await ref.set({
     categories,
     products,
+    skuPrefixes,
     productIds,
     resolvedAt: Date.now(),
     updatedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(),
@@ -368,18 +405,21 @@ function buildPromoTagLoader(store, style, productIds, slot = "promo") {
 // Recalculos en curso, para no lanzar dos a la vez por la misma tienda.
 const refreshing = new Set();
 
-// La etiqueta por categoria se recalcula en segundo plano si quedo vieja;
+// Las etiquetas por categoria se recalculan en segundo plano si quedaron viejas;
 // mientras tanto se sirve la lista que ya estaba.
-function refreshCatalogSlotIfStale({ db, FieldValue, fetchImpl }, store, data) {
-  if (!Array.isArray(data.categories) || !data.categories.length) return;
-  if (Date.now() - (data.resolvedAt || 0) < CATALOG_REFRESH_MS || refreshing.has(store)) return;
-  refreshing.add(store);
+function refreshCatalogSlotIfStale({ db, FieldValue, fetchImpl }, store, data, slot) {
+  const categories = Array.isArray(data.categories) ? data.categories : [];
+  const skuPrefixes = Array.isArray(data.skuPrefixes) ? data.skuPrefixes : [];
+  if (!categories.length && !skuPrefixes.length) return;
+  const lock = store + ":" + slot;
+  if (Date.now() - (data.resolvedAt || 0) < CATALOG_REFRESH_MS || refreshing.has(lock)) return;
+  refreshing.add(lock);
   resolveCatalogSlot({
-    db, FieldValue, fetchImpl, storeId: store,
-    categories: data.categories, products: Array.isArray(data.products) ? data.products : [],
+    db, FieldValue, fetchImpl, storeId: store, slot,
+    categories, skuPrefixes, products: Array.isArray(data.products) ? data.products : [],
   })
-    .catch((e) => console.error("[PromoTag cat refresh]", store, e.message))
-    .finally(() => refreshing.delete(store));
+    .catch((e) => console.error("[PromoTag cat refresh]", store, slot, e.message))
+    .finally(() => refreshing.delete(lock));
 }
 
 // Script para pegar al widget de variantes, o "" si esta apagado o sin productos.
@@ -391,7 +431,7 @@ async function getPromoTagLoader(db, store, { FieldValue, fetchImpl } = {}) {
     if (!docs[i].exists) return;
     const data = docs[i].data();
     if (data.enabled !== true) return;
-    if (slot === "cat") refreshCatalogSlotIfStale({ db, FieldValue, fetchImpl }, String(store), data);
+    if (isCatalogSlot(slot)) refreshCatalogSlotIfStale({ db, FieldValue, fetchImpl }, String(store), data, slot);
     if (!Array.isArray(data.productIds) || !data.productIds.length) return;
     out += buildPromoTagLoader(store, data, data.productIds, slot);
   });
@@ -406,11 +446,12 @@ function publicConfig(data, slot = "promo") {
     ...sanitizeStyle({ ...SLOTS[key].defaults, ...d }, SLOTS[key].defaults),
     productCount: Array.isArray(d.productIds) ? d.productIds.length : 0,
   };
-  if (key === "cat") {
+  if (isCatalogSlot(key)) {
     return {
       ...base,
       categories: Array.isArray(d.categories) ? d.categories : [],
       products: Array.isArray(d.products) ? d.products : [],
+      skuPrefixes: Array.isArray(d.skuPrefixes) ? d.skuPrefixes : [],
       resolvedAt: d.resolvedAt || null,
     };
   }
@@ -444,9 +485,9 @@ function registerPromoTagRoutes(app, { db, FieldValue, fetchImpl }) {
     try {
       const doc = await slotDoc(db, storeId, slot).get();
       let data = doc.exists ? doc.data() : null;
-      // La etiqueta nueva arranca con el diseño de la promo (mismos colores),
-      // con su propio texto y apagada.
-      if (!data && slot !== "promo") {
+      // La etiqueta por categoria arranca con el diseño de la promo (mismos
+      // colores), con su propio texto y apagada. Las demas, con sus defaults.
+      if (!data && slot === "cat") {
         const promo = await slotDoc(db, storeId, "promo").get();
         if (promo.exists) {
           data = { ...sanitizeStyle(promo.data()), text: SLOTS[slot].defaults.text, enabled: false };
@@ -510,17 +551,23 @@ function registerPromoTagRoutes(app, { db, FieldValue, fetchImpl }) {
     }
   });
 
-  // POST /api/promo-tag-catalog - categorias y productos de la etiqueta "cat";
-  // se recalcula la lista de productos con el catalogo actual.
+  // POST /api/promo-tag-catalog - categorias, productos y prefijos de SKU de
+  // una etiqueta por categoria; se recalcula la lista con el catalogo actual.
   app.post("/api/promo-tag-catalog", async (req, res) => {
-    const { storeId } = req.body || {};
+    const body = req.body || {};
+    const { storeId } = body;
     if (!guard(storeId, res)) return;
-    const categories = sanitizeRefs((req.body || {}).categories, MAX_CATEGORIES, false);
-    const products = sanitizeRefs((req.body || {}).products, MAX_MANUAL_PRODUCTS, true);
+    const slot = body.slot == null ? "cat" : slotKey(body.slot);
+    if (!isCatalogSlot(slot)) return res.status(400).json({ success: false, message: "Etiqueta inválida" });
+    const categories = sanitizeRefs(body.categories, MAX_CATEGORIES, false);
+    const products = sanitizeRefs(body.products, MAX_MANUAL_PRODUCTS, true);
+    const skuPrefixes = sanitizeSkuPrefixes(body.skuPrefixes);
     try {
-      const ref = await resolveCatalogSlot({ db, FieldValue, fetchImpl, storeId: String(storeId), categories, products });
+      const ref = await resolveCatalogSlot({
+        db, FieldValue, fetchImpl, storeId: String(storeId), slot, categories, products, skuPrefixes,
+      });
       const doc = await ref.get();
-      res.json({ success: true, config: publicConfig(doc.data(), "cat") });
+      res.json({ success: true, config: publicConfig(doc.data(), slot) });
     } catch (error) {
       console.error("[PromoTag catalog]", error);
       res.status(500).json({ success: false, message: error.message });
@@ -535,6 +582,7 @@ module.exports = {
   sanitizeStyle,
   sanitizeSkus,
   sanitizeRefs,
+  sanitizeSkuPrefixes,
   matchSkusToProducts,
   expandCategoryIds,
   matchCategoriesToProducts,

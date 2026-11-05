@@ -91,6 +91,7 @@ function App() {
           <Route path="/ficha-tecnica" element={<TechSheetConfig />} />
           <Route path="/etiqueta-promo" element={<PromoTagConfig key="promo" slot="promo" />} />
           <Route path="/etiqueta-categoria" element={<PromoTagConfig key="cat" slot="cat" />} />
+          <Route path="/etiqueta-extra" element={<PromoTagConfig key="cat2" slot="cat2" />} />
           <Route path="/combos" element={<CombosConfig />} />
           <Route path="/lista-regalos" element={<GiftRegistryConfig />} />
           <Route path="/buscador-inteligente" element={<SearchConfig />} />

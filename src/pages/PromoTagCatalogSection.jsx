@@ -8,7 +8,10 @@ import { buildCategoryTree, flattenTreeForSelect } from '../utils/categoryTree';
 // Productos de la segunda etiqueta (ej. "Últimas unidades"): categorías
 // completas (con sus subcategorías) y/o productos sueltos. Al guardar, el
 // servidor arma la lista de productos con el catálogo actual.
-export default function PromoTagCatalogSection({ storeId, config, onSaved }) {
+export default function PromoTagCatalogSection({ storeId, slot = 'cat', config, onSaved }) {
+  // Solo la etiqueta extra acepta prefijos de SKU (ej. MSI044 = todos sus colores).
+  const withPrefixes = slot === 'cat2';
+  const [prefixText, setPrefixText] = useState((config.skuPrefixes || []).join(', '));
   const toast = useToast();
   const picker = useProductPicker(storeId);
   const [catRows, setCatRows] = useState([]);
@@ -49,12 +52,16 @@ export default function PromoTagCatalogSection({ storeId, config, onSaved }) {
   const removeCategory = (id) => { setCategories(cs => cs.filter(c => c.id !== id)); setDirty(true); };
   const removeProduct = (id) => { setProducts(ps => ps.filter(p => p.id !== id)); setDirty(true); };
 
+  const skuPrefixes = withPrefixes
+    ? [...new Set(prefixText.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean))]
+    : [];
+
   const save = async () => {
     setSaving(true);
     try {
       const res = await apiRequest('/api/promo-tag-catalog', {
         method: 'POST',
-        body: JSON.stringify({ storeId, categories, products }),
+        body: JSON.stringify({ storeId, slot, categories, products, skuPrefixes }),
       });
       if (!res?.success) throw new Error(res?.message || 'No pudimos guardar los productos.');
       onSaved(res.config);
@@ -67,7 +74,7 @@ export default function PromoTagCatalogSection({ storeId, config, onSaved }) {
     }
   };
 
-  const hasSelection = categories.length > 0 || products.length > 0;
+  const hasSelection = categories.length > 0 || products.length > 0 || skuPrefixes.length > 0;
 
   return (
     <div className="config-section">
@@ -114,6 +121,17 @@ export default function PromoTagCatalogSection({ storeId, config, onSaved }) {
           </div>
         )}
       </div>
+
+      {withPrefixes && (
+        <div className="pt-cat-block">
+          <div className="vg-field">
+            <label>O SKUs que empiezan con</label>
+            <input type="text" value={prefixText} placeholder="Ej: MSI044, MSS003"
+              onChange={e => { setPrefixText(e.target.value); setDirty(true); }} />
+          </div>
+          <p className="vg-hint">Separados por coma. "MSI044" toma todos los productos con SKU MSI044NE, MSI044VE, etc.</p>
+        </div>
+      )}
 
       <div className="pt-cat-block">
         <div className="vg-field">

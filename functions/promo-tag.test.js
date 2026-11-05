@@ -12,6 +12,7 @@ const {
   expandCategoryIds,
   matchCategoriesToProducts,
   fetchCatalogVariants,
+  sanitizeSkuPrefixes,
 } = require("./promo-tag");
 
 test("sanitizeSkus - mayuscula, sin espacios ni repetidos", () => {
@@ -187,4 +188,20 @@ test("getPromoTagLoader - con las dos encendidas carga las dos", async () => {
   const out = await getPromoTagLoader(db, "2547699");
   assert.match(out, /pn-pt-promo/);
   assert.match(out, /pn-pt-cat/);
+});
+
+test("cat2: prefijos de SKU y tercera etiqueta apilada", () => {
+  assert.deepEqual(sanitizeSkuPrefixes([" msi044 ", "MSS003", "msi044", "", null]), ["MSI044", "MSS003"]);
+  const products = [
+    { id: 1, categories: [], variants: [{ sku: "MSI044NE" }] },
+    { id: 2, categories: [], variants: [{ sku: "mss003az" }] },
+    { id: 3, categories: [], variants: [{ sku: "MSI045NE" }] },
+    { id: 4, categories: [9], variants: [] },
+  ];
+  assert.deepEqual(matchCategoriesToProducts(products, new Set(["9"]), [], ["MSI044", "MSS003"]).sort(), ["1", "2", "4"]);
+  assert.deepEqual(matchCategoriesToProducts(products, new Set(), []), []);
+  const js = buildPromoTagLoader("1", { text: "NEW IN", bgColor: "#353434" }, ["1"], "cat2");
+  assert.match(js, /pn-pt-cat2/);
+  assert.match(js, /#353434/);
+  assert.match(js, /order: 2/);
 });
