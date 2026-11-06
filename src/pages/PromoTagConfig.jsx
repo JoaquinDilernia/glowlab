@@ -233,7 +233,10 @@ export default function PromoTagConfig({ slot = 'promo' }) {
     fontFamily: config.font === 'inherit' ? 'inherit' : `"${config.font}", sans-serif`,
     fontSize: fontPx,
     fontWeight: config.bold ? 700 : 400,
-    padding: `${padY}px ${padX}px`,
+    // Caja del tamaño general (como en la tienda): el texto no la achica.
+    minHeight: presetPx + 2 * padY,
+    padding: `0 ${padX}px`,
+    '--pt-box-font': `${presetPx}px`,
     borderRadius: config.radius,
   };
 
@@ -310,8 +313,8 @@ export default function PromoTagConfig({ slot = 'promo' }) {
                 <input type="color" value={config.textColor} onChange={e => set('textColor', e.target.value)} />
               </div>
               <div className="vg-field">
-                <label>Tamaño general</label>
-                {/* Cambiar el tamaño general vuelve el texto a su medida. */}
+                <label>Tamaño del cartel</label>
+                {/* Cambiar el tamaño del cartel vuelve el texto a su medida. */}
                 <select value={config.size}
                   onChange={e => setConfig(c => ({ ...c, size: e.target.value, fontSize: null }))}>
                   <option value="sm">Chico</option>
@@ -326,7 +329,7 @@ export default function PromoTagConfig({ slot = 'promo' }) {
                 <span className="pt-fontsize-hint">
                   {config.fontSize ? (
                     <button type="button" onClick={() => set('fontSize', null)}>Volver a {presetPx}px</button>
-                  ) : 'El del tamaño general'}
+                  ) : 'El del tamaño del cartel'}
                   {' · '}celular {mobilePx}px
                 </span>
               </div>
@@ -351,7 +354,9 @@ export default function PromoTagConfig({ slot = 'promo' }) {
 
           <div className="pt-preview" aria-label="Vista previa">
             <div className="pt-preview-img">
-              <span className="pt-preview-tag" style={previewStyle}>{config.text || copy.text}</span>
+              <span className="pt-preview-tag" style={previewStyle} data-pn-text={config.text || copy.text}>
+                {config.text || copy.text}
+              </span>
             </div>
             <span className="vg-hint">Vista previa</span>
           </div>

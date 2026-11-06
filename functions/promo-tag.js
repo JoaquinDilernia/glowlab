@@ -292,20 +292,33 @@ function buildPromoTagLoader(store, style, productIds, slot = "promo") {
     ? ""
     : `https://fonts.googleapis.com/css2?family=${encodeURIComponent(s.font).replace(/%20/g, "+")}:wght@400;600;700&display=swap`;
   // La pila de la esquina es comun a las dos etiquetas; cada una pone su cartel adentro.
+  // El tamaño (chico/mediano/grande) fija la caja: alto con min-height y ancho
+  // con una copia invisible del texto a la medida del tamaño (::before). El
+  // texto real va centrado con su propio tamaño, asi achicarlo no achica el cartel.
+  const box = (k) => {
+    const presetPx = Math.round(size.font * k * 2) / 2;
+    const padY = Math.round(size.padY * k);
+    return { presetPx, fontPx: Math.round(fontPx * k * 2) / 2, height: presetPx + 2 * padY, padX: Math.round(size.padX * k) };
+  };
+  const desk = box(1);
+  const mob = box(MOBILE_SCALE);
   const css = [
     ".pn-pt-wrap { position: absolute !important; top: 10px !important; right: 10px !important; z-index: 100 !important;",
     " display: flex !important; flex-direction: column !important; align-items: flex-end !important; gap: 6px !important; pointer-events: none !important; }",
-    `.pn-pt-${key} { display: block !important; order: ${SLOTS[key].order} !important;`,
+    `.pn-pt-${key} { display: flex !important; flex-direction: column !important; align-items: center !important; justify-content: center !important;`,
+    ` order: ${SLOTS[key].order} !important; box-sizing: border-box !important;`,
     ` background: ${s.bgColor} !important; color: ${s.textColor} !important;`,
-    ` font-family: ${fontFamily} !important; font-size: ${fontPx}px !important; font-weight: ${s.bold ? 700 : 400} !important;`,
-    ` line-height: 1 !important; letter-spacing: 0.03em !important; padding: ${size.padY}px ${size.padX}px !important;`,
+    ` font-family: ${fontFamily} !important; font-size: ${desk.fontPx}px !important; font-weight: ${s.bold ? 700 : 400} !important;`,
+    ` line-height: 1 !important; letter-spacing: 0.03em !important; min-height: ${desk.height}px !important; padding: 0 ${desk.padX}px !important;`,
     ` border-radius: ${s.radius}px !important; white-space: nowrap !important; pointer-events: none !important; }`,
+    `.pn-pt-${key}::before { content: attr(data-pn-text) !important; display: block !important; height: 0 !important; overflow: hidden !important;`,
+    ` visibility: hidden !important; font-size: ${desk.presetPx}px !important; letter-spacing: 0.03em !important; white-space: nowrap !important; }`,
     // En celular las cards son angostas (2 por fila): el cartel va mas chico.
     "@media (max-width: 767px) {",
     " .pn-pt-wrap { top: 6px !important; right: 6px !important; gap: 4px !important; }",
-    ` .pn-pt-${key} { font-size: ${Math.round(fontPx * MOBILE_SCALE * 2) / 2}px !important;`,
-    ` padding: ${Math.round(size.padY * MOBILE_SCALE)}px ${Math.round(size.padX * MOBILE_SCALE)}px !important;`,
+    ` .pn-pt-${key} { font-size: ${mob.fontPx}px !important; min-height: ${mob.height}px !important; padding: 0 ${mob.padX}px !important;`,
     ` border-radius: ${Math.round(s.radius * MOBILE_SCALE)}px !important; }`,
+    ` .pn-pt-${key}::before { font-size: ${mob.presetPx}px !important; }`,
     "}",
   ].join("");
   // JSON dentro de un <script>/JS: se escapa "<" para que un texto como
@@ -370,6 +383,7 @@ function buildPromoTagLoader(store, style, productIds, slot = "promo") {
     }
     var tag = document.createElement('span');
     tag.className = TAG_CLASS;
+    tag.setAttribute('data-pn-text', TEXT);
     tag.textContent = TEXT;
     wrap.appendChild(tag);
   }

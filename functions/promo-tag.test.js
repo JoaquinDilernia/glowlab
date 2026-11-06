@@ -55,11 +55,16 @@ test("sanitizeStyle - tamaño de texto exacto en px, de a medio px y con tope", 
   assert.equal(sanitizeStyle({ fontSize: 99 }).fontSize, 40);
 });
 
-test("buildPromoTagLoader - el tamaño exacto pisa el del tamaño elegido", () => {
+test("buildPromoTagLoader - el texto se achica pero el cartel queda del tamaño elegido", () => {
   const js = buildPromoTagLoader("1", { size: "md", fontSize: 12 }, ["5"], "cat2");
-  assert.match(js, /font-size: 12px/);
+  assert.match(js, /font-size: 12px/); // texto real
   assert.match(js, /font-size: 8\.5px/); // celular: 12 * 0.7 = 8.4 -> 8.5
-  assert.match(js, /padding: 5px 10px/); // el relleno sigue siendo el de "md"
+  // Caja de "md": alto 13 + 5*2 = 23px, y la copia invisible a 13px marca el ancho.
+  assert.match(js, /min-height: 23px/);
+  assert.match(js, /::before \{ content: attr\(data-pn-text\)[^}]*font-size: 13px/);
+  assert.match(js, /padding: 0 10px/);
+  // Celular: caja de "md" x0.7 = 9px de texto + 4*2 = 17px de alto.
+  assert.match(js, /min-height: 17px/);
   assert.match(buildPromoTagLoader("1", { size: "md" }, ["5"]), /font-size: 13px/);
 });
 
@@ -95,6 +100,7 @@ function el(cls, width, parent) {
   const node = {
     className: cls, offsetWidth: width, parentNode: parent || null, children: [], style: {}, attrs: {},
     getAttribute(n) { return this.attrs[n] || null; },
+    setAttribute(n, v) { this.attrs[n] = String(v); },
     appendChild(c) { this.children.push(c); c.parentNode = this; },
     // Solo selectores de una clase (".pn-pt-wrap"), buscando en profundidad.
     querySelector(sel) {
@@ -144,6 +150,7 @@ test("loader - etiqueta la foto del producto en la lista", () => {
   assert.equal(image.children.length, 1);
   assert.equal(image.children[0].className, "pn-pt-wrap");
   assert.deepEqual(tagsIn(image), [["pn-pt-promo", "MEGA CYBER"]]);
+  assert.equal(image.children[0].children[0].attrs["data-pn-text"], "MEGA CYBER");
   assert.equal(other.children.length, 0);
 });
 
