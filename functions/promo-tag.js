@@ -37,6 +37,10 @@ const SIZES = {
   md: { font: 13, padY: 5, padX: 10 },
   lg: { font: 15, padY: 7, padX: 13 },
 };
+// Tamaño exacto del texto en px (pisa el del tamaño elegido; el relleno sigue
+// siendo el del tamaño). null = el del tamaño.
+const MIN_FONT_PX = 8;
+const MAX_FONT_PX = 40;
 // Borde en px; 0 = recto. Con MAX_RADIUS ya queda como pildora a cualquier tamaño.
 const MAX_RADIUS = 30;
 // En celular el cartel se achica a esta proporcion del tamaño elegido.
@@ -49,6 +53,7 @@ const DEFAULT_CONFIG = {
   textColor: "#ffffff",
   font: "Poppins",
   size: "md",
+  fontSize: null,
   radius: 4,
   bold: true,
   showOnListing: true,
@@ -85,6 +90,14 @@ function slotDoc(db, store, slot) {
   return db.collection(COLLECTION).doc(String(store) + SLOTS[slotKey(slot)].docSuffix);
 }
 
+function sanitizeFontSize(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  // De a medio px, para poder ajustar fino.
+  return Math.min(MAX_FONT_PX, Math.max(MIN_FONT_PX, Math.round(n * 2) / 2));
+}
+
 function sanitizeStyle(config, defaults = DEFAULT_CONFIG) {
   const c = config || {};
   const text = String(c.text || "").replace(/\s+/g, " ").trim().slice(0, MAX_TEXT_LENGTH);
@@ -95,6 +108,7 @@ function sanitizeStyle(config, defaults = DEFAULT_CONFIG) {
     textColor: HEX_PATTERN.test(c.textColor || "") ? c.textColor.toLowerCase() : defaults.textColor,
     font: FONTS.includes(c.font) ? c.font : defaults.font,
     size: SIZES[c.size] ? c.size : defaults.size,
+    fontSize: sanitizeFontSize(c.fontSize),
     radius: Number.isFinite(Number(c.radius)) && c.radius !== "" && c.radius !== null
       ? Math.min(MAX_RADIUS, Math.max(0, Math.round(Number(c.radius))))
       : defaults.radius,
@@ -270,6 +284,7 @@ function buildPromoTagLoader(store, style, productIds, slot = "promo") {
   const key = slotKey(slot);
   const s = sanitizeStyle(style, SLOTS[key].defaults);
   const size = SIZES[s.size];
+  const fontPx = s.fontSize || size.font;
   const ids = {};
   for (const id of productIds || []) ids[String(id)] = 1;
   const fontFamily = s.font === "inherit" ? "inherit" : `"${s.font}", sans-serif`;
@@ -282,13 +297,13 @@ function buildPromoTagLoader(store, style, productIds, slot = "promo") {
     " display: flex !important; flex-direction: column !important; align-items: flex-end !important; gap: 6px !important; pointer-events: none !important; }",
     `.pn-pt-${key} { display: block !important; order: ${SLOTS[key].order} !important;`,
     ` background: ${s.bgColor} !important; color: ${s.textColor} !important;`,
-    ` font-family: ${fontFamily} !important; font-size: ${size.font}px !important; font-weight: ${s.bold ? 700 : 400} !important;`,
+    ` font-family: ${fontFamily} !important; font-size: ${fontPx}px !important; font-weight: ${s.bold ? 700 : 400} !important;`,
     ` line-height: 1 !important; letter-spacing: 0.03em !important; padding: ${size.padY}px ${size.padX}px !important;`,
     ` border-radius: ${s.radius}px !important; white-space: nowrap !important; pointer-events: none !important; }`,
     // En celular las cards son angostas (2 por fila): el cartel va mas chico.
     "@media (max-width: 767px) {",
     " .pn-pt-wrap { top: 6px !important; right: 6px !important; gap: 4px !important; }",
-    ` .pn-pt-${key} { font-size: ${Math.round(size.font * MOBILE_SCALE)}px !important;`,
+    ` .pn-pt-${key} { font-size: ${Math.round(fontPx * MOBILE_SCALE * 2) / 2}px !important;`,
     ` padding: ${Math.round(size.padY * MOBILE_SCALE)}px ${Math.round(size.padX * MOBILE_SCALE)}px !important;`,
     ` border-radius: ${Math.round(s.radius * MOBILE_SCALE)}px !important; }`,
     "}",

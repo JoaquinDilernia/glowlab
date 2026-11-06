@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Save, Tag, Upload } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
@@ -18,6 +18,7 @@ const DEFAULT_CONFIG = {
   textColor: '#ffffff',
   font: 'Poppins',
   size: 'md',
+  fontSize: null,
   radius: 4,
   bold: true,
   showOnListing: true,
@@ -32,25 +33,42 @@ const DEFAULT_CONFIG = {
 // Textos por etiqueta: la promo (Excel por SKU) y la de categoría/productos.
 const SLOT_COPY = {
   promo: {
-    title: 'Etiqueta Promo',
+    title: 'Promo',
     subtitle: 'Un cartel en la esquina superior derecha de la foto de los productos del evento (ej. Mega Cyber).',
     text: 'MEGA CYBER',
   },
   cat: {
-    title: 'Etiqueta por Categoría',
+    title: 'Por categoría',
     subtitle: 'Un cartel en la esquina de la foto de los productos de una categoría o elegidos a mano (ej. Últimas unidades). Si un producto también tiene la Etiqueta Promo, van una abajo de la otra.',
     text: 'ÚLTIMAS UNIDADES',
   },
   cat2: {
-    title: 'Etiqueta Extra',
+    title: 'Extra',
     subtitle: 'Una tercera etiqueta (ej. New in) para una categoría, productos sueltos o todos los SKUs que empiezan con un código. Si un producto tiene otras etiquetas, van una abajo de la otra.',
     text: 'NEW IN',
   },
 };
 
+// La Extra (ej. NEW IN) por ahora solo se usa en Alto Rancho minorista.
+const SLOT_STORES = { cat2: ['2547699'] };
+const slotsFor = (storeId) =>
+  Object.keys(SLOT_COPY).filter(s => !SLOT_STORES[s] || SLOT_STORES[s].includes(String(storeId)));
+
+// Las tres etiquetas en una sola entrada del menú: /etiquetas/:slot.
+export function PromoTagsPage() {
+  const { slot } = useParams();
+  const storeId = localStorage.getItem('promonube_store_id');
+  const current = slotsFor(storeId).includes(slot) ? slot : 'promo';
+  return <PromoTagConfig key={current} slot={current} />;
+}
+
 const FONT_LABELS = { inherit: 'La de la tienda' };
-// Mismos valores que SIZES en functions/promo-tag.js, para la vista previa.
+// Mismos valores que SIZES y MOBILE_SCALE en functions/promo-tag.js, para la vista previa.
 const SIZES = { sm: [11, 4, 8], md: [13, 5, 10], lg: [15, 7, 13] };
+const MOBILE_SCALE = 0.7;
+// Lo que se guarda del diseño, para avisar si hay cambios sin guardar.
+const STYLE_FIELDS = ['enabled', 'text', 'bgColor', 'textColor', 'font', 'size', 'fontSize', 'radius', 'bold', 'showOnListing', 'showOnPDP'];
+const styleKey = (c) => JSON.stringify(STYLE_FIELDS.map(f => c[f] ?? null));
 
 const norm = (s) => String(s ?? '').trim().toLowerCase();
 
@@ -79,7 +97,15 @@ export default function PromoTagConfig({ slot = 'promo' }) {
   const [saving, setSaving] = useState(false);
   const [applying, setApplying] = useState(false);
   const [config, setConfig] = useState({ ...DEFAULT_CONFIG, text: copy.text });
+  const [savedKey, setSavedKey] = useState(null);
   const [fonts, setFonts] = useState(['inherit', 'Poppins']);
+  const dirty = savedKey !== null && styleKey(config) !== savedKey;
+
+  const goTo = (s) => {
+    if (s === slot) return;
+    if (dirty && !window.confirm('Tenés cambios sin guardar en esta etiqueta. ¿Salir igual?')) return;
+    navigate(`/etiquetas/${s}`);
+  };
   // Excel leido en el navegador, antes de aplicarlo
   const [sheet, setSheet] = useState(null);
   const [skuCol, setSkuCol] = useState(0);
@@ -90,11 +116,14 @@ export default function PromoTagConfig({ slot = 'promo' }) {
     if (!ALLOWED_STORE_IDS.includes(String(storeId))) return;
     apiRequest(`/api/promo-tag-config?storeId=${storeId}&slot=${slot}`)
       .then(res => {
-        if (res?.success && res.config) setConfig({ ...DEFAULT_CONFIG, ...res.config });
+        const loaded = res?.success && res.config ? { ...DEFAULT_CONFIG, ...res.config } : null;
+        if (loaded) setConfig(loaded);
+        setSavedKey(styleKey(loaded || { ...DEFAULT_CONFIG, text: copy.text }));
         if (res?.fonts) setFonts(res.fonts);
       })
       .catch(e => console.error(e))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId, slot]);
 
   // Los fonts de Google se cargan para que la vista previa se vea como en la tienda.
@@ -117,7 +146,9 @@ export default function PromoTagConfig({ slot = 'promo' }) {
         body: JSON.stringify({ storeId, slot, config }),
       });
       if (res?.success) {
-        setConfig(c => ({ ...c, ...res.config }));
+        const next = { ...config, ...res.config };
+        setConfig(next);
+        setSavedKey(styleKey(next));
         toast.success('Configuración guardada');
       } else toast.error(res?.message || 'Error al guardar');
     } catch (e) {
@@ -193,7 +224,9 @@ export default function PromoTagConfig({ slot = 'promo' }) {
     }
   };
 
-  const [fontPx, padY, padX] = SIZES[config.size] || SIZES.md;
+  const [presetPx, padY, padX] = SIZES[config.size] || SIZES.md;
+  const fontPx = config.fontSize || presetPx;
+  const mobilePx = Math.round(fontPx * MOBILE_SCALE * 2) / 2;
   const previewStyle = {
     background: config.bgColor,
     color: config.textColor,
@@ -228,10 +261,20 @@ export default function PromoTagConfig({ slot = 'promo' }) {
       <div className="vg-hero">
         <div className="vg-hero-icon"><Tag size={22} /></div>
         <div>
-          <h1>{copy.title}</h1>
-          <p>{copy.subtitle}</p>
+          <h1>Etiquetas</h1>
+          <p>Carteles en la esquina de la foto de los productos. Si un producto tiene más de una, van una abajo de la otra.</p>
         </div>
       </div>
+
+      <div className="pt-tabs" role="tablist">
+        {slotsFor(storeId).map(s => (
+          <button key={s} role="tab" aria-selected={s === slot}
+            className={`pt-tab ${s === slot ? 'active' : ''}`} onClick={() => goTo(s)}>
+            {SLOT_COPY[s].title}
+          </button>
+        ))}
+      </div>
+      <p className="vg-hint pt-tab-desc">{copy.subtitle}</p>
 
       <div className="config-section">
         <div className="section-header">
@@ -267,12 +310,25 @@ export default function PromoTagConfig({ slot = 'promo' }) {
                 <input type="color" value={config.textColor} onChange={e => set('textColor', e.target.value)} />
               </div>
               <div className="vg-field">
-                <label>Tamaño</label>
-                <select value={config.size} onChange={e => set('size', e.target.value)}>
+                <label>Tamaño general</label>
+                {/* Cambiar el tamaño general vuelve el texto a su medida. */}
+                <select value={config.size}
+                  onChange={e => setConfig(c => ({ ...c, size: e.target.value, fontSize: null }))}>
                   <option value="sm">Chico</option>
                   <option value="md">Mediano</option>
                   <option value="lg">Grande</option>
                 </select>
+              </div>
+              <div className="vg-field pt-fontsize">
+                <label>Tamaño del texto (px)</label>
+                <input type="number" min={8} max={40} step={0.5} value={fontPx}
+                  onChange={e => set('fontSize', e.target.value === '' ? null : Number(e.target.value))} />
+                <span className="pt-fontsize-hint">
+                  {config.fontSize ? (
+                    <button type="button" onClick={() => set('fontSize', null)}>Volver a {presetPx}px</button>
+                  ) : 'El del tamaño general'}
+                  {' · '}celular {mobilePx}px
+                </span>
               </div>
               <div className="vg-field pt-radius">
                 <label>Borde redondeado · {config.radius}px</label>

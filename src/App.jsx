@@ -1,4 +1,4 @@
-import { HashRouter as Router, Routes, Route } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastProvider } from './context/ToastContext';
 import AppLayout from './components/AppLayout';
 import Login from './pages/Login';
@@ -36,7 +36,7 @@ import CategoryCarouselConfig from './pages/CategoryCarouselConfig';
 import ComingSoonConfig from './pages/ComingSoonConfig';
 import VariantGroupsConfig from './pages/VariantGroupsConfig';
 import TechSheetConfig from './pages/TechSheetConfig';
-import PromoTagConfig from './pages/PromoTagConfig';
+import { PromoTagsPage } from './pages/PromoTagConfig';
 import CombosConfig from './pages/CombosConfig';
 import GiftRegistryConfig from './pages/GiftRegistryConfig';
 import './App.css';
@@ -89,9 +89,12 @@ function App() {
           <Route path="/proximamente" element={<ComingSoonConfig />} />
           <Route path="/grupos-variantes" element={<VariantGroupsConfig />} />
           <Route path="/ficha-tecnica" element={<TechSheetConfig />} />
-          <Route path="/etiqueta-promo" element={<PromoTagConfig key="promo" slot="promo" />} />
-          <Route path="/etiqueta-categoria" element={<PromoTagConfig key="cat" slot="cat" />} />
-          <Route path="/etiqueta-extra" element={<PromoTagConfig key="cat2" slot="cat2" />} />
+          {/* Las tres etiquetas viven en una sola página con pestañas. */}
+          <Route path="/etiquetas" element={<PromoTagsPage />} />
+          <Route path="/etiquetas/:slot" element={<PromoTagsPage />} />
+          <Route path="/etiqueta-promo" element={<Navigate to="/etiquetas/promo" replace />} />
+          <Route path="/etiqueta-categoria" element={<Navigate to="/etiquetas/cat" replace />} />
+          <Route path="/etiqueta-extra" element={<Navigate to="/etiquetas/cat2" replace />} />
           <Route path="/combos" element={<CombosConfig />} />
           <Route path="/lista-regalos" element={<GiftRegistryConfig />} />
           <Route path="/buscador-inteligente" element={<SearchConfig />} />

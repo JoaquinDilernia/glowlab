@@ -45,6 +45,24 @@ test("sanitizeStyle - valores invalidos vuelven al default", () => {
   assert.equal(sanitizeStyle({}).radius, 4);
 });
 
+test("sanitizeStyle - tamaño de texto exacto en px, de a medio px y con tope", () => {
+  assert.equal(sanitizeStyle({}).fontSize, null);
+  assert.equal(sanitizeStyle({ fontSize: "" }).fontSize, null);
+  assert.equal(sanitizeStyle({ fontSize: "abc" }).fontSize, null);
+  assert.equal(sanitizeStyle({ fontSize: 12 }).fontSize, 12);
+  assert.equal(sanitizeStyle({ fontSize: "11.3" }).fontSize, 11.5);
+  assert.equal(sanitizeStyle({ fontSize: 2 }).fontSize, 8);
+  assert.equal(sanitizeStyle({ fontSize: 99 }).fontSize, 40);
+});
+
+test("buildPromoTagLoader - el tamaño exacto pisa el del tamaño elegido", () => {
+  const js = buildPromoTagLoader("1", { size: "md", fontSize: 12 }, ["5"], "cat2");
+  assert.match(js, /font-size: 12px/);
+  assert.match(js, /font-size: 8\.5px/); // celular: 12 * 0.7 = 8.4 -> 8.5
+  assert.match(js, /padding: 5px 10px/); // el relleno sigue siendo el de "md"
+  assert.match(buildPromoTagLoader("1", { size: "md" }, ["5"]), /font-size: 13px/);
+});
+
 test("fetchCatalogVariants - pagina hasta la ultima y corta en 404", async () => {
   const pages = { 1: Array.from({ length: 200 }, (_, i) => ({ id: i, variants: [{ sku: "A" + i }] })), 2: [{ id: 999, variants: [{ sku: "B" }] }] };
   const fetchImpl = async (url) => {
