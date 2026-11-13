@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Palette, LogOut, X, MapPin, MessageCircle,
-  ShoppingBag, Percent, Search, Rocket, Layers, LayoutGrid, Zap, Package, Gift, Ruler, Tag, Timer, Truck
+  ShoppingBag, Percent, Search, Rocket, Layers, LayoutGrid, Zap, Package, Gift, Ruler, Tag, Timer, Truck, Landmark
 } from 'lucide-react';
 import { useSubscription } from '../hooks/useSubscription';
 import './Sidebar.css';
@@ -35,6 +35,7 @@ const STORE_EXCLUSIVE_ITEMS = {
     { path: '/local-stock', icon: MapPin, label: 'Stock Altorancho', exclusive: true },
     { path: '/checkout-notice', icon: MessageCircle, label: 'Aviso Checkout', exclusive: true },
     { path: '/envios-agrupados', icon: Truck, label: 'Envíos agrupados', exclusive: true },
+    { path: '/aviso-transferencia', icon: Landmark, label: 'Aviso de transferencia', exclusive: true },
     { path: '/grupos-variantes', icon: Layers, label: 'Grupos de Variantes', exclusive: true },
     { path: '/ficha-tecnica', icon: Ruler, label: 'Ficha Técnica', exclusive: true },
     { path: '/etiquetas', icon: Tag, label: 'Etiquetas', exclusive: true },

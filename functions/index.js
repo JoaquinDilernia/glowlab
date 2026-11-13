@@ -784,6 +784,8 @@ registerStorefrontBlocksRoutes(app, { db, FieldValue, getCachedDoc, invalidateCo
 
 // Envíos agrupados (Alto Rancho) - desplegables de envío en carrito/checkout + filtro shipping/before-filter
 require('./alto-envios').registerAltoEnviosRoutes(app, { db });
+// Aviso de transferencia (Alto Rancho) - carteles cuando eligen pagar por transferencia en el checkout
+require('./aviso-transferencia').registerAvisoTransferenciaRoutes(app, { db });
 
 // Precios y Cuotas - descuento efectivo/transferencia + cuotas en listado, PDP y carrito
 const { registerPriceFinancingRoutes } = require('./price-financing');

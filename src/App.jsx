@@ -10,6 +10,7 @@ import SpinWheelConfig from './pages/SpinWheelConfig';
 import SpinWheelAnalytics from './pages/SpinWheelAnalytics';
 import LocalStockConfig from './pages/LocalStockConfig';
 import AltoEnviosConfig from './pages/AltoEnviosConfig';
+import AvisoTransferenciaConfig from './pages/AvisoTransferenciaConfig';
 import CheckoutNoticeConfig from './pages/CheckoutNoticeConfig';
 import CountdownList from './pages/CountdownList';
 import CountdownConfig from './pages/CountdownConfig';
@@ -84,6 +85,7 @@ function App() {
           <Route path="/popups/:popupId/config" element={<PopupConfig />} />
           <Route path="/local-stock" element={<LocalStockConfig />} />
           <Route path="/envios-agrupados" element={<AltoEnviosConfig />} />
+          <Route path="/aviso-transferencia" element={<AvisoTransferenciaConfig />} />
           <Route path="/checkout-notice" element={<CheckoutNoticeConfig />} />
           <Route path="/storefront-blocks" element={<StorefrontBlocksList />} />
           <Route path="/storefront-blocks/:blockId/config" element={<StorefrontBlockConfig />} />
