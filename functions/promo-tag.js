@@ -9,7 +9,8 @@
 //
 // Hay una segunda etiqueta ("cat", ej. "ULTIMAS UNIDADES") que funciona igual
 // pero sus productos se eligen por categoria (con subcategorias) o a mano. Si
-// un producto tiene las dos, se apilan en la esquina en vez de pisarse.
+// un producto tiene la promo y esta, va solo esta (ÚLTIMAS UNIDADES le gana a
+// SUPER SALE); con las demas combinaciones se apilan en la esquina.
 // La tercera ("cat2", ej. "NEW IN") es igual a "cat" y ademas acepta SKUs que
 // empiezan con un codigo (ej. "MSI044" = todos los colores de esa silla).
 const COLLECTION = "promonube_promo_tag";
@@ -455,14 +456,23 @@ function refreshCatalogSlotIfStale({ db, FieldValue, fetchImpl }, store, data, s
 async function getPromoTagLoader(db, store, { FieldValue, fetchImpl } = {}) {
   if (!isAllowedStore(store)) return "";
   const docs = await Promise.all(Object.keys(SLOTS).map((slot) => slotDoc(db, store, slot).get()));
-  let out = "";
+  const activos = {};
   Object.keys(SLOTS).forEach((slot, i) => {
-    if (!docs[i].exists) return;
-    const data = docs[i].data();
-    if (data.enabled !== true) return;
+    const data = docs[i].exists ? docs[i].data() : null;
+    if (data && data.enabled === true) activos[slot] = data;
+  });
+  // ÚLTIMAS UNIDADES le gana a la promo (pedido de Alto Rancho, 13/11/2026): un producto de SUPER SALE al que le
+  // ponen ÚLTIMAS UNIDADES muestra solo esa, en vez de las dos apiladas.
+  const ultimas = new Set(((activos.cat && activos.cat.productIds) || []).map(String));
+  let out = "";
+  Object.keys(SLOTS).forEach((slot) => {
+    const data = activos[slot];
+    if (!data) return;
     if (isCatalogSlot(slot)) refreshCatalogSlotIfStale({ db, FieldValue, fetchImpl }, String(store), data, slot);
-    if (!Array.isArray(data.productIds) || !data.productIds.length) return;
-    out += buildPromoTagLoader(store, data, data.productIds, slot);
+    let ids = Array.isArray(data.productIds) ? data.productIds : [];
+    if (slot === "promo") ids = ids.filter((id) => !ultimas.has(String(id)));
+    if (!ids.length) return;
+    out += buildPromoTagLoader(store, data, ids, slot);
   });
   return out;
 }

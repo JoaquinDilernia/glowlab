@@ -230,3 +230,23 @@ test("cat2: prefijos de SKU y tercera etiqueta apilada", () => {
   assert.match(js, /#353434/);
   assert.match(js, /order: 2/);
 });
+
+test("getPromoTagLoader - si un producto tiene la promo y ÚLTIMAS UNIDADES, solo va ÚLTIMAS UNIDADES", async () => {
+  const docs = {
+    "2547699": { enabled: true, productIds: ["1", "2", "3"], text: "SUPER SALE" },
+    "2547699_cat": { enabled: true, productIds: ["2", "9"], text: "ÚLTIMAS UNIDADES", categories: [], resolvedAt: Date.now() },
+  };
+  const db = { collection: () => ({ doc: (id) => ({ get: async () => ({ exists: !!docs[id], data: () => docs[id] }) }) }) };
+  const out = await getPromoTagLoader(db, "2547699");
+  const ids = (slot) => JSON.parse(out.split(`var SLOT = "${slot}";`)[1].match(/var IDS = (\{[^}]*\});/)[1]);
+  assert.deepEqual(Object.keys(ids("promo")).sort(), ["1", "3"]);
+  assert.deepEqual(Object.keys(ids("cat")).sort(), ["2", "9"]);
+  // con ÚLTIMAS UNIDADES apagada, la promo vuelve a ir en todos
+  docs["2547699_cat"].enabled = false;
+  const out2 = await getPromoTagLoader(db, "2547699");
+  assert.deepEqual(Object.keys(JSON.parse(out2.match(/var IDS = (\{[^}]*\});/)[1])).sort(), ["1", "2", "3"]);
+  // si todos los de la promo tienen ÚLTIMAS UNIDADES, la promo no carga
+  docs["2547699_cat"].enabled = true;
+  docs["2547699"].productIds = ["2"];
+  assert.doesNotMatch(await getPromoTagLoader(db, "2547699"), /pn-pt-promo/);
+});
