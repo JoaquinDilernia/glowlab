@@ -38,6 +38,13 @@ const TEXTOS = [
   ['tituloPunto', 'Grupo punto de retiro'], ['textoEco', 'Etiqueta económico'], ['textoRap', 'Etiqueta rápido'],
 ];
 
+// Íconos de Google (Material Symbols: local_shipping, storefront, pin_drop). Igual que ICONOS de functions/alto-envios.js.
+const ICONOS = {
+  domicilio: "M155-195q-35-35-35-85H40v-440q0-33 23.5-56.5T120-800h560v160h120l120 160v200h-80q0 50-35 85t-85 35q-50 0-85-35t-35-85H360q0 50-35 85t-85 35q-50 0-85-35Zm113.5-56.5Q280-263 280-280t-11.5-28.5Q257-320 240-320t-28.5 11.5Q200-297 200-280t11.5 28.5Q223-240 240-240t28.5-11.5ZM120-360h32q17-18 39-29t49-11q27 0 49 11t39 29h272v-360H120v360Zm628.5 108.5Q760-263 760-280t-11.5-28.5Q737-320 720-320t-28.5 11.5Q680-297 680-280t11.5 28.5Q703-240 720-240t28.5-11.5ZM680-440h170l-90-120h-80v120ZM360-540Z",
+  local: "M841-518v318q0 33-23.5 56.5T761-120H201q-33 0-56.5-23.5T121-200v-318q-23-21-35.5-54t-.5-72l42-136q8-26 28.5-43t47.5-17h556q27 0 47 16.5t29 43.5l42 136q12 39-.5 71T841-518Zm-272-42q27 0 41-18.5t11-41.5l-22-140h-78v148q0 21 14 36.5t34 15.5Zm-180 0q23 0 37.5-15.5T441-612v-148h-78l-22 140q-4 24 10.5 42t37.5 18Zm-178 0q18 0 31.5-13t16.5-33l22-154h-78l-40 134q-6 20 6.5 43t41.5 23Zm540 0q29 0 42-23t6-43l-42-134h-76l22 154q3 20 16.5 33t31.5 13ZM201-200h560v-282q-5 2-6.5 2H751q-27 0-47.5-9T663-518q-18 18-41 28t-49 10q-27 0-50.5-10T481-518q-17 18-39.5 28T393-480q-29 0-52.5-10T299-518q-21 21-41.5 29.5T211-480h-4.5q-2.5 0-5.5-2v282Zm560 0H201h560Z",
+  punto: "M480-301q99-80 149.5-154T680-594q0-90-56-148t-144-58q-88 0-144 58t-56 148q0 65 50.5 139T480-301Zm0 101Q339-304 269.5-402T200-594q0-125 78-205.5T480-880q124 0 202 80.5T760-594q0 94-69.5 192T480-200Zm0-320q33 0 56.5-23.5T560-600q0-33-23.5-56.5T480-680q-33 0-56.5 23.5T400-600q0 33 23.5 56.5T480-520ZM200-80v-80h560v80H200Zm280-520Z",
+};
+
 // Vista previa: los mismos estilos que alto-envios-widget.js (carrito / producto), con datos de ejemplo.
 function Vista({ e }) {
   useEffect(() => {
@@ -55,7 +62,7 @@ function Vista({ e }) {
   const grupo = (icono, titulo, sub, abierto, conElegida, filas) => (
     <div style={{ border: `1px solid ${e.colorBorde}`, borderRadius: px(e.radio), marginBottom: 8, overflow: 'hidden', background: '#fff' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: conElegida ? e.fondoTituloElegida : e.fondoTitulo }}>
-        {e.mostrarIconos && <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>{icono}</span>}
+        {e.mostrarIconos && <svg viewBox="0 -960 960 960" width="20" height="20" style={{ flex: 'none', fill: 'currentColor' }} aria-hidden="true"><path d={ICONOS[icono]} /></svg>}
         <span style={{ flex: 1 }}>
           <b style={{ display: 'block', fontSize: px(T) }}>{titulo}</b>
           <small style={{ display: 'block', fontSize: px(T * 12 / 14), opacity: 0.7 }}>{sub}</small>
@@ -79,14 +86,14 @@ function Vista({ e }) {
   );
   return (
     <div style={{ fontFamily: familia, fontSize: px(T), lineHeight: 1.3, color: e.colorTexto }}>
-      {grupo('🏠', e.tituloDomicilio, 'desde $5.200', true, true, <>
+      {grupo('domicilio', e.tituloDomicilio, 'desde $5.200', true, true, <>
         {fila('Chazki', 'Llega jue 20/11 – lun 24/11', '$5.200', true, etiqueta(e.textoEco, e.ecoFondo, e.ecoTexto))}
         {fila('Toparco', 'Llega mañana', '$9.800', false, etiqueta(e.textoRap, e.rapFondo, e.rapTexto))}
         {fila('Envío Altorancho', 'Llega mar 18/11 · entrega dentro de tu domicilio', '$19.500', false, null)}
         <span style={{ display: 'block', margin: '4px 2px 0', color: '#555', textDecoration: 'underline', fontSize: px(T * 12 / 14) }}>Ver 3 opciones más</span>
       </>)}
-      {grupo('🏬', e.tituloLocal, 'Gratis', false, false, null)}
-      {grupo('📍', e.tituloPunto, 'desde $4.100', false, false, null)}
+      {grupo('local', e.tituloLocal, 'Gratis', false, false, null)}
+      {grupo('punto', e.tituloPunto, 'desde $4.100', false, false, null)}
     </div>
   );
 }

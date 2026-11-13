@@ -23,6 +23,11 @@
     textoEco: "Más económico", textoRap: "Más rápido"
   }, window.__altoEnviosCfg || {});
   const px = function (n) { return (Math.round(n * 10) / 10) + "px"; };
+  // Íconos de Google (Material Symbols: local_shipping, storefront, pin_drop) que antepone el backend.
+  const ICONOS = window.__altoEnviosIconos || {};
+  const icono = function (k) {
+    return ICONOS[k] ? '<svg viewBox="0 -960 960 960" aria-hidden="true"><path d="' + ICONOS[k] + '"/></svg>' : "";
+  };
   const T = E.tamano;          // 14 = tamaño original
   const R = E.radio;           // 8 = radio original de los grupos (las filas usan 6)
   const FAMILIA = E.fuente === "inherit" ? "inherit" : "'" + E.fuente + "', sans-serif";
@@ -37,7 +42,8 @@
   .alto-env{margin:8px 0 14px;font-size:${px(T)};line-height:1.3;font-family:${FAMILIA};color:${E.colorTexto}}
   .alto-env-g{border:1px solid ${E.colorBorde};border-radius:${px(R)};margin-bottom:8px;overflow:hidden;background:#fff}
   .alto-env-h{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;background:${E.fondoTitulo};border:0;cursor:pointer;text-align:left;font:inherit;color:inherit}
-  .alto-env-h .alto-env-ic{font-size:16px;width:20px;text-align:center;flex:none}
+  .alto-env-h .alto-env-ic{width:20px;height:20px;flex:none;display:flex;align-items:center;justify-content:center}
+  .alto-env-h .alto-env-ic svg{width:20px;height:20px;fill:currentColor;display:block}
   .alto-env-h .alto-env-ht{flex:1;min-width:0}
   .alto-env-h .alto-env-ht b{display:block;font-weight:700;font-size:${px(T)}}
   .alto-env-h .alto-env-ht small{display:block;font-size:${px(T * 12 / 14)};opacity:.7;margin-top:1px}
@@ -187,9 +193,9 @@
   function fmt(v) { return v === 0 ? "Gratis" : "$" + Math.round(v).toLocaleString("es-AR"); }
 
   const GRUPOS = [
-    { k: "domicilio", icono: "🏠", titulo: E.tituloDomicilio, verbo: "Llega" },
-    { k: "local", icono: "🏬", titulo: E.tituloLocal, verbo: "Retirás" },   // 28/10/2026 (Pedro): locales antes que puntos
-    { k: "punto", icono: "📍", titulo: E.tituloPunto, verbo: "Retirás" }
+    { k: "domicilio", titulo: E.tituloDomicilio, verbo: "Llega" },
+    { k: "local", titulo: E.tituloLocal, verbo: "Retirás" },   // 28/10/2026 (Pedro): locales antes que puntos
+    { k: "punto", titulo: E.tituloPunto, verbo: "Retirás" }
   ];
 
   // Los grupos arrancan CERRADOS; el que abre el cliente se recuerda cuando el tema redibuja (cambio de cantidad o CP).
@@ -242,7 +248,7 @@
       const h = document.createElement("button");
       h.type = "button"; h.className = "alto-env-h";
       const sub = todas.every(function (o) { return o.precio === 0; }) ? "Gratis" : (minP === 0 ? "con opción gratis" : "desde " + fmt(minP));
-      h.innerHTML = (E.mostrarIconos ? '<span class="alto-env-ic">' + g.icono + '</span>' : '') + '<span class="alto-env-ht"><b></b><small></small></span><span class="alto-env-caret">⌄</span>';
+      h.innerHTML = (E.mostrarIconos ? '<span class="alto-env-ic">' + icono(g.k) + '</span>' : '') + '<span class="alto-env-ht"><b></b><small></small></span><span class="alto-env-caret">⌄</span>';
       h.querySelector("b").textContent = g.titulo;
       h.querySelector("small").textContent = sub;
       h.onclick = function () {

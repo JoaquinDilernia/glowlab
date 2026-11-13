@@ -334,3 +334,26 @@ test("install: activa en la tienda los dos scripts del Portal (tienda #12611 y c
   assert.equal(posts[0].headers.Authorization, "Bearer tok");
   assert.deepEqual(Object.keys(r.body.install.scripts).sort(), ["checkout", "tienda"]);
 });
+
+test("íconos de Google (Material Symbols): SVG con el color pedido, para el checkout y el widget", async () => {
+  const { s } = servicio();
+  const r = resFalsa();
+  s.icono({ params: { nombre: "domicilio" }, query: { c: "2E6B1F" } }, r);
+  assert.equal(r.statusCode, 200);
+  assert.match(r.headers["Content-Type"], /image\/svg\+xml/);
+  assert.ok(String(r.body).includes('fill="#2E6B1F"'));
+  assert.ok(String(r.body).includes(F.ICONOS.domicilio));
+  // color inválido → el del texto por defecto; nombre desconocido → 404
+  const r2 = resFalsa();
+  s.icono({ params: { nombre: "punto" }, query: { c: "\"><script>" } }, r2);
+  assert.ok(String(r2.body).includes(`fill="${F.DEFAULT_ESTILO.colorTexto}"`));
+  assert.ok(!String(r2.body).includes("<script>"));
+  const r3 = resFalsa();
+  s.icono({ params: { nombre: "otro" }, query: {} }, r3);
+  assert.equal(r3.statusCode, 404);
+  // el widget del carrito trae los tres trazos
+  await s.ponerConfig(SID, { enabled: true });
+  const w = resFalsa();
+  await s.widget({ query: { store: SID } }, w);
+  for (const k of ["domicilio", "local", "punto"]) assert.ok(String(w.body).includes(F.ICONOS[k]));
+});

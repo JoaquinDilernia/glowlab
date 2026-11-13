@@ -172,7 +172,10 @@ export function App(nube) {
 				] })],
 			});
 		};
-		const titulos = { domicilio: ["🏠", E.tituloDomicilio], local: ["🏬", E.tituloLocal], punto: ["📍", E.tituloPunto] };
+		const titulos = { domicilio: E.tituloDomicilio, local: E.tituloLocal, punto: E.tituloPunto };
+		// Íconos de Google (Material Symbols) servidos como SVG por el backend, del color del texto.
+		const icono = (g) => ui("img", { src: `${BASE}/api/alto-envios/icono/${g}.svg?c=${String(E.colorTexto).replace("#", "")}`,
+			alt: "", width: "20px", height: "20px", style: { width: "20px", height: "20px", flexShrink: 0 } });
 		const items = [];
 		for (const g of ["domicilio", "local", "punto"]) {
 			const todas = grupos[g];
@@ -207,9 +210,9 @@ export function App(nube) {
 			items.push(ui("accordionItem", { value: g, onToggle: () => { grupoAbiertoCk = grupoAbiertoCk === g ? null : g; }, children: [
 				ui("accordionHeader", { showIcon: true, style: { background: elegidaX ? E.fondoTituloElegida : E.fondoTitulo, borderRadius: px(E.radio) }, children: [
 					ui("row", { alignItems: "center", gap: "8px", children: [
-						...(E.mostrarIconos ? [txt(titulos[g][0], { style: { ...T0, fontSize: px(T * 16 / 14) } })] : []),
+						...(E.mostrarIconos ? [icono(g)] : []),
 						ui("col", { gap: "1px", children: [
-							txt(titulos[g][1], { modifiers: ["bold"], style: { ...T0, fontSize: px(T), color: E.colorTexto } }),
+							txt(titulos[g], { modifiers: ["bold"], style: { ...T0, fontSize: px(T), color: E.colorTexto } }),
 							txt(sub, { style: { ...T0, fontSize: px(T * 12 / 14), color: "#555" } }),
 						] }),
 					] }),
