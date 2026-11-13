@@ -192,6 +192,10 @@ const cantidad = () => _DATOS.size;
 // La regla (callback de TiendaNube) tiene 800 ms: se resuelve todo en memoria y nunca espera a Firestore ni a
 // TiendaNube. Config, catálogo y fotos se cargan/refrescan en segundo plano.
 
+// Exclusivo de Alto Rancho: cualquier otra tienda queda apagada y no se puede instalar ni prender.
+const ALLOWED_STORES = ["2547699"];
+const permitida = (sid) => ALLOWED_STORES.includes(str(sid));
+
 const COL_CONFIG = "promonube_alto_envios";
 const COL_FOTOS = "promonube_alto_envios_fotos";
 const TN_API = "https://api.tiendanube.com/v1";
@@ -221,7 +225,8 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
   const consultas = new Map();           // storeId -> {n, ultima}
   let widgetCache = null;
 
-  const cfg = (sid) => config.get(str(sid)) || { enabled: false, ocultar: false };
+  const APAGADO = { enabled: false, ocultar: false };
+  const cfg = (sid) => (permitida(sid) && config.get(str(sid))) || APAGADO;
 
   async function refrescarConfig() {
     estado.configTs = Date.now();
@@ -236,6 +241,7 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
   }
 
   async function ponerConfig(sid, cambios) {
+    if (!permitida(sid)) throw new Error("Módulo exclusivo de Alto Rancho");
     const nuevo = { ...cfg(sid), ...cambios };
     config.set(str(sid), nuevo);
     await db.collection(COL_CONFIG).doc(str(sid)).set({ ...cambios, updatedAt: new Date().toISOString() }, { merge: true });
@@ -369,6 +375,7 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
   async function install(req, res) {
     const sid = str((req.body || {}).storeId);
     if (!sid) return res.status(400).json({ success: false, message: "storeId requerido" });
+    if (!permitida(sid)) return res.status(403).json({ success: false, message: "Módulo exclusivo de Alto Rancho" });
     try {
       const tok = await token(sid);
       if (!tok) return res.status(404).json({ success: false, message: "La tienda no tiene GlowLab instalado" });
@@ -412,6 +419,7 @@ function registerAltoEnviosRoutes(app, { db }) {
   app.post("/api/alto-envios/config", async (req, res) => {
     const { storeId, enabled, ocultar } = req.body || {};
     if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+    if (!permitida(storeId)) return res.status(403).json({ success: false, message: "Módulo exclusivo de Alto Rancho" });
     const cambios = {};
     if (typeof enabled === "boolean") cambios.enabled = enabled;
     if (typeof ocultar === "boolean") cambios.ocultar = ocultar;
@@ -431,7 +439,7 @@ function registerAltoEnviosRoutes(app, { db }) {
 }
 
 module.exports = {
-  TTL_SEG, MAX_CLAVES, MAX_OPCIONES, _DATOS,
+  TTL_SEG, MAX_CLAVES, MAX_OPCIONES, ALLOWED_STORES, _DATOS,
   huella, guardar, clasificar, elegidas, aOcultar, cargarCatalogo, catalogo, tiendasConCatalogo,
   formatoTn, decidir, marcarVisto, visto, borrarTodo, cantidad,
   crearServicio, registerAltoEnviosRoutes,

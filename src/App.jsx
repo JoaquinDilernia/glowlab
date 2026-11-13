@@ -9,6 +9,7 @@ import SpinWheel from './pages/SpinWheel';
 import SpinWheelConfig from './pages/SpinWheelConfig';
 import SpinWheelAnalytics from './pages/SpinWheelAnalytics';
 import LocalStockConfig from './pages/LocalStockConfig';
+import AltoEnviosConfig from './pages/AltoEnviosConfig';
 import CheckoutNoticeConfig from './pages/CheckoutNoticeConfig';
 import CountdownList from './pages/CountdownList';
 import CountdownConfig from './pages/CountdownConfig';
@@ -82,6 +83,7 @@ function App() {
           <Route path="/popups/create" element={<PopupConfig />} />
           <Route path="/popups/:popupId/config" element={<PopupConfig />} />
           <Route path="/local-stock" element={<LocalStockConfig />} />
+          <Route path="/envios-agrupados" element={<AltoEnviosConfig />} />
           <Route path="/checkout-notice" element={<CheckoutNoticeConfig />} />
           <Route path="/storefront-blocks" element={<StorefrontBlocksList />} />
           <Route path="/storefront-blocks/:blockId/config" element={<StorefrontBlockConfig />} />

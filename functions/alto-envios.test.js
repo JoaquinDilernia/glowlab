@@ -261,3 +261,15 @@ test("config pública y widget apagado", async () => {
   await s.widget({ query: { store: SID } }, w2);
   assert.ok(String(w2.body).includes("alto-env"));
 });
+
+test("solo Alto Rancho: otra tienda no se instala, no se prende ni recibe el widget", async () => {
+  const { s, llamadas } = servicio({ promonube_stores: { [SID]: { accessToken: "tok" }, "1": { accessToken: "otro" } } });
+  const r = resFalsa();
+  await s.install({ body: { storeId: "1" } }, r);
+  assert.equal(r.statusCode, 403);
+  assert.equal(llamadas.length, 0);
+  await assert.rejects(() => s.ponerConfig("1", { enabled: true }));
+  const w = resFalsa();
+  await s.widget({ query: { store: "1" } }, w);
+  assert.ok(!String(w.body).includes("alto-env"));
+});
