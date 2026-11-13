@@ -130,7 +130,7 @@ function cargarCatalogo(storeId, carriers) {
   for (const c of carriers || []) {
     if (!c || typeof c !== "object") continue;
     for (const o of c.options || []) {
-      if (o && typeof o === "object" && o.code) mapa[str(o.code)] = { id: c.id, option_id: o.id, carrier: str(c.name) };
+      if (o && typeof o === "object" && o.code) mapa[str(o.code)] = { id: c.id, option_id: o.id, carrier: str(c.name), nombre: str(o.name) };
     }
   }
   _CATALOGO.set(str(storeId), mapa);
@@ -475,6 +475,7 @@ window.__altoEnviosIconos=${JSON.stringify(ICONOS)};
     return {
       config: cfg(sid), consultas: c.n, ultimaConsulta: c.ultima,
       catalogo: Object.keys(catalogo(sid)).length, cotizaciones: cantidad(),
+      opcionesCatalogo: Object.entries(catalogo(sid)).map(([code, e]) => ({ code, nombre: e.nombre, carrier: e.carrier })),
       fotos: { aceptadas: estado.aceptadas, rechazadas: estado.rechazadas },
       decisiones: decisiones.filter((d) => d.storeId === sid).slice(0, 50),
     };
