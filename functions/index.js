@@ -782,6 +782,9 @@ app.use(express.json({ limit: '10mb' }));
 const { registerStorefrontBlocksRoutes } = require('./storefront-blocks');
 registerStorefrontBlocksRoutes(app, { db, FieldValue, getCachedDoc, invalidateConfigCache, checkStoreActive });
 
+// Envíos agrupados (Alto Rancho) - desplegables de envío en carrito/checkout + filtro shipping/before-filter
+require('./alto-envios').registerAltoEnviosRoutes(app, { db });
+
 // Precios y Cuotas - descuento efectivo/transferencia + cuotas en listado, PDP y carrito
 const { registerPriceFinancingRoutes } = require('./price-financing');
 registerPriceFinancingRoutes(app, { db, FieldValue, checkStoreActive, HOSTING_URL });

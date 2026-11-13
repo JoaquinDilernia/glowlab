@@ -102,3 +102,162 @@ test("visto: solo carritos consultados y no vencidos", () => {
   assert.equal(F.visto("1", "a"), true);
   assert.equal(F.visto(1, "a", Date.now() / 1000 + F.TTL_SEG + 1), false);
 });
+
+// ------------------------------------------------------------------ rutas (servicio) ----
+
+// Firestore falso: colecciones -> Map(id -> data). Alcanza para lo que usa el servicio.
+function dbFalsa(inicial = {}) {
+  const cols = new Map(Object.entries(inicial).map(([c, docs]) => [c, new Map(Object.entries(docs))]));
+  let auto = 0;
+  const col = (name) => { if (!cols.has(name)) cols.set(name, new Map()); return cols.get(name); };
+  const snapDoc = (m, id) => ({ id, exists: m.has(id), data: () => m.get(id) });
+  const query = (name, filtros = [], lim = Infinity) => ({
+    where: (f, op, v) => query(name, [...filtros, [f, op, v]], lim),
+    orderBy: () => query(name, filtros, lim),
+    limit: (n) => query(name, filtros, n),
+    get: async () => {
+      const m = col(name);
+      const docs = [...m.entries()].filter(([, d]) => filtros.every(([f, op, v]) => (op === ">=" ? d[f] >= v : op === "<" ? d[f] < v : d[f] === v)))
+        .slice(0, lim).map(([id]) => ({ ...snapDoc(m, id), ref: { delete: async () => m.delete(id) } }));
+      return { docs, empty: !docs.length, forEach: (fn) => docs.forEach(fn) };
+    },
+  });
+  return {
+    cols,
+    collection: (name) => ({
+      ...query(name),
+      doc: (id) => ({
+        get: async () => snapDoc(col(name), String(id)),
+        set: async (data, opt) => { const m = col(name); m.set(String(id), opt && opt.merge ? { ...(m.get(String(id)) || {}), ...data } : data); },
+      }),
+      add: async (data) => { col(name).set(`a${++auto}`, data); return { id: `a${auto}` }; },
+    }),
+  };
+}
+
+function resFalsa() {
+  const r = { statusCode: 200, headers: {}, body: undefined };
+  r.status = (s) => { r.statusCode = s; return r; };
+  r.set = (k, v) => { if (typeof k === "object") Object.assign(r.headers, k); else r.headers[k] = v; return r; };
+  r.setHeader = r.set;
+  r.json = (b) => { r.body = b; return r; };
+  r.send = (b) => { r.body = b; return r; };
+  r.end = () => r;
+  r.sendStatus = (s) => { r.statusCode = s; return r; };
+  r.type = (t) => { r.headers["Content-Type"] = t; return r; };
+  return r;
+}
+
+const SID = "2547699";
+function servicio(extra = {}) {
+  const llamadas = [];
+  const fetchFn = async (url, opt = {}) => {
+    llamadas.push({ url, ...opt });
+    if (url.endsWith("/shipping_carriers/options")) return { status: 200, ok: true, json: async () => CATALOGO, text: async () => "" };
+    return { status: 204, ok: true, json: async () => ({}), text: async () => "" };
+  };
+  const db = dbFalsa({ promonube_stores: { [SID]: { accessToken: "tok" } }, ...extra });
+  const s = F.crearServicio({ db, fetchFn, base: "https://api.example.com" });
+  return { s, db, llamadas };
+}
+const pedido = { store_id: SID, cart_id: 999, shipping: { postalcode: "1642" }, products: ITEMS };
+const fotoSid = { ...FOTO, store_id: Number(SID) };
+
+test("regla: con ocultar apagado contesta 204 aunque haya datos", async () => {
+  F.borrarTodo();
+  const { s } = servicio();
+  await s.ponerConfig(SID, { enabled: true, ocultar: false });
+  F.cargarCatalogo(SID, CATALOGO);
+  F.marcarVisto(SID, "999"); F.guardar(fotoSid);
+  const r = resFalsa();
+  await s.regla({ body: pedido }, r);
+  assert.equal(r.statusCode, 204);
+});
+
+test("regla: con ocultar prendido manda las que quedan; otra tienda o sin datos → 204", async () => {
+  F.borrarTodo();
+  const { s } = servicio();
+  await s.ponerConfig(SID, { enabled: true, ocultar: true });
+  F.cargarCatalogo(SID, CATALOGO);
+  F.guardar(fotoSid);
+  const r = resFalsa();
+  await s.regla({ body: pedido }, r);
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.body.command, "filter_shipping_options");
+  assert.equal(r.body.detail.filtered_options.length, 10);
+  const r2 = resFalsa();
+  await s.regla({ body: { ...pedido, store_id: "1" } }, r2);
+  assert.equal(r2.statusCode, 204);
+  const r3 = resFalsa();
+  await s.regla({ body: { ...pedido, shipping: { postalcode: "5000" } } }, r3);
+  assert.equal(r3.statusCode, 204);
+  assert.equal(s.salud(SID).decisiones[0].fuente, "sin_datos");
+  assert.equal(s.salud(SID).consultas, 3 - 1);   // la de la otra tienda no cuenta para esta
+});
+
+test("foto: sin consulta previa → 403; con consulta → 204 y se guarda; grande → 413", async () => {
+  F.borrarTodo();
+  const { s, db } = servicio();
+  const r = resFalsa();
+  await s.foto({ method: "POST", body: JSON.stringify(fotoSid) }, r);
+  assert.equal(r.statusCode, 403);
+  assert.equal(F.cantidad(), 0);
+  await s.regla({ body: pedido }, resFalsa());          // TiendaNube preguntó por el carrito 999
+  const r2 = resFalsa();
+  await s.foto({ method: "POST", body: JSON.stringify(fotoSid) }, r2);
+  assert.equal(r2.statusCode, 204);
+  assert.equal(r2.headers["Access-Control-Allow-Origin"], "*");
+  assert.ok(F.cantidad() > 0);
+  await new Promise((ok) => setImmediate(ok));
+  assert.equal(db.cols.get("promonube_alto_envios_fotos").size, 1);
+  const r3 = resFalsa();
+  await s.foto({ method: "POST", body: "x".repeat(65 * 1024) }, r3);
+  assert.equal(r3.statusCode, 413);
+  const r4 = resFalsa();
+  await s.foto({ method: "POST", body: "{roto" }, r4);
+  assert.equal(r4.statusCode, 400);
+});
+
+test("recuperarFotos: después de un reinicio vuelven las cotizaciones de las últimas 12 h", async () => {
+  F.borrarTodo();
+  const ahora = Date.now() / 1000;
+  const { s } = servicio({ promonube_alto_envios_fotos: {
+    f1: { storeId: SID, ts: ahora - 3600, foto: fotoSid },
+    f2: { storeId: SID, ts: ahora - F.TTL_SEG - 10, foto: { ...fotoSid, zipcode: "9999" } },
+  } });
+  const n = await s.recuperarFotos();
+  assert.equal(n, 1);
+  F.cargarCatalogo(SID, CATALOGO);
+  assert.equal(F.decidir(SID, "999", "1642", ITEMS).fuente, "carrito");
+  assert.equal(F.decidir(SID, "999", "9999", ITEMS).fuente, "sin_datos");
+});
+
+test("install: registra la regla con el token de la tienda y carga el catálogo", async () => {
+  F.borrarTodo();
+  const { s, llamadas, db } = servicio();
+  const r = resFalsa();
+  await s.install({ body: { storeId: SID } }, r);
+  assert.equal(r.body.success, true);
+  const put = llamadas.find((x) => x.method === "PUT");
+  assert.equal(put.url, `https://api.tiendanube.com/v1/${SID}/business_rules/integrations/shipping`);
+  assert.deepEqual(JSON.parse(put.body), { url: "https://api.example.com/api/alto-envios/regla", event: "shipping/before-filter" });
+  assert.equal(put.headers.Authentication, "bearer tok");
+  assert.equal(r.body.install.catalogo, 12);
+  assert.ok(!JSON.stringify(r.body).includes("tok\""));
+  assert.equal(db.cols.get("promonube_alto_envios").get(SID).install.regla.status, 204);
+});
+
+test("config pública y widget apagado", async () => {
+  const { s } = servicio();
+  await s.ponerConfig(SID, { enabled: false, ocultar: false });
+  const r = resFalsa();
+  await s.configPublica({ query: { storeId: SID } }, r);
+  assert.deepEqual(r.body, { success: true, enabled: false });
+  const w = resFalsa();
+  await s.widget({ query: { store: SID } }, w);
+  assert.ok(!String(w.body).includes("alto-env"));
+  await s.ponerConfig(SID, { enabled: true });
+  const w2 = resFalsa();
+  await s.widget({ query: { store: SID } }, w2);
+  assert.ok(String(w2.body).includes("alto-env"));
+});

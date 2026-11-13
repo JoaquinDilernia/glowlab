@@ -188,8 +188,251 @@ function visto(storeId, cartId, ahora) {
 function borrarTodo() { _DATOS.clear(); _VISTOS.clear(); }
 const cantidad = () => _DATOS.size;
 
+// ======================================================================= servicio (rutas) ====
+// La regla (callback de TiendaNube) tiene 800 ms: se resuelve todo en memoria y nunca espera a Firestore ni a
+// TiendaNube. Config, catálogo y fotos se cargan/refrescan en segundo plano.
+
+const COL_CONFIG = "promonube_alto_envios";
+const COL_FOTOS = "promonube_alto_envios_fotos";
+const TN_API = "https://api.tiendanube.com/v1";
+const EVENTO_ENVIO = "shipping/before-filter";
+const USER_AGENT = "GlowLab (info@techdi.com.ar)";
+const DEFAULT_BASE = "https://glowlab-production.up.railway.app";
+const CONFIG_SEG = 30;
+const CATALOGO_SEG = 3600;
+const MAX_FOTO = 64 * 1024;
+const FOTOS_POR_MIN = 120;
+const MAX_DECISIONES = 200;
+const MAX_RECUPERAR = 300;
+
+const fs = require("fs");
+const path = require("path");
+const WIDGET_JS = path.join(__dirname, "alto-envios-widget.js");
+
+function cors(res) {
+  return res.set({ "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" });
+}
+
+/** Servicio con sus dependencias inyectadas (db = Firestore, fetchFn = fetch) para poder probarlo sin red. */
+function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO_ENVIOS_BASE || DEFAULT_BASE } = {}) {
+  const config = new Map();              // storeId -> {enabled, ocultar, install}
+  const estado = { configTs: 0, catalogoTs: 0, fotosMin: 0, fotosN: 0, aceptadas: 0, rechazadas: 0 };
+  const decisiones = [];                 // memoria circular: {t, storeId, fuente, ocultas, mostradas, ms}
+  const consultas = new Map();           // storeId -> {n, ultima}
+  let widgetCache = null;
+
+  const cfg = (sid) => config.get(str(sid)) || { enabled: false, ocultar: false };
+
+  async function refrescarConfig() {
+    estado.configTs = Date.now();
+    try {
+      const snap = await db.collection(COL_CONFIG).get();
+      snap.docs.forEach((d) => config.set(str(d.id), d.data() || {}));
+    } catch (e) { console.warn("[alto-envios] no pude leer la config:", e.message); }
+  }
+  function refrescarSiHaceFalta() {
+    if (Date.now() - estado.configTs > CONFIG_SEG * 1000) refrescarConfig();
+    if (Date.now() - estado.catalogoTs > CATALOGO_SEG * 1000) cargarCatalogos();
+  }
+
+  async function ponerConfig(sid, cambios) {
+    const nuevo = { ...cfg(sid), ...cambios };
+    config.set(str(sid), nuevo);
+    await db.collection(COL_CONFIG).doc(str(sid)).set({ ...cambios, updatedAt: new Date().toISOString() }, { merge: true });
+    return nuevo;
+  }
+
+  async function token(sid) {
+    const d = await db.collection("promonube_stores").doc(str(sid)).get();
+    return d.exists ? (d.data() || {}).accessToken : null;
+  }
+
+  async function tn(metodo, sid, ruta, tok, body) {
+    const r = await fetchFn(`${TN_API}/${sid}/${ruta}`, {
+      method: metodo,
+      headers: { Authentication: `bearer ${tok}`, "User-Agent": USER_AGENT, "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    let datos = null;
+    try { datos = r.status === 204 ? null : await r.json(); } catch { datos = null; }
+    return { status: r.status, datos };
+  }
+
+  async function cargarCatalogoDe(sid) {
+    const tok = await token(sid);
+    if (!tok) return { status: 0, n: 0, error: "la tienda no tiene token de GlowLab" };
+    const { status, datos } = await tn("GET", sid, "shipping_carriers/options", tok);
+    if (status === 200 && Array.isArray(datos)) return { status, n: cargarCatalogo(sid, datos) };
+    return { status, n: 0, error: JSON.stringify(datos || "").slice(0, 200) };
+  }
+
+  /** Catálogo de cada tienda con la función prendida (enabled u ocultar). Se refresca cada hora. */
+  async function cargarCatalogos() {
+    estado.catalogoTs = Date.now();
+    for (const [sid, c] of config) {
+      if (!c.enabled && !c.ocultar) continue;
+      try {
+        const r = await cargarCatalogoDe(sid);
+        if (r.error) console.warn(`[alto-envios] catálogo ${sid}: ${r.status} ${r.error}`);
+      } catch (e) { console.warn(`[alto-envios] catálogo ${sid}:`, e.message); }
+    }
+  }
+
+  /** Recupera las fotos de las últimas 12 h (Railway reinicia el proceso y la memoria se pierde). */
+  async function recuperarFotos() {
+    const desde = ahoraSeg() - TTL_SEG;
+    let n = 0;
+    try {
+      const snap = await db.collection(COL_FOTOS).where("ts", ">=", desde).orderBy("ts", "desc").limit(MAX_RECUPERAR).get();
+      const docs = snap.docs.map((d) => d.data()).sort((a, b) => a.ts - b.ts);
+      for (const d of docs) n += guardar(d.foto || {}, d.ts) ? 1 : 0;
+      // limpieza oportunista de las viejas
+      const viejas = await db.collection(COL_FOTOS).where("ts", "<", desde).limit(200).get();
+      await Promise.all(viejas.docs.map((d) => d.ref.delete()));
+    } catch (e) { console.warn("[alto-envios] no pude recuperar fotos:", e.message); }
+    return n;
+  }
+
+  function anotar(d) {
+    decisiones.unshift(d);
+    if (decisiones.length > MAX_DECISIONES) decisiones.length = MAX_DECISIONES;
+  }
+
+  // ---- POST /api/alto-envios/regla: callback shipping/before-filter ----
+  async function regla(req, res) {
+    const t0 = process.hrtime.bigint();
+    refrescarSiHaceFalta();
+    const p = req.body && typeof req.body === "object" ? req.body : {};
+    const sid = str(p.store_id);
+    marcarVisto(sid, p.cart_id);            // habilita la foto de este carrito
+    if (sid) {
+      const c = consultas.get(sid) || { n: 0, ultima: null };
+      consultas.set(sid, { n: c.n + 1, ultima: new Date().toISOString() });
+    }
+    let respuesta = null, dec = null;
+    if (sid && cfg(sid).ocultar === true) {
+      const envio = p.shipping && typeof p.shipping === "object" ? p.shipping : {};
+      dec = decidir(sid, p.cart_id, envio.postalcode, p.products || []);
+      // filtered_options = las opciones que QUEDAN; vacío = no se filtra nada
+      if (dec.mostrar.length) respuesta = { command: "filter_shipping_options", detail: { filtered_options: dec.mostrar } };
+    }
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    anotar({ t: new Date().toISOString(), storeId: sid, cp: str((p.shipping || {}).postalcode), fuente: dec ? dec.fuente : "apagado",
+      ocultas: dec ? dec.ocultas : 0, mostradas: dec ? dec.mostrar.length : 0, ...(dec && dec.falta ? { falta: dec.falta } : {}), ms: Math.round(ms * 10) / 10 });
+    if (!respuesta) return res.status(204).end();
+    return res.status(200).json(respuesta);
+  }
+
+  // ---- POST /api/alto-envios/foto: cotización real que vio el script del checkout ----
+  async function foto(req, res) {
+    cors(res);
+    if (req.method === "OPTIONS") return res.status(204).end();
+    const min = Math.floor(Date.now() / 60000);
+    if (estado.fotosMin !== min) { estado.fotosMin = min; estado.fotosN = 0; }
+    if (++estado.fotosN > FOTOS_POR_MIN) return res.status(429).end();
+    const crudo = Buffer.isBuffer(req.body) ? req.body.toString("utf8")
+      : typeof req.body === "string" ? req.body : JSON.stringify(req.body || {});
+    if (Buffer.byteLength(crudo, "utf8") > MAX_FOTO) return res.status(413).end();
+    let p;
+    try { p = JSON.parse(crudo || "{}"); } catch { return res.status(400).end(); }
+    if (!p || typeof p !== "object") return res.status(400).end();
+    // solo carritos por los que TiendaNube ya nos consultó: una foto inventada no puede ocultar nada
+    if (!visto(p.store_id, p.cart_id)) { estado.rechazadas++; return res.status(403).end(); }
+    const opciones = Array.isArray(p.opciones) ? p.opciones : [];
+    const limpia = { store_id: p.store_id, cart_id: p.cart_id, zipcode: p.zipcode, items: Array.isArray(p.items) ? p.items : [], opciones };
+    if (guardar(limpia)) {
+      estado.aceptadas++;
+      db.collection(COL_FOTOS).add({ storeId: str(p.store_id), ts: ahoraSeg(), foto: limpia })
+        .catch((e) => console.warn("[alto-envios] no pude guardar la foto:", e.message));
+    }
+    return res.status(204).end();
+  }
+
+  // ---- GET /api/alto-envios/config?storeId= (público: lo consulta el script del checkout) ----
+  async function configPublica(req, res) {
+    cors(res);
+    refrescarSiHaceFalta();
+    return res.json({ success: true, enabled: cfg(req.query.storeId).enabled === true });
+  }
+
+  // ---- GET /api/alto-envios-widget.js?store= (script del carrito y del producto) ----
+  async function widget(req, res) {
+    refrescarSiHaceFalta();
+    res.type("application/javascript");
+    res.set("Cache-Control", "public, max-age=300");
+    if (cfg(req.query.store).enabled !== true) return res.send("/* GlowLab · envíos agrupados: apagado */");
+    if (widgetCache === null) widgetCache = fs.readFileSync(WIDGET_JS, "utf8");
+    return res.send(widgetCache);
+  }
+
+  // ---- POST /api/alto-envios/install {storeId}: regla de envíos + catálogo ----
+  async function install(req, res) {
+    const sid = str((req.body || {}).storeId);
+    if (!sid) return res.status(400).json({ success: false, message: "storeId requerido" });
+    try {
+      const tok = await token(sid);
+      if (!tok) return res.status(404).json({ success: false, message: "La tienda no tiene GlowLab instalado" });
+      const r = await tn("PUT", sid, "business_rules/integrations/shipping", tok, { url: `${base}/api/alto-envios/regla`, event: EVENTO_ENVIO });
+      const cat = await cargarCatalogoDe(sid);
+      const inst = {
+        at: new Date().toISOString(),
+        regla: { status: r.status, respuesta: r.datos ? JSON.stringify(r.datos).slice(0, 500) : null },
+        catalogo: cat.n, catalogoStatus: cat.status, ...(cat.error ? { catalogoError: cat.error } : {}),
+      };
+      await ponerConfig(sid, { install: inst });
+      return res.json({ success: r.status < 300, install: inst });
+    } catch (e) {
+      return res.status(500).json({ success: false, message: e.message });
+    }
+  }
+
+  // ---- estado para el panel ----
+  function salud(sid) {
+    sid = str(sid);
+    const c = consultas.get(sid) || { n: 0, ultima: null };
+    return {
+      config: cfg(sid), consultas: c.n, ultimaConsulta: c.ultima,
+      catalogo: Object.keys(catalogo(sid)).length, cotizaciones: cantidad(),
+      fotos: { aceptadas: estado.aceptadas, rechazadas: estado.rechazadas },
+      decisiones: decisiones.filter((d) => d.storeId === sid).slice(0, 50),
+    };
+  }
+
+  return { regla, foto, configPublica, widget, install, salud, ponerConfig, refrescarConfig, cargarCatalogos, recuperarFotos, cfg };
+}
+
+function registerAltoEnviosRoutes(app, { db }) {
+  const express = require("express");
+  const s = crearServicio({ db });
+  // la foto llega como text/plain (el script la manda así para evitar el preflight de CORS)
+  app.options("/api/alto-envios/foto", s.foto);
+  app.post("/api/alto-envios/foto", express.text({ type: () => true, limit: "1mb" }), s.foto);
+  app.post("/api/alto-envios/regla", s.regla);
+  app.get("/api/alto-envios/config", s.configPublica);
+  app.post("/api/alto-envios/config", async (req, res) => {
+    const { storeId, enabled, ocultar } = req.body || {};
+    if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
+    const cambios = {};
+    if (typeof enabled === "boolean") cambios.enabled = enabled;
+    if (typeof ocultar === "boolean") cambios.ocultar = ocultar;
+    try {
+      const c = await s.ponerConfig(storeId, cambios);
+      if (c.enabled || c.ocultar) s.cargarCatalogos();
+      res.json({ success: true, config: c });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+  });
+  app.get("/api/alto-envios-widget.js", s.widget);
+  app.post("/api/alto-envios/install", s.install);
+  app.get("/api/alto-envios/salud", (req, res) => res.json({ success: true, ...s.salud(req.query.storeId) }));
+  // al arrancar: config, cotizaciones guardadas y catálogo (en segundo plano)
+  s.refrescarConfig().then(() => Promise.all([s.recuperarFotos(), s.cargarCatalogos()]))
+    .catch((e) => console.warn("[alto-envios] arranque:", e.message));
+  return s;
+}
+
 module.exports = {
   TTL_SEG, MAX_CLAVES, MAX_OPCIONES, _DATOS,
   huella, guardar, clasificar, elegidas, aOcultar, cargarCatalogo, catalogo, tiendasConCatalogo,
   formatoTn, decidir, marcarVisto, visto, borrarTodo, cantidad,
+  crearServicio, registerAltoEnviosRoutes,
 };
