@@ -17,15 +17,16 @@ export function App(nube) {
 	// Los desplegables y las etiquetas se prenden desde el panel de GlowLab (enabled). La foto se manda siempre,
 	// porque el filtro del checkout la necesita.
 	let habilitado = false;
-	// Diseño editable desde el panel (llega con la config); los defaults son el diseño original.
+	// Diseño editable desde el panel (llega con la config); los defaults son el diseño de diseño gráfico de Alto
+	// Rancho (13/11/2026). fondoTitulo = fondo de los grupos; fondoTituloElegida = fondo de la opción elegida.
 	let E = {
-		fuente: "inherit", tamano: 14, radio: 8, mostrarIconos: true,
-		colorTexto: "#111111", colorElegida: "#111111", colorBorde: "#e3e3e3",
-		fondoTitulo: "#f3f3f3", fondoTituloElegida: "#dcdcdc",
+		fuente: "Poppins", tamano: 14, radio: 10, mostrarIconos: true,
+		colorTexto: "#111111", colorElegida: "#111111", colorBorde: "#dddddd",
+		fondoTitulo: "#ffffff", fondoTituloElegida: "#f4f4f4",
 		ecoFondo: "#E2EFDA", ecoTexto: "#2E6B1F", rapFondo: "#DDEBF7", rapTexto: "#1F4E79",
-		pregunta: "¿Cómo querés recibirlo?",
+		pregunta: "¿cómo querés recibirlo?",
 		tituloDomicilio: "Envío a domicilio", tituloLocal: "Retiro en nuestros locales", tituloPunto: "Entrega en punto de retiro",
-		textoEco: "Más económico", textoRap: "Más rápido",
+		textoEco: "más económico", textoRap: "más rápido",
 	};
 	const px = (n) => `${Math.round(n * 10) / 10}px`;
 
@@ -79,7 +80,7 @@ export function App(nube) {
 		return n;
 	}
 	// ---- nombres y fechas cortos (igual que el carrito) ----
-	const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+	const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 	const NE = { "correo-arg-clasico": "Correo Argentino", "correo-arg-expreso": "Correo Argentino Expreso", andreani: "Andreani", oca: "OCA" };
 	const titulo = (x) => String(x).toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
 	const hoy0 = () => { const h = new Date(); h.setHours(0, 0, 0, 0); return h; };
@@ -94,7 +95,7 @@ export function App(nube) {
 		const a = aDia(o.min_delivery_date), b = aDia(o.max_delivery_date);
 		if (!a && !b) return "";
 		if (!a || !b || a.getTime() === b.getTime()) return diaCorto(a || b);
-		return `${diaCorto(a)} – ${diaCorto(b)}`;
+		return `entre ${diaCorto(a)} - ${diaCorto(b)}`;
 	};
 	const diasCk = (o) => { const b = aDia(o.max_delivery_date); return b ? Math.round((b - hoy0()) / 86400000) : 999; };
 	function corto(o) {
@@ -135,14 +136,14 @@ export function App(nube) {
 		if (!ops.length) return;
 		const grupos = { domicilio: [], punto: [], local: [] };
 		for (const o of ops) { const c = clasificar(o); grupos[c.grupo].push({ o, transp: c.transp, p: Number(o.price) || 0, d: diasCk(o) }); }
-		const plata = (n) => (Number(n) === 0 ? "Gratis" : (() => { try { return "$" + Math.round(Number(n)).toLocaleString("es-AR"); } catch (_) { return "$" + n; } })());
+		const plata = (n) => (Number(n) === 0 ? "gratis" : (() => { try { return "$" + Math.round(Number(n)).toLocaleString("es-AR"); } catch (_) { return "$" + n; } })());
 		const sel = st.shipping?.selected;
 		const porPrecio = (a, b) => a.p - b.p || a.d - b.d;
 		const T = E.tamano;   // 14 = tamaño original
 		// los txt de TiendaNube traen margen y alto de línea propios; la fuente solo se ve si el checkout la tiene cargada
 		const T0 = { margin: "0", lineHeight: "1.25", ...(E.fuente !== "inherit" ? { fontFamily: `'${E.fuente}', sans-serif` } : {}) };
-		const etiqueta = (texto, fondo, color) => ui("box", { padding: "0 6px", borderRadius: "9px", background: fondo, children: [txt(texto, { modifiers: ["bold"], style: { ...T0, fontSize: px(T * 10.5 / 14), lineHeight: "1.5", color, whiteSpace: "nowrap" } })] });
-		const verbos = { domicilio: "Llega", local: "Retirás", punto: "Retirás" };
+		const etiqueta = (texto, fondo, color) => ui("box", { padding: "0 8px", borderRadius: "10px", background: fondo, children: [txt(texto, { style: { ...T0, fontSize: px(T * 11.5 / 14), fontWeight: "500", lineHeight: "1.5", color, whiteSpace: "nowrap" } })] });
+		const verbos = { domicilio: "llega", local: "retirás", punto: "retirás" };
 		// Fila compacta: círculo, nombre corto (+ etiqueta) y abajo cuándo; precio a la derecha.
 		const filaOpcion = (x, elegida, grupo, eco, rap) => {
 			const c = corto(x.o);
@@ -152,23 +153,23 @@ export function App(nube) {
 				: c.extra + (cuando ? " · " + cuando.charAt(0).toLowerCase() + cuando.slice(1) : ""));
 			return ui("button", {
 				variant: "transparent", width: "100%",
-				style: { display: "block", width: "100%", boxSizing: "border-box", textAlign: "left", padding: "6px 9px", border: `1px solid ${elegida ? E.colorElegida : E.colorBorde}`,
-					borderRadius: px(E.radio * 6 / 8), background: elegida ? "#fafafa" : "#fff", color: E.colorTexto, whiteSpace: "normal", lineHeight: "1.25" },
+				style: { display: "block", width: "100%", boxSizing: "border-box", textAlign: "left", padding: "9px 12px", border: `1px solid ${elegida ? E.colorBorde : "transparent"}`,
+					borderRadius: px(E.radio), background: elegida ? E.fondoTituloElegida : "transparent", color: E.colorTexto, whiteSpace: "normal", lineHeight: "1.25" },
 				// al elegir, el grupo queda abierto (el script redibuja con la opción nueva)
 				onClick: () => { grupoAbiertoCk = grupo; nube.send("shipping:select", () => ({ shipping: { selected: clave(x.o) } })); },
 				children: [ui("row", { justifyContent: "space-between", alignItems: "center", gap: "10px", children: [
 					ui("row", { alignItems: "center", gap: "9px", children: [
-						txt(elegida ? "◉" : "○", { style: { ...T0, fontSize: px(T * 19 / 14), color: elegida ? E.colorElegida : "#aaa", lineHeight: "1" } }),
+						txt(elegida ? "◉" : "○", { style: { ...T0, fontSize: px(T * 16 / 14), color: elegida ? E.colorElegida : "#999", lineHeight: "1" } }),
 						ui("col", { gap: "1px", children: [
 							ui("row", { alignItems: "center", gap: "6px", style: { flexWrap: "wrap" }, children: [
-								txt(c.t, { modifiers: ["bold"], style: { ...T0, color: E.colorTexto, fontSize: px(T) } }),
+								txt(c.t, { style: { ...T0, color: E.colorTexto, fontSize: px(T * 15 / 14) } }),
 								...(eco ? [etiqueta(E.textoEco, E.ecoFondo, E.ecoTexto)] : []),
 								...(rap ? [etiqueta(E.textoRap, E.rapFondo, E.rapTexto)] : []),
 							] }),
 							...(linea ? [txt(linea, { style: { ...T0, color: "#666", fontSize: px(T * 12 / 14) } })] : []),
 						] }),
 					] }),
-					txt(plata(x.o.price), { modifiers: ["bold"], style: { ...T0, color: E.colorTexto, fontSize: px(T), whiteSpace: "nowrap" } }),
+					txt(plata(x.o.price), { style: { ...T0, color: E.colorTexto, fontSize: px(T * 15 / 14), fontWeight: "600", whiteSpace: "nowrap" } }),
 				] })],
 			});
 		};
@@ -199,30 +200,30 @@ export function App(nube) {
 			const minP = Math.min(...ps), maxP = Math.max(...ps), minD = Math.min(...ds), maxD = Math.max(...ds);
 			const eco = todas.length > 1 && minP < maxP ? [...todas].sort(porPrecio)[0] : null;
 			const rap = todas.length > 1 && minD < maxD && minD < 999 ? [...todas].sort((a, b) => a.d - b.d || a.p - b.p)[0] : null;
-			const sub = todas.every((x) => x.p === 0) ? "Gratis" : (minP === 0 ? "con opción gratis" : `desde ${plata(minP)}`);
+			const sub = todas.every((x) => x.p === 0) ? "gratis" : (minP === 0 ? "con opción gratis" : `desde ${plata(minP)}`);
 			const filas = (verMasCk[g] ? vista.concat(resto) : vista).map((x) => filaOpcion(x, x === elegidaX, g, x === eco, x === rap));
 			if (resto.length) {
 				// OJO: "grupo" va en las props para que el botón de cada grupo tenga su propio __internalId.
-				filas.push(ui("button", { variant: "transparent", grupo: g, style: { padding: "2px", textAlign: "left", textDecoration: "underline", color: "#555", fontSize: px(T * 12 / 14) },
+				filas.push(ui("button", { variant: "transparent", grupo: g, style: { padding: "2px 0 0 44px", textAlign: "left", textDecoration: "underline", color: "#333", fontSize: px(T * 12 / 14), ...(T0.fontFamily ? { fontFamily: T0.fontFamily } : {}) },
 					onClick: () => { verMasCk[g] = !verMasCk[g]; grupoAbiertoCk = g; agrupado(nube.getState()); },
 					children: verMasCk[g] ? "ver menos" : `ver ${resto.length} ${resto.length === 1 ? "opción más" : "opciones más"}` }));
 			}
 			items.push(ui("accordionItem", { value: g, onToggle: () => { grupoAbiertoCk = grupoAbiertoCk === g ? null : g; agrupado(nube.getState()); }, children: [
-				ui("accordionHeader", { showIcon: false, style: { background: elegidaX ? E.fondoTituloElegida : E.fondoTitulo, borderRadius: px(E.radio) }, children: [
+				ui("accordionHeader", { showIcon: false, style: { background: E.fondoTitulo, border: `1px solid ${E.colorBorde}`, borderRadius: px(E.radio) }, children: [
 					ui("row", { alignItems: "center", gap: "8px", children: [
+						icono(grupoAbiertoCk === g ? "abrir" : "derecha"),
 						...(E.mostrarIconos ? [icono(g)] : []),
 						ui("col", { gap: "1px", style: { flex: 1 }, children: [
-							txt(titulos[g], { modifiers: ["bold"], style: { ...T0, fontSize: px(T), color: E.colorTexto } }),
-							txt(sub, { style: { ...T0, fontSize: px(T * 12 / 14), color: "#555" } }),
+							txt(titulos[g], { style: { ...T0, fontSize: px(T * 17 / 14), fontWeight: "600", color: E.colorTexto } }),
+							...(grupoAbiertoCk === g ? [] : [txt(sub, { style: { ...T0, fontSize: px(T * 12 / 14), color: "#555" } })]),
 						] }),
-						icono(grupoAbiertoCk === g ? "cerrar" : "abrir"),
 					] }),
 				] }),
 				ui("accordionContent", { children: [ui("col", { gap: "4px", children: filas })] }),
 			] }));
 		}
 		nube.render("before_shipping_form", ui("col", { gap: "6px", padding: "4px", children: [
-			...(E.pregunta ? [txt(E.pregunta, { modifiers: ["bold"], style: { color: E.colorTexto, ...(T0.fontFamily ? { fontFamily: T0.fontFamily } : {}) } })] : []),
+			...(E.pregunta ? [txt(E.pregunta, { style: { ...T0, color: E.colorTexto, fontSize: px(T * 20 / 14), fontWeight: "600", marginBottom: "6px" } })] : []),
 			ui("accordionRoot", { ...(grupoAbiertoCk ? { defaultValue: grupoAbiertoCk } : {}), children: items }),
 		] }));
 	}

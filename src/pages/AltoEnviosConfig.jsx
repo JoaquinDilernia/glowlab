@@ -9,15 +9,15 @@ import './LocalStockConfig.css';
 // Backend: functions/alto-envios.js. Diseño: docs/superpowers/specs/2026-11-13-alto-envios-design.md
 const ALLOWED_STORE_ID = '2547699';
 
-// Igual que DEFAULT_ESTILO del backend (functions/alto-envios.js): el diseño que aprobaron los dueños.
+// Igual que DEFAULT_ESTILO del backend (functions/alto-envios.js): el diseño de diseño gráfico (13/11/2026).
 const DEFAULT_ESTILO = {
-  fuente: 'inherit', tamano: 14, radio: 8, mostrarIconos: true,
-  colorTexto: '#111111', colorElegida: '#111111', colorBorde: '#e3e3e3',
-  fondoTitulo: '#f3f3f3', fondoTituloElegida: '#dcdcdc',
+  fuente: 'Poppins', tamano: 14, radio: 10, mostrarIconos: true,
+  colorTexto: '#111111', colorElegida: '#111111', colorBorde: '#dddddd',
+  fondoTitulo: '#ffffff', fondoTituloElegida: '#f4f4f4',
   ecoFondo: '#E2EFDA', ecoTexto: '#2E6B1F', rapFondo: '#DDEBF7', rapTexto: '#1F4E79',
-  pregunta: '¿Cómo querés recibirlo?',
+  pregunta: '¿cómo querés recibirlo?',
   tituloDomicilio: 'Envío a domicilio', tituloLocal: 'Retiro en nuestros locales', tituloPunto: 'Entrega en punto de retiro',
-  textoEco: 'Más económico', textoRap: 'Más rápido',
+  textoEco: 'más económico', textoRap: 'más rápido',
 };
 const TIPOGRAFIAS = [
   { value: 'inherit', label: 'La de la tienda' },
@@ -28,13 +28,13 @@ const TIPOGRAFIAS = [
   { value: 'Oswald', label: 'Oswald' },
 ];
 const COLORES = [
-  ['colorTexto', 'Texto'], ['colorElegida', 'Opción elegida'], ['colorBorde', 'Bordes'],
-  ['fondoTitulo', 'Fondo de los títulos'], ['fondoTituloElegida', 'Título con opción elegida'],
+  ['colorTexto', 'Texto'], ['colorElegida', 'Círculo de la opción elegida'], ['colorBorde', 'Bordes'],
+  ['fondoTitulo', 'Fondo de los grupos'], ['fondoTituloElegida', 'Fondo de la opción elegida'],
   ['ecoFondo', 'Etiqueta económico (fondo)'], ['ecoTexto', 'Etiqueta económico (texto)'],
   ['rapFondo', 'Etiqueta rápido (fondo)'], ['rapTexto', 'Etiqueta rápido (texto)'],
 ];
 const TEXTOS = [
-  ['pregunta', 'Pregunta (solo checkout)'], ['tituloDomicilio', 'Grupo domicilio'], ['tituloLocal', 'Grupo locales'],
+  ['pregunta', 'Pregunta'], ['tituloDomicilio', 'Grupo domicilio'], ['tituloLocal', 'Grupo locales'],
   ['tituloPunto', 'Grupo punto de retiro'], ['textoEco', 'Etiqueta económico'], ['textoRap', 'Etiqueta rápido'],
 ];
 
@@ -42,6 +42,7 @@ const TEXTOS = [
 const ICONOS = {
   domicilio: "M155-195q-35-35-35-85H40v-440q0-33 23.5-56.5T120-800h560v160h120l120 160v200h-80q0 50-35 85t-85 35q-50 0-85-35t-35-85H360q0 50-35 85t-85 35q-50 0-85-35Zm113.5-56.5Q280-263 280-280t-11.5-28.5Q257-320 240-320t-28.5 11.5Q200-297 200-280t11.5 28.5Q223-240 240-240t28.5-11.5ZM120-360h32q17-18 39-29t49-11q27 0 49 11t39 29h272v-360H120v360Zm628.5 108.5Q760-263 760-280t-11.5-28.5Q737-320 720-320t-28.5 11.5Q680-297 680-280t11.5 28.5Q703-240 720-240t28.5-11.5ZM680-440h170l-90-120h-80v120ZM360-540Z",
   local: "M841-518v318q0 33-23.5 56.5T761-120H201q-33 0-56.5-23.5T121-200v-318q-23-21-35.5-54t-.5-72l42-136q8-26 28.5-43t47.5-17h556q27 0 47 16.5t29 43.5l42 136q12 39-.5 71T841-518Zm-272-42q27 0 41-18.5t11-41.5l-22-140h-78v148q0 21 14 36.5t34 15.5Zm-180 0q23 0 37.5-15.5T441-612v-148h-78l-22 140q-4 24 10.5 42t37.5 18Zm-178 0q18 0 31.5-13t16.5-33l22-154h-78l-40 134q-6 20 6.5 43t41.5 23Zm540 0q29 0 42-23t6-43l-42-134h-76l22 154q3 20 16.5 33t31.5 13ZM201-200h560v-282q-5 2-6.5 2H751q-27 0-47.5-9T663-518q-18 18-41 28t-49 10q-27 0-50.5-10T481-518q-17 18-39.5 28T393-480q-29 0-52.5-10T299-518q-21 21-41.5 29.5T211-480h-4.5q-2.5 0-5.5-2v282Zm560 0H201h560Z",
+  derecha: "M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z",
   abrir: "M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z",
   cerrar: "m296-345-56-56 240-240 240 240-56 56-184-184-184 184Z",
   punto: "M480-301q99-80 149.5-154T680-594q0-90-56-148t-144-58q-88 0-144 58t-56 148q0 65 50.5 139T480-301Zm0 101Q339-304 269.5-402T200-594q0-125 78-205.5T480-880q124 0 202 80.5T760-594q0 94-69.5 192T480-200Zm0-320q33 0 56.5-23.5T560-600q0-33-23.5-56.5T480-680q-33 0-56.5 23.5T400-600q0 33 23.5 56.5T480-520ZM200-80v-80h560v80H200Zm280-520Z",
@@ -55,47 +56,53 @@ function Vista({ e }) {
     if (document.getElementById(id)) return;
     const l = document.createElement('link');
     l.id = id; l.rel = 'stylesheet';
-    l.href = 'https://fonts.googleapis.com/css2?family=' + e.fuente.replace(/ /g, '+') + ':wght@400;700&display=swap';
+    l.href = 'https://fonts.googleapis.com/css2?family=' + e.fuente.replace(/ /g, '+') + ':wght@400;500;600;700&display=swap';
     document.head.appendChild(l);
   }, [e.fuente]);
   const T = e.tamano;
   const px = (n) => `${Math.round(n * 10) / 10}px`;
   const familia = e.fuente === 'inherit' ? 'inherit' : `'${e.fuente}', sans-serif`;
-  const grupo = (icono, titulo, sub, abierto, conElegida, filas) => (
-    <div style={{ border: `1px solid ${e.colorBorde}`, borderRadius: px(e.radio), marginBottom: 8, overflow: 'hidden', background: '#fff' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: conElegida ? e.fondoTituloElegida : e.fondoTitulo }}>
-        {e.mostrarIconos && <svg viewBox="0 -960 960 960" width="20" height="20" style={{ flex: 'none', fill: 'currentColor' }} aria-hidden="true"><path d={ICONOS[icono]} /></svg>}
-        <span style={{ flex: 1 }}>
-          <b style={{ display: 'block', fontSize: px(T) }}>{titulo}</b>
-          <small style={{ display: 'block', fontSize: px(T * 12 / 14), opacity: 0.7 }}>{sub}</small>
-        </span>
-        <svg viewBox="0 -960 960 960" width="22" height="22" style={{ flex: 'none', fill: 'currentColor', opacity: 0.75, transform: abierto ? 'rotate(180deg)' : 'none' }} aria-hidden="true"><path d={ICONOS.abrir} /></svg>
+  const svg = (k, size, extra) => (
+    <svg viewBox="0 -960 960 960" width={size} height={size} style={{ flex: 'none', fill: 'currentColor', ...extra }} aria-hidden="true"><path d={ICONOS[k]} /></svg>
+  );
+  const grupo = (icono, titulo, sub, abierto, filas, mas) => (
+    <>
+      <div style={{ border: `1px solid ${e.colorBorde}`, borderRadius: px(e.radio), marginBottom: 10, overflow: 'hidden', background: e.fondoTitulo }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px' }}>
+          {svg('derecha', 20, { transform: abierto ? 'rotate(90deg)' : 'none' })}
+          {e.mostrarIconos && svg(icono, 22)}
+          <span style={{ flex: 1 }}>
+            <span style={{ display: 'block', fontWeight: 600, fontSize: px(T * 17 / 14), lineHeight: 1.25 }}>{titulo}</span>
+            {!abierto && <small style={{ display: 'block', fontSize: px(T * 12 / 14), color: '#555', marginTop: 1 }}>{sub}</small>}
+          </span>
+        </div>
+        {abierto && <div style={{ padding: '0 12px 12px' }}>{filas}</div>}
       </div>
-      {abierto && <div style={{ padding: '6px 8px 8px' }}>{filas}</div>}
-    </div>
+      {abierto && mas && <span style={{ display: 'block', margin: '-2px 0 12px 64px', color: '#333', textDecoration: 'underline', fontSize: px(T * 12 / 14) }}>{mas}</span>}
+    </>
   );
   const etiqueta = (texto, fondo, color) => (
-    <span style={{ display: 'inline-block', fontSize: px(T * 10.5 / 14), fontWeight: 700, padding: '1px 6px', borderRadius: 9, marginLeft: 5, background: fondo, color }}>{texto}</span>
+    <span style={{ display: 'inline-block', fontSize: px(T * 11.5 / 14), fontWeight: 500, padding: '1px 8px', borderRadius: 10, marginLeft: 8, background: fondo, color, whiteSpace: 'nowrap' }}>{texto}</span>
   );
   const fila = (nombre, linea, precio, elegida, extra) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 9px', margin: '2px 0', border: `1px solid ${elegida ? e.colorElegida : e.colorBorde}`,
-      borderRadius: px(e.radio * 6 / 8), background: elegida ? '#fafafa' : '#fff', fontSize: px(T * 13.5 / 14) }}>
-      <span style={{ width: 14, height: 14, borderRadius: '50%', boxSizing: 'border-box', flex: 'none',
-        border: `2px solid ${elegida ? e.colorElegida : '#bbb'}`, background: elegida ? `radial-gradient(${e.colorElegida} 40%,#fff 46%)` : 'none' }} />
-      <span style={{ flex: 1 }}><b>{nombre}</b>{extra}<small style={{ display: 'block', fontSize: px(T * 11.5 / 14), opacity: 0.7, marginTop: 2 }}>{linea}</small></span>
-      <b style={{ whiteSpace: 'nowrap' }}>{precio}</b>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '9px 12px', margin: '2px 0', border: `1px solid ${elegida ? e.colorBorde : 'transparent'}`,
+      borderRadius: px(e.radio), background: elegida ? e.fondoTituloElegida : 'transparent', lineHeight: 1.25 }}>
+      <span style={{ width: 12, height: 12, borderRadius: '50%', boxSizing: 'border-box', flex: 'none', marginTop: px(T * 3.5 / 14),
+        border: `1px solid ${elegida ? e.colorElegida : '#999'}`, background: elegida ? `radial-gradient(${e.colorElegida} 45%,#fff 52%)` : 'none' }} />
+      <span style={{ flex: 1 }}><span style={{ fontSize: px(T * 15 / 14) }}>{nombre}</span>{extra}<small style={{ display: 'block', fontSize: px(T * 12 / 14), color: '#666', marginTop: 2 }}>{linea}</small></span>
+      <span style={{ whiteSpace: 'nowrap', fontWeight: 600, fontSize: px(T * 15 / 14), paddingLeft: 8 }}>{precio}</span>
     </div>
   );
   return (
     <div style={{ fontFamily: familia, fontSize: px(T), lineHeight: 1.3, color: e.colorTexto }}>
-      {grupo('domicilio', e.tituloDomicilio, 'desde $5.200', true, true, <>
-        {fila('Chazki', 'Llega jue 20/11 – lun 24/11', '$5.200', true, etiqueta(e.textoEco, e.ecoFondo, e.ecoTexto))}
-        {fila('Toparco', 'Llega mañana', '$9.800', false, etiqueta(e.textoRap, e.rapFondo, e.rapTexto))}
-        {fila('Envío Altorancho', 'Llega mar 18/11 · entrega dentro de tu domicilio', '$19.500', false, null)}
-        <span style={{ display: 'block', margin: '4px 2px 0', color: '#555', textDecoration: 'underline', fontSize: px(T * 12 / 14) }}>ver 3 opciones más</span>
-      </>)}
-      {grupo('local', e.tituloLocal, 'Gratis', false, false, null)}
-      {grupo('punto', e.tituloPunto, 'desde $4.100', false, false, null)}
+      {e.pregunta && <div style={{ margin: '0 0 12px', fontSize: px(T * 20 / 14), fontWeight: 600, lineHeight: 1.2 }}>{e.pregunta}</div>}
+      {grupo('domicilio', e.tituloDomicilio, 'desde $9.999', true, <>
+        {fila('Correo Argentino', 'llega entre jueves 19/11 - martes 24/11', '$99.999', true, etiqueta(e.textoEco, e.ecoFondo, e.ecoTexto))}
+        {fila('Urbano', 'llega entre jueves 19/11 - martes 24/11', '$99.999', false, null)}
+        {fila('Andreani', 'llega miércoles 18/11', '$99.999', false, etiqueta(e.textoRap, e.rapFondo, e.rapTexto))}
+      </>, 'ver 3 opciones más')}
+      {grupo('local', e.tituloLocal, 'gratis', false, null)}
+      {grupo('punto', e.tituloPunto, 'desde $9.999', false, null)}
     </div>
   );
 }

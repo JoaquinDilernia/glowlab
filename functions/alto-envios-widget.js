@@ -13,14 +13,16 @@
   window.__altoEnviosTema = true;
 
   // GlowLab (13/11/2026): diseño editable desde el panel. El backend antepone window.__altoEnviosCfg; los
-  // defaults son el diseño original.
+  // defaults son el diseño de diseño gráfico de Alto Rancho (13/11/2026): grupos blancos con borde, flecha a la
+  // izquierda, la opción elegida con fondo gris, textos chicos en minúscula y "ver N opciones más" bajo el grupo.
   const E = Object.assign({
-    fuente: "inherit", tamano: 14, radio: 8, mostrarIconos: true,
-    colorTexto: "#111111", colorElegida: "#111111", colorBorde: "#e3e3e3",
-    fondoTitulo: "#f3f3f3", fondoTituloElegida: "#dcdcdc",
+    fuente: "Poppins", tamano: 14, radio: 10, mostrarIconos: true,
+    colorTexto: "#111111", colorElegida: "#111111", colorBorde: "#dddddd",
+    fondoTitulo: "#ffffff", fondoTituloElegida: "#f4f4f4",
     ecoFondo: "#E2EFDA", ecoTexto: "#2E6B1F", rapFondo: "#DDEBF7", rapTexto: "#1F4E79",
+    pregunta: "¿cómo querés recibirlo?",
     tituloDomicilio: "Envío a domicilio", tituloLocal: "Retiro en nuestros locales", tituloPunto: "Entrega en punto de retiro",
-    textoEco: "Más económico", textoRap: "Más rápido"
+    textoEco: "más económico", textoRap: "más rápido"
   }, window.__altoEnviosCfg || {});
   const px = function (n) { return (Math.round(n * 10) / 10) + "px"; };
   // Íconos de Google (Material Symbols: local_shipping, storefront, pin_drop) que antepone el backend.
@@ -29,42 +31,44 @@
     return ICONOS[k] ? '<svg viewBox="0 -960 960 960" aria-hidden="true"><path d="' + ICONOS[k] + '"/></svg>' : "";
   };
   const T = E.tamano;          // 14 = tamaño original
-  const R = E.radio;           // 8 = radio original de los grupos (las filas usan 6)
+  const R = E.radio;           // radio de los grupos y de la opción elegida
   const FAMILIA = E.fuente === "inherit" ? "inherit" : "'" + E.fuente + "', sans-serif";
   if (E.fuente !== "inherit" && !document.getElementById("alto-env-font")) {
     const l = document.createElement("link");
     l.id = "alto-env-font"; l.rel = "stylesheet";
-    l.href = "https://fonts.googleapis.com/css2?family=" + E.fuente.replace(/ /g, "+") + ":wght@400;700&display=swap";
+    l.href = "https://fonts.googleapis.com/css2?family=" + E.fuente.replace(/ /g, "+") + ":wght@400;500;600;700&display=swap";
     document.head.appendChild(l);
   }
 
   const CSS = `
   .alto-env{margin:8px 0 14px;font-size:${px(T)};line-height:1.3;font-family:${FAMILIA};color:${E.colorTexto}}
-  .alto-env-g{border:1px solid ${E.colorBorde};border-radius:${px(R)};margin-bottom:8px;overflow:hidden;background:#fff}
-  .alto-env-h{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;background:${E.fondoTitulo};border:0;cursor:pointer;text-align:left;font:inherit;color:inherit}
-  .alto-env-h .alto-env-ic{width:20px;height:20px;flex:none;display:flex;align-items:center;justify-content:center}
-  .alto-env-h .alto-env-ic svg{width:20px;height:20px;fill:currentColor;display:block}
+  .alto-env-q{margin:0 0 12px;font-size:${px(T * 20 / 14)};font-weight:600;line-height:1.2}
+  .alto-env-g{border:1px solid ${E.colorBorde};border-radius:${px(R)};margin-bottom:10px;overflow:hidden;background:${E.fondoTitulo}}
+  .alto-env-h{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:inherit}
+  .alto-env-h .alto-env-caret{flex:none;width:20px;height:20px;display:flex;align-items:center;justify-content:center;transition:transform .2s ease}
+  .alto-env-h .alto-env-caret svg{width:20px;height:20px;fill:currentColor;display:block}
+  .alto-env-g.abierto .alto-env-caret{transform:rotate(90deg)}
+  .alto-env-h .alto-env-ic{width:22px;height:22px;flex:none;display:flex;align-items:center;justify-content:center}
+  .alto-env-h .alto-env-ic svg{width:22px;height:22px;fill:currentColor;display:block}
   .alto-env-h .alto-env-ht{flex:1;min-width:0}
-  .alto-env-h .alto-env-ht b{display:block;font-weight:700;font-size:${px(T)}}
-  .alto-env-h .alto-env-ht small{display:block;font-size:${px(T * 12 / 14)};opacity:.7;margin-top:1px}
-  .alto-env-h .alto-env-caret{flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;transition:transform .2s ease;opacity:.75}
-  .alto-env-h .alto-env-caret svg{width:22px;height:22px;fill:currentColor;display:block}
-  .alto-env-g.abierto .alto-env-caret{transform:rotate(180deg)}
-  .alto-env-g.con-elegida .alto-env-h{background:${E.fondoTituloElegida}}
-  .alto-env-b{display:none;padding:6px 8px 8px}
+  .alto-env-h .alto-env-ht b{display:block;font-weight:600;font-size:${px(T * 17 / 14)};line-height:1.25}
+  .alto-env-h .alto-env-ht small{display:block;font-size:${px(T * 12 / 14)};color:#555;margin-top:1px}
+  .alto-env-g.abierto .alto-env-ht small{display:none}
+  .alto-env-b{display:none;padding:0 12px 12px}
   .alto-env-g.abierto .alto-env-b{display:block}
-  .alto-env-o{display:flex;align-items:center;gap:9px;width:100%;padding:6px 9px;margin:2px 0;border:1px solid ${E.colorBorde};border-radius:${px(R * 6 / 8)};background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit;font-size:${px(T * 13.5 / 14)};line-height:1.25}
-  .alto-env-o .alto-env-dot{width:14px;height:14px;border-radius:50%;border:2px solid #bbb;flex:none;box-sizing:border-box}
-  .alto-env-o.elegida{border-color:${E.colorElegida};background:#fafafa}
-  .alto-env-o.elegida .alto-env-dot{border-color:${E.colorElegida};background:radial-gradient(${E.colorElegida} 40%,#fff 46%)}
+  .alto-env-o{display:flex;align-items:flex-start;gap:8px;width:100%;padding:9px 12px;margin:2px 0;border:1px solid transparent;border-radius:${px(R)};background:none;cursor:pointer;text-align:left;font:inherit;color:inherit;line-height:1.25}
+  .alto-env-o.elegida{background:${E.fondoTituloElegida};border-color:${E.colorBorde}}
+  .alto-env-o .alto-env-dot{width:12px;height:12px;border-radius:50%;border:1px solid #999;flex:none;box-sizing:border-box;margin-top:${px(T * 3.5 / 14)}}
+  .alto-env-o.elegida .alto-env-dot{border-color:${E.colorElegida};background:radial-gradient(${E.colorElegida} 45%,#fff 52%)}
   .alto-env-o .alto-env-t{flex:1;min-width:0}
-  .alto-env-o .alto-env-t b{font-weight:700}
-  .alto-env-o .alto-env-t small{display:block;font-size:${px(T * 11.5 / 14)};opacity:.7;margin-top:2px}
-  .alto-env-o .alto-env-p{white-space:nowrap;font-weight:700}
-  .alto-env-bd{display:inline-block;font-size:${px(T * 10.5 / 14)};font-weight:700;padding:1px 6px;border-radius:9px;margin-left:5px;vertical-align:1px;white-space:nowrap}
+  .alto-env-o .alto-env-t b{font-weight:400;font-size:${px(T * 15 / 14)}}
+  .alto-env-o .alto-env-t small{display:block;font-size:${px(T * 12 / 14)};color:#666;margin-top:2px}
+  .alto-env-o .alto-env-p{white-space:nowrap;font-weight:600;font-size:${px(T * 15 / 14)};padding-left:8px}
+  .alto-env-bd{display:inline-block;font-size:${px(T * 11.5 / 14)};font-weight:500;padding:1px 8px;border-radius:10px;margin-left:8px;vertical-align:1px;white-space:nowrap}
   .alto-env-bd.eco{background:${E.ecoFondo};color:${E.ecoTexto}}
   .alto-env-bd.rap{background:${E.rapFondo};color:${E.rapTexto}}
-  .alto-env-todas{display:block;margin:4px 2px 0;background:none;border:0;padding:0;color:#555;text-decoration:underline;cursor:pointer;font:inherit;font-size:${px(T * 12 / 14)}}
+  .alto-env-todas{display:none;margin:-2px 0 12px 64px;background:none;border:0;padding:0;color:#333;text-decoration:underline;cursor:pointer;font:inherit;font-size:${px(T * 12 / 14)}}
+  .alto-env-g.abierto + .alto-env-todas{display:block}
   .alto-env-oculto{display:none !important}
   /* el formulario "Cambiar CP" del tema queda invisible (opacidad 0) pero encima de la lista: su link
      "No sé mi código postal" (correoargentino.com.ar) recibía los toques sobre el título del primer grupo
@@ -91,7 +95,7 @@
   }
 
   // ---------------------------------------------------------------- fechas --
-  const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+  const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
   function hoy0() { const h = new Date(); h.setHours(0, 0, 0, 0); return h; }
   function aFecha(dd, mm) {
     const h = hoy0();
@@ -119,11 +123,11 @@
     if (d === 1) return "mañana";
     return DIAS[f.getDay()] + " " + ("0" + f.getDate()).slice(-2) + "/" + ("0" + (f.getMonth() + 1)).slice(-2);
   }
-  // "jue 29/10 – lun 02/11" ("" si el tema no trajo fechas)
+  // "entre jueves 19/11 - martes 24/11" / "miércoles 18/11" ("" si el tema no trajo fechas)
   function rango(fs) {
     if (!fs.length) return "";
     const a = fs[0], b = fs[fs.length - 1];
-    return a.getTime() === b.getTime() ? diaCorto(a) : diaCorto(a) + " – " + diaCorto(b);
+    return a.getTime() === b.getTime() ? diaCorto(a) : "entre " + diaCorto(a) + " - " + diaCorto(b);
   }
   function diasHasta(fs) { return fs.length ? Math.round((fs[fs.length - 1] - hoy0()) / 86400000) : 999; }
 
@@ -191,16 +195,15 @@
     return vista;
   }
 
-  function fmt(v) { return v === 0 ? "Gratis" : "$" + Math.round(v).toLocaleString("es-AR"); }
+  function fmt(v) { return v === 0 ? "gratis" : "$" + Math.round(v).toLocaleString("es-AR"); }
 
   const GRUPOS = [
-    { k: "domicilio", titulo: E.tituloDomicilio, verbo: "Llega" },
-    { k: "local", titulo: E.tituloLocal, verbo: "Retirás" },   // 28/10/2026 (Pedro): locales antes que puntos
-    { k: "punto", titulo: E.tituloPunto, verbo: "Retirás" }
+    { k: "domicilio", titulo: E.tituloDomicilio, verbo: "llega" },
+    { k: "local", titulo: E.tituloLocal, verbo: "retirás" },   // 28/10/2026 (Pedro): locales antes que puntos
+    { k: "punto", titulo: E.tituloPunto, verbo: "retirás" }
   ];
 
   // Los grupos arrancan CERRADOS; el que abre el cliente se recuerda cuando el tema redibuja (cambio de cantidad o CP).
-  // El grupo con la opción elegida lleva el título en gris más oscuro.
   let grupoAbierto = null;
   const verTodas = {};   // grupo → true si el cliente tocó "Ver N opciones más"
 
@@ -226,6 +229,7 @@
     const raiz = document.createElement("div");
     raiz.className = "alto-env";
     raiz.dataset.firma = firma;
+    if (E.pregunta) { const q = document.createElement("div"); q.className = "alto-env-q"; q.textContent = E.pregunta; raiz.appendChild(q); }
     const elegidaActual = ops.find(function (o) { return o.label && o.label.querySelector("input") && o.label.querySelector("input").checked; });
     GRUPOS.forEach(function (g) {
       const todas = ops.filter(function (o) { return o.grupo === g.k; });
@@ -245,11 +249,11 @@
       const rap = todas.length > 1 && minD < maxD && minD < 999 ? todas.slice().sort(function (a, b) { return a.dias - b.dias || a.precio - b.precio; })[0] : null;
 
       const caja = document.createElement("div");
-      caja.className = "alto-env-g" + (g.k === grupoAbierto ? " abierto" : "") + (elegidaActual && elegidaActual.grupo === g.k ? " con-elegida" : "");
+      caja.className = "alto-env-g" + (g.k === grupoAbierto ? " abierto" : "");
       const h = document.createElement("button");
       h.type = "button"; h.className = "alto-env-h";
-      const sub = todas.every(function (o) { return o.precio === 0; }) ? "Gratis" : (minP === 0 ? "con opción gratis" : "desde " + fmt(minP));
-      h.innerHTML = (E.mostrarIconos ? '<span class="alto-env-ic">' + icono(g.k) + '</span>' : '') + '<span class="alto-env-ht"><b></b><small></small></span><span class="alto-env-caret">' + icono("abrir") + '</span>';
+      const sub = todas.every(function (o) { return o.precio === 0; }) ? "gratis" : (minP === 0 ? "con opción gratis" : "desde " + fmt(minP));
+      h.innerHTML = '<span class="alto-env-caret">' + icono("derecha") + '</span>' + (E.mostrarIconos ? '<span class="alto-env-ic">' + icono(g.k) + '</span>' : '') + '<span class="alto-env-ht"><b></b><small></small></span>';
       h.querySelector("b").textContent = g.titulo;
       h.querySelector("small").textContent = sub;
       h.onclick = function () {
@@ -272,7 +276,7 @@
         if (o === eco) { const s1 = document.createElement("span"); s1.className = "alto-env-bd eco"; s1.textContent = E.textoEco; t.appendChild(s1); }
         if (o === rap) { const s2 = document.createElement("span"); s2.className = "alto-env-bd rap"; s2.textContent = E.textoRap; t.appendChild(s2); }
         const r = rango(o.fs);
-        const cuando = r ? g.verbo + " " + r : (o.fecha || "");
+        const cuando = r ? g.verbo + " " + r : (o.fecha || "").toLowerCase();
         // domicilio: "Llega jue 29/10 – lun 02/11 · entrega dentro de tu domicilio"
         // retiros:   "Av Libertador 5926 · retirás vie 30/10 – sáb 31/10" / "Sucursal · retirás …"
         const linea = !nc.extra ? cuando
@@ -280,12 +284,11 @@
             : nc.extra + (cuando ? " · " + cuando.charAt(0).toLowerCase() + cuando.slice(1) : ""));
         if (linea) { const sm = document.createElement("small"); sm.textContent = linea; t.appendChild(sm); }
         const sp = document.createElement("span"); sp.className = "alto-env-p";
-        sp.textContent = o.precio === 0 ? "Gratis" : fmt(o.precio);
+        sp.textContent = fmt(o.precio);
         btn.appendChild(dot); btn.appendChild(t); btn.appendChild(sp);
         btn.onclick = function () {
           Array.from(raiz.querySelectorAll(".alto-env-o")).forEach(function (x) { x.classList.remove("elegida"); });
           btn.classList.add("elegida");
-          Array.from(raiz.querySelectorAll(".alto-env-g")).forEach(function (x) { x.classList.toggle("con-elegida", x === caja); });
           // deja elegida la misma opción en la lista original del tema. 29/10/2026: si el tema redibujó la lista,
           // el label guardado ya no está en la página: se busca el actual por código.
           let lab = o.label;
@@ -299,8 +302,9 @@
         };
         b.appendChild(btn);
       });
+      let mas = null;
       if (resto.length) {
-        const mas = document.createElement("button");
+        mas = document.createElement("button");
         mas.type = "button"; mas.className = "alto-env-todas";
         const textoMas = "ver " + resto.length + (resto.length === 1 ? " opción más" : " opciones más");
         mas.textContent = verTodas[g.k] ? "ver menos" : textoMas;
@@ -309,10 +313,10 @@
           Array.from(b.querySelectorAll(".alto-env-resto")).forEach(function (x) { x.classList.toggle("alto-env-oculto", !verTodas[g.k]); });
           mas.textContent = verTodas[g.k] ? "ver menos" : textoMas;
         };
-        b.appendChild(mas);
       }
       caja.appendChild(h); caja.appendChild(b);
       raiz.appendChild(caja);
+      if (mas) raiz.appendChild(mas);   // "ver N opciones más" va debajo del grupo, fuera del recuadro
     });
     const bloque = cont.querySelector(".shipping-options") || ul;
     bloque.parentElement.insertBefore(raiz, bloque);

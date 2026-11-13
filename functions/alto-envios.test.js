@@ -355,5 +355,5 @@ test("íconos de Google (Material Symbols): SVG con el color pedido, para el che
   await s.ponerConfig(SID, { enabled: true });
   const w = resFalsa();
   await s.widget({ query: { store: SID } }, w);
-  for (const k of ["domicilio", "local", "punto", "abrir"]) assert.ok(String(w.body).includes(F.ICONOS[k]));
+  for (const k of ["domicilio", "local", "punto", "abrir", "derecha"]) assert.ok(String(w.body).includes(F.ICONOS[k]));
 });
