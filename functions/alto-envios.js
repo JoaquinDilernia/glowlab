@@ -196,6 +196,36 @@ const cantidad = () => _DATOS.size;
 const ALLOWED_STORES = ["2547699"];
 const permitida = (sid) => ALLOWED_STORES.includes(str(sid));
 
+// Diseño editable desde el panel. Los defaults son el diseño que aprobaron los dueños (paquete de logística).
+const FUENTES = ["inherit", "Poppins", "Montserrat", "Inter", "Playfair Display", "Oswald"];
+const DEFAULT_ESTILO = Object.freeze({
+  fuente: "inherit", tamano: 14, radio: 8, mostrarIconos: true,
+  colorTexto: "#111111", colorElegida: "#111111", colorBorde: "#e3e3e3",
+  fondoTitulo: "#f3f3f3", fondoTituloElegida: "#dcdcdc",
+  ecoFondo: "#E2EFDA", ecoTexto: "#2E6B1F", rapFondo: "#DDEBF7", rapTexto: "#1F4E79",
+  pregunta: "¿Cómo querés recibirlo?",
+  tituloDomicilio: "Envío a domicilio", tituloLocal: "Retiro en nuestros locales", tituloPunto: "Entrega en punto de retiro",
+  textoEco: "Más económico", textoRap: "Más rápido",
+});
+const COLOR = /^#[0-9a-fA-F]{6}$/;
+
+/** Solo claves conocidas, con tipo y rango válidos; lo inválido vuelve al default. */
+function limpiarEstilo(e) {
+  const out = { ...DEFAULT_ESTILO };
+  if (!e || typeof e !== "object") return out;
+  for (const [k, def] of Object.entries(DEFAULT_ESTILO)) {
+    const v = e[k];
+    if (v === undefined || v === null) continue;
+    if (k === "fuente") out[k] = FUENTES.includes(v) ? v : "inherit";
+    else if (k === "tamano") out[k] = Math.min(16, Math.max(12, Math.round(num(v, def))));
+    else if (k === "radio") out[k] = Math.min(16, Math.max(0, Math.round(num(v, def))));
+    else if (typeof def === "boolean") out[k] = v === true;
+    else if (k.startsWith("color") || k.endsWith("Fondo") || k.endsWith("Texto") || k.startsWith("fondo")) out[k] = COLOR.test(String(v)) ? String(v) : def;
+    else out[k] = String(v).slice(0, 60);
+  }
+  return out;
+}
+
 const COL_CONFIG = "promonube_alto_envios";
 const COL_FOTOS = "promonube_alto_envios_fotos";
 const TN_API = "https://api.tiendanube.com/v1";
@@ -358,7 +388,8 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
   async function configPublica(req, res) {
     cors(res);
     refrescarSiHaceFalta();
-    return res.json({ success: true, enabled: cfg(req.query.storeId).enabled === true });
+    const c = cfg(req.query.storeId);
+    return res.json({ success: true, enabled: c.enabled === true, estilo: limpiarEstilo(c.estilo) });
   }
 
   // ---- GET /api/alto-envios-widget.js?store= (script del carrito y del producto) ----
@@ -368,7 +399,10 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
     res.set("Cache-Control", "public, max-age=300");
     if (cfg(req.query.store).enabled !== true) return res.send("/* GlowLab · envíos agrupados: apagado */");
     if (widgetCache === null) widgetCache = fs.readFileSync(WIDGET_JS, "utf8");
-    return res.send(widgetCache);
+    // el diseño va adelante del script; "<" escapado para que un texto no pueda cerrar un <script>
+    const datos = JSON.stringify(limpiarEstilo(cfg(req.query.store).estilo)).replace(/</g, "\x5cu003c");
+    return res.send(`window.__altoEnviosCfg=${datos};
+` + widgetCache);
   }
 
   // ---- POST /api/alto-envios/install {storeId}: regla de envíos + catálogo ----
@@ -423,6 +457,7 @@ function registerAltoEnviosRoutes(app, { db }) {
     const cambios = {};
     if (typeof enabled === "boolean") cambios.enabled = enabled;
     if (typeof ocultar === "boolean") cambios.ocultar = ocultar;
+    if (req.body && req.body.estilo !== undefined) cambios.estilo = limpiarEstilo(req.body.estilo);
     try {
       const c = await s.ponerConfig(storeId, cambios);
       if (c.enabled || c.ocultar) s.cargarCatalogos();
@@ -439,7 +474,7 @@ function registerAltoEnviosRoutes(app, { db }) {
 }
 
 module.exports = {
-  TTL_SEG, MAX_CLAVES, MAX_OPCIONES, ALLOWED_STORES, _DATOS,
+  TTL_SEG, MAX_CLAVES, MAX_OPCIONES, ALLOWED_STORES, DEFAULT_ESTILO, FUENTES, limpiarEstilo, _DATOS,
   huella, guardar, clasificar, elegidas, aOcultar, cargarCatalogo, catalogo, tiendasConCatalogo,
   formatoTn, decidir, marcarVisto, visto, borrarTodo, cantidad,
   crearServicio, registerAltoEnviosRoutes,

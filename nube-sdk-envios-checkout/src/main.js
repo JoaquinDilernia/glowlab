@@ -17,6 +17,17 @@ export function App(nube) {
 	// Los desplegables y las etiquetas se prenden desde el panel de GlowLab (enabled). La foto se manda siempre,
 	// porque el filtro del checkout la necesita.
 	let habilitado = false;
+	// Diseño editable desde el panel (llega con la config); los defaults son el diseño original.
+	let E = {
+		fuente: "inherit", tamano: 14, radio: 8, mostrarIconos: true,
+		colorTexto: "#111111", colorElegida: "#111111", colorBorde: "#e3e3e3",
+		fondoTitulo: "#f3f3f3", fondoTituloElegida: "#dcdcdc",
+		ecoFondo: "#E2EFDA", ecoTexto: "#2E6B1F", rapFondo: "#DDEBF7", rapTexto: "#1F4E79",
+		pregunta: "¿Cómo querés recibirlo?",
+		tituloDomicilio: "Envío a domicilio", tituloLocal: "Retiro en nuestros locales", tituloPunto: "Entrega en punto de retiro",
+		textoEco: "Más económico", textoRap: "Más rápido",
+	};
+	const px = (n) => `${Math.round(n * 10) / 10}px`;
 
 	let ultimaFirma = "";
 	let preseleccionado = "";   // firma de las opciones para las que ya preseleccionamos
@@ -127,8 +138,10 @@ export function App(nube) {
 		const plata = (n) => (Number(n) === 0 ? "Gratis" : (() => { try { return "$" + Math.round(Number(n)).toLocaleString("es-AR"); } catch (_) { return "$" + n; } })());
 		const sel = st.shipping?.selected;
 		const porPrecio = (a, b) => a.p - b.p || a.d - b.d;
-		const T0 = { margin: "0", lineHeight: "1.25" };   // los txt de TiendaNube traen margen y alto de línea propios
-		const etiqueta = (texto, fondo, color) => ui("box", { padding: "0 6px", borderRadius: "9px", background: fondo, children: [txt(texto, { modifiers: ["bold"], style: { ...T0, fontSize: "10.5px", lineHeight: "1.5", color, whiteSpace: "nowrap" } })] });
+		const T = E.tamano;   // 14 = tamaño original
+		// los txt de TiendaNube traen margen y alto de línea propios; la fuente solo se ve si el checkout la tiene cargada
+		const T0 = { margin: "0", lineHeight: "1.25", ...(E.fuente !== "inherit" ? { fontFamily: `'${E.fuente}', sans-serif` } : {}) };
+		const etiqueta = (texto, fondo, color) => ui("box", { padding: "0 6px", borderRadius: "9px", background: fondo, children: [txt(texto, { modifiers: ["bold"], style: { ...T0, fontSize: px(T * 10.5 / 14), lineHeight: "1.5", color, whiteSpace: "nowrap" } })] });
 		const verbos = { domicilio: "Llega", local: "Retirás", punto: "Retirás" };
 		// Fila compacta: círculo, nombre corto (+ etiqueta) y abajo cuándo; precio a la derecha.
 		const filaOpcion = (x, elegida, grupo, eco, rap) => {
@@ -139,27 +152,27 @@ export function App(nube) {
 				: c.extra + (cuando ? " · " + cuando.charAt(0).toLowerCase() + cuando.slice(1) : ""));
 			return ui("button", {
 				variant: "transparent", width: "100%",
-				style: { display: "block", width: "100%", boxSizing: "border-box", textAlign: "left", padding: "6px 9px", border: elegida ? "1px solid #111" : "1px solid #ececec",
-					borderRadius: "6px", background: elegida ? "#fafafa" : "#fff", color: "#111", whiteSpace: "normal", lineHeight: "1.25" },
+				style: { display: "block", width: "100%", boxSizing: "border-box", textAlign: "left", padding: "6px 9px", border: `1px solid ${elegida ? E.colorElegida : E.colorBorde}`,
+					borderRadius: px(E.radio * 6 / 8), background: elegida ? "#fafafa" : "#fff", color: E.colorTexto, whiteSpace: "normal", lineHeight: "1.25" },
 				// al elegir, el grupo queda abierto (el script redibuja con la opción nueva)
 				onClick: () => { grupoAbiertoCk = grupo; nube.send("shipping:select", () => ({ shipping: { selected: clave(x.o) } })); },
 				children: [ui("row", { justifyContent: "space-between", alignItems: "center", gap: "10px", children: [
 					ui("row", { alignItems: "center", gap: "9px", children: [
-						txt(elegida ? "◉" : "○", { style: { ...T0, fontSize: "19px", color: elegida ? "#111" : "#aaa", lineHeight: "1" } }),
+						txt(elegida ? "◉" : "○", { style: { ...T0, fontSize: px(T * 19 / 14), color: elegida ? E.colorElegida : "#aaa", lineHeight: "1" } }),
 						ui("col", { gap: "1px", children: [
 							ui("row", { alignItems: "center", gap: "6px", style: { flexWrap: "wrap" }, children: [
-								txt(c.t, { modifiers: ["bold"], style: { ...T0, color: "#111", fontSize: "14px" } }),
-								...(eco ? [etiqueta("Más económico", "#E2EFDA", "#2E6B1F")] : []),
-								...(rap ? [etiqueta("Más rápido", "#DDEBF7", "#1F4E79")] : []),
+								txt(c.t, { modifiers: ["bold"], style: { ...T0, color: E.colorTexto, fontSize: px(T) } }),
+								...(eco ? [etiqueta(E.textoEco, E.ecoFondo, E.ecoTexto)] : []),
+								...(rap ? [etiqueta(E.textoRap, E.rapFondo, E.rapTexto)] : []),
 							] }),
-							...(linea ? [txt(linea, { style: { ...T0, color: "#666", fontSize: "12px" } })] : []),
+							...(linea ? [txt(linea, { style: { ...T0, color: "#666", fontSize: px(T * 12 / 14) } })] : []),
 						] }),
 					] }),
-					txt(plata(x.o.price), { modifiers: ["bold"], style: { ...T0, color: "#111", fontSize: "14px", whiteSpace: "nowrap" } }),
+					txt(plata(x.o.price), { modifiers: ["bold"], style: { ...T0, color: E.colorTexto, fontSize: px(T), whiteSpace: "nowrap" } }),
 				] })],
 			});
 		};
-		const titulos = { domicilio: ["🏠", "Envío a domicilio"], local: ["🏬", "Retiro en nuestros locales"], punto: ["📍", "Entrega en punto de retiro"] };
+		const titulos = { domicilio: ["🏠", E.tituloDomicilio], local: ["🏬", E.tituloLocal], punto: ["📍", E.tituloPunto] };
 		const items = [];
 		for (const g of ["domicilio", "local", "punto"]) {
 			const todas = grupos[g];
@@ -187,17 +200,17 @@ export function App(nube) {
 			const filas = (verMasCk[g] ? vista.concat(resto) : vista).map((x) => filaOpcion(x, x === elegidaX, g, x === eco, x === rap));
 			if (resto.length) {
 				// OJO: "grupo" va en las props para que el botón de cada grupo tenga su propio __internalId.
-				filas.push(ui("button", { variant: "transparent", grupo: g, style: { padding: "2px", textAlign: "left", textDecoration: "underline", color: "#555", fontSize: "12px" },
+				filas.push(ui("button", { variant: "transparent", grupo: g, style: { padding: "2px", textAlign: "left", textDecoration: "underline", color: "#555", fontSize: px(T * 12 / 14) },
 					onClick: () => { verMasCk[g] = !verMasCk[g]; grupoAbiertoCk = g; agrupado(nube.getState()); },
 					children: verMasCk[g] ? "Ver menos" : `Ver ${resto.length} ${resto.length === 1 ? "opción más" : "opciones más"}` }));
 			}
 			items.push(ui("accordionItem", { value: g, onToggle: () => { grupoAbiertoCk = grupoAbiertoCk === g ? null : g; }, children: [
-				ui("accordionHeader", { showIcon: true, style: { background: elegidaX ? "#dcdcdc" : "#f3f3f3" }, children: [
+				ui("accordionHeader", { showIcon: true, style: { background: elegidaX ? E.fondoTituloElegida : E.fondoTitulo, borderRadius: px(E.radio) }, children: [
 					ui("row", { alignItems: "center", gap: "8px", children: [
-						txt(titulos[g][0], { style: { ...T0, fontSize: "16px" } }),
+						...(E.mostrarIconos ? [txt(titulos[g][0], { style: { ...T0, fontSize: px(T * 16 / 14) } })] : []),
 						ui("col", { gap: "1px", children: [
-							txt(titulos[g][1], { modifiers: ["bold"], style: { ...T0, fontSize: "14px", color: "#111" } }),
-							txt(sub, { style: { ...T0, fontSize: "12px", color: "#555" } }),
+							txt(titulos[g][1], { modifiers: ["bold"], style: { ...T0, fontSize: px(T), color: E.colorTexto } }),
+							txt(sub, { style: { ...T0, fontSize: px(T * 12 / 14), color: "#555" } }),
 						] }),
 					] }),
 				] }),
@@ -205,7 +218,7 @@ export function App(nube) {
 			] }));
 		}
 		nube.render("before_shipping_form", ui("col", { gap: "6px", padding: "4px", children: [
-			txt("¿Cómo querés recibirlo?", { modifiers: ["bold"] }),
+			...(E.pregunta ? [txt(E.pregunta, { modifiers: ["bold"], style: { color: E.colorTexto, ...(T0.fontFamily ? { fontFamily: T0.fontFamily } : {}) } })] : []),
 			ui("accordionRoot", { ...(grupoAbiertoCk ? { defaultValue: grupoAbiertoCk } : {}), children: items }),
 		] }));
 	}
@@ -303,6 +316,10 @@ export function App(nube) {
 
 	fetch(`${BASE}/api/alto-envios/config?storeId=${storeId}`)
 		.then((r) => (r.ok ? r.json() : null))
-		.then((c) => { habilitado = !!(c && c.enabled); if (habilitado) evaluar(); })
+		.then((c) => {
+			habilitado = !!(c && c.enabled);
+			if (c && c.estilo && typeof c.estilo === "object") E = { ...E, ...c.estilo };
+			if (habilitado) evaluar();
+		})
 		.catch(() => {});
 }

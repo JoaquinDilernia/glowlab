@@ -252,7 +252,8 @@ test("config pública y widget apagado", async () => {
   await s.ponerConfig(SID, { enabled: false, ocultar: false });
   const r = resFalsa();
   await s.configPublica({ query: { storeId: SID } }, r);
-  assert.deepEqual(r.body, { success: true, enabled: false });
+  assert.equal(r.body.success, true);
+  assert.equal(r.body.enabled, false);
   const w = resFalsa();
   await s.widget({ query: { store: SID } }, w);
   assert.ok(!String(w.body).includes("alto-env"));
@@ -288,4 +289,38 @@ test("la foto que se guarda en Firestore no lleva campos undefined (Firestore lo
   assert.equal(guardadas.length, 1);
   const hayUndefined = (o) => o === undefined || (o && typeof o === "object" && Object.values(o).some(hayUndefined));
   assert.equal(hayUndefined(guardadas[0]), false);
+});
+
+// ------------------------------------------------------------------ diseño ----
+
+test("limpiarEstilo: solo claves conocidas, colores válidos, tamaños en rango y textos cortos", () => {
+  const e = F.limpiarEstilo({
+    fuente: "Poppins", tamano: 99, radio: -3, colorTexto: "#123abc", colorElegida: "rojo",
+    tituloDomicilio: "A domicilio" + "x".repeat(200), mostrarIconos: false, hackeo: "<script>",
+  });
+  assert.equal(e.fuente, "Poppins");
+  assert.equal(e.tamano, 16);
+  assert.equal(e.radio, 0);
+  assert.equal(e.colorTexto, "#123abc");
+  assert.equal(e.colorElegida, F.DEFAULT_ESTILO.colorElegida);
+  assert.equal(e.tituloDomicilio.length, 60);
+  assert.equal(e.mostrarIconos, false);
+  assert.equal("hackeo" in e, false);
+  assert.equal(F.limpiarEstilo({ fuente: "Comic Sans" }).fuente, "inherit");
+  assert.deepEqual(F.limpiarEstilo(null), F.DEFAULT_ESTILO);
+});
+
+test("config pública y widget llevan el diseño", async () => {
+  const { s } = servicio();
+  await s.ponerConfig(SID, { enabled: true, estilo: F.limpiarEstilo({ tituloLocal: "Retirá en Belgrano </script>" }) });
+  const r = resFalsa();
+  await s.configPublica({ query: { storeId: SID } }, r);
+  assert.equal(r.body.estilo.tituloLocal, "Retirá en Belgrano </script>");
+  assert.equal(r.body.estilo.tamano, F.DEFAULT_ESTILO.tamano);
+  const w = resFalsa();
+  await s.widget({ query: { store: SID } }, w);
+  const js = String(w.body);
+  assert.ok(js.startsWith("window.__altoEnviosCfg="));
+  assert.ok(js.includes("Retirá en Belgrano"));
+  assert.ok(!js.includes("</script>"));   // escapado: no puede cortar un <script> inline
 });

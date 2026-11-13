@@ -12,31 +12,52 @@
   if (window.__altoEnviosTema) return;
   window.__altoEnviosTema = true;
 
+  // GlowLab (13/11/2026): diseño editable desde el panel. El backend antepone window.__altoEnviosCfg; los
+  // defaults son el diseño original.
+  const E = Object.assign({
+    fuente: "inherit", tamano: 14, radio: 8, mostrarIconos: true,
+    colorTexto: "#111111", colorElegida: "#111111", colorBorde: "#e3e3e3",
+    fondoTitulo: "#f3f3f3", fondoTituloElegida: "#dcdcdc",
+    ecoFondo: "#E2EFDA", ecoTexto: "#2E6B1F", rapFondo: "#DDEBF7", rapTexto: "#1F4E79",
+    tituloDomicilio: "Envío a domicilio", tituloLocal: "Retiro en nuestros locales", tituloPunto: "Entrega en punto de retiro",
+    textoEco: "Más económico", textoRap: "Más rápido"
+  }, window.__altoEnviosCfg || {});
+  const px = function (n) { return (Math.round(n * 10) / 10) + "px"; };
+  const T = E.tamano;          // 14 = tamaño original
+  const R = E.radio;           // 8 = radio original de los grupos (las filas usan 6)
+  const FAMILIA = E.fuente === "inherit" ? "inherit" : "'" + E.fuente + "', sans-serif";
+  if (E.fuente !== "inherit" && !document.getElementById("alto-env-font")) {
+    const l = document.createElement("link");
+    l.id = "alto-env-font"; l.rel = "stylesheet";
+    l.href = "https://fonts.googleapis.com/css2?family=" + E.fuente.replace(/ /g, "+") + ":wght@400;700&display=swap";
+    document.head.appendChild(l);
+  }
+
   const CSS = `
-  .alto-env{margin:8px 0 14px;font-size:14px;line-height:1.3}
-  .alto-env-g{border:1px solid #e3e3e3;border-radius:8px;margin-bottom:8px;overflow:hidden;background:#fff}
-  .alto-env-h{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;background:#f3f3f3;border:0;cursor:pointer;text-align:left;font:inherit;color:inherit}
+  .alto-env{margin:8px 0 14px;font-size:${px(T)};line-height:1.3;font-family:${FAMILIA};color:${E.colorTexto}}
+  .alto-env-g{border:1px solid ${E.colorBorde};border-radius:${px(R)};margin-bottom:8px;overflow:hidden;background:#fff}
+  .alto-env-h{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;background:${E.fondoTitulo};border:0;cursor:pointer;text-align:left;font:inherit;color:inherit}
   .alto-env-h .alto-env-ic{font-size:16px;width:20px;text-align:center;flex:none}
   .alto-env-h .alto-env-ht{flex:1;min-width:0}
-  .alto-env-h .alto-env-ht b{display:block;font-weight:700;font-size:14px}
-  .alto-env-h .alto-env-ht small{display:block;font-size:12px;opacity:.7;margin-top:1px}
+  .alto-env-h .alto-env-ht b{display:block;font-weight:700;font-size:${px(T)}}
+  .alto-env-h .alto-env-ht small{display:block;font-size:${px(T * 12 / 14)};opacity:.7;margin-top:1px}
   .alto-env-h .alto-env-caret{flex:none;transition:transform .15s;opacity:.6}
   .alto-env-g.abierto .alto-env-caret{transform:rotate(180deg)}
-  .alto-env-g.con-elegida .alto-env-h{background:#dcdcdc}
+  .alto-env-g.con-elegida .alto-env-h{background:${E.fondoTituloElegida}}
   .alto-env-b{display:none;padding:6px 8px 8px}
   .alto-env-g.abierto .alto-env-b{display:block}
-  .alto-env-o{display:flex;align-items:center;gap:9px;width:100%;padding:6px 9px;margin:2px 0;border:1px solid #ececec;border-radius:6px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit;font-size:13.5px;line-height:1.25}
+  .alto-env-o{display:flex;align-items:center;gap:9px;width:100%;padding:6px 9px;margin:2px 0;border:1px solid ${E.colorBorde};border-radius:${px(R * 6 / 8)};background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit;font-size:${px(T * 13.5 / 14)};line-height:1.25}
   .alto-env-o .alto-env-dot{width:14px;height:14px;border-radius:50%;border:2px solid #bbb;flex:none;box-sizing:border-box}
-  .alto-env-o.elegida{border-color:#111;background:#fafafa}
-  .alto-env-o.elegida .alto-env-dot{border-color:#111;background:radial-gradient(#111 40%,#fff 46%)}
+  .alto-env-o.elegida{border-color:${E.colorElegida};background:#fafafa}
+  .alto-env-o.elegida .alto-env-dot{border-color:${E.colorElegida};background:radial-gradient(${E.colorElegida} 40%,#fff 46%)}
   .alto-env-o .alto-env-t{flex:1;min-width:0}
   .alto-env-o .alto-env-t b{font-weight:700}
-  .alto-env-o .alto-env-t small{display:block;font-size:11.5px;opacity:.7;margin-top:2px}
+  .alto-env-o .alto-env-t small{display:block;font-size:${px(T * 11.5 / 14)};opacity:.7;margin-top:2px}
   .alto-env-o .alto-env-p{white-space:nowrap;font-weight:700}
-  .alto-env-bd{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:9px;margin-left:5px;vertical-align:1px;white-space:nowrap}
-  .alto-env-bd.eco{background:#E2EFDA;color:#2E6B1F}
-  .alto-env-bd.rap{background:#DDEBF7;color:#1F4E79}
-  .alto-env-todas{display:block;margin:4px 2px 0;background:none;border:0;padding:0;color:#555;text-decoration:underline;cursor:pointer;font:inherit;font-size:12px}
+  .alto-env-bd{display:inline-block;font-size:${px(T * 10.5 / 14)};font-weight:700;padding:1px 6px;border-radius:9px;margin-left:5px;vertical-align:1px;white-space:nowrap}
+  .alto-env-bd.eco{background:${E.ecoFondo};color:${E.ecoTexto}}
+  .alto-env-bd.rap{background:${E.rapFondo};color:${E.rapTexto}}
+  .alto-env-todas{display:block;margin:4px 2px 0;background:none;border:0;padding:0;color:#555;text-decoration:underline;cursor:pointer;font:inherit;font-size:${px(T * 12 / 14)}}
   .alto-env-oculto{display:none !important}
   /* el formulario "Cambiar CP" del tema queda invisible (opacidad 0) pero encima de la lista: su link
      "No sé mi código postal" (correoargentino.com.ar) recibía los toques sobre el título del primer grupo
@@ -166,9 +187,9 @@
   function fmt(v) { return v === 0 ? "Gratis" : "$" + Math.round(v).toLocaleString("es-AR"); }
 
   const GRUPOS = [
-    { k: "domicilio", icono: "🏠", titulo: "Envío a domicilio", verbo: "Llega" },
-    { k: "local", icono: "🏬", titulo: "Retiro en nuestros locales", verbo: "Retirás" },   // 28/10/2026 (Pedro): locales antes que puntos
-    { k: "punto", icono: "📍", titulo: "Entrega en punto de retiro", verbo: "Retirás" }
+    { k: "domicilio", icono: "🏠", titulo: E.tituloDomicilio, verbo: "Llega" },
+    { k: "local", icono: "🏬", titulo: E.tituloLocal, verbo: "Retirás" },   // 28/10/2026 (Pedro): locales antes que puntos
+    { k: "punto", icono: "📍", titulo: E.tituloPunto, verbo: "Retirás" }
   ];
 
   // Los grupos arrancan CERRADOS; el que abre el cliente se recuerda cuando el tema redibuja (cambio de cantidad o CP).
@@ -221,7 +242,7 @@
       const h = document.createElement("button");
       h.type = "button"; h.className = "alto-env-h";
       const sub = todas.every(function (o) { return o.precio === 0; }) ? "Gratis" : (minP === 0 ? "con opción gratis" : "desde " + fmt(minP));
-      h.innerHTML = '<span class="alto-env-ic">' + g.icono + '</span><span class="alto-env-ht"><b></b><small></small></span><span class="alto-env-caret">⌄</span>';
+      h.innerHTML = (E.mostrarIconos ? '<span class="alto-env-ic">' + g.icono + '</span>' : '') + '<span class="alto-env-ht"><b></b><small></small></span><span class="alto-env-caret">⌄</span>';
       h.querySelector("b").textContent = g.titulo;
       h.querySelector("small").textContent = sub;
       h.onclick = function () {
@@ -241,8 +262,8 @@
         const dot = document.createElement("span"); dot.className = "alto-env-dot";
         const t = document.createElement("span"); t.className = "alto-env-t";
         const tb = document.createElement("b"); tb.textContent = nc.t; t.appendChild(tb);
-        if (o === eco) { const s1 = document.createElement("span"); s1.className = "alto-env-bd eco"; s1.textContent = "Más económico"; t.appendChild(s1); }
-        if (o === rap) { const s2 = document.createElement("span"); s2.className = "alto-env-bd rap"; s2.textContent = "Más rápido"; t.appendChild(s2); }
+        if (o === eco) { const s1 = document.createElement("span"); s1.className = "alto-env-bd eco"; s1.textContent = E.textoEco; t.appendChild(s1); }
+        if (o === rap) { const s2 = document.createElement("span"); s2.className = "alto-env-bd rap"; s2.textContent = E.textoRap; t.appendChild(s2); }
         const r = rango(o.fs);
         const cuando = r ? g.verbo + " " + r : (o.fecha || "");
         // domicilio: "Llega jue 29/10 – lun 02/11 · entrega dentro de tu domicilio"
