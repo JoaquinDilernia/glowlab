@@ -1,0 +1,13 @@
+{
+  "name": "glowlab-envios-checkout",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "GlowLab - Envíos agrupados en el checkout (Alto Rancho) usando NubeSDK",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --format=esm --target=es2020 --outfile=dist/main.js --minify"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0"
+  }
+}
