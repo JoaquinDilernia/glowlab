@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, Power, AlertTriangle, RefreshCw, PlugZap, Save, RotateCcw } from 'lucide-react';
+import { Truck, Power, AlertTriangle, RefreshCw, PlugZap, Save, RotateCcw, Plus, Trash2 } from 'lucide-react';
 import { apiRequest } from '../config';
 import { useToast } from '../context/ToastContext';
 import './LocalStockConfig.css';
@@ -113,7 +113,76 @@ const FUENTES = {
   sin_datos: 'sin datos (no oculta)',
   sin_catalogo: 'falta en catálogo (no oculta)',
   apagado: 'filtro apagado',
+  regla_local: 'regla de locales (ocultó)',
+  regla_no_aplica: 'regla de locales: no aplica',
+  regla_sin_cambios: 'regla de locales: nada para ocultar',
 };
+
+// Reglas de retiro en locales por SKU (reemplaza a la app "reglas de negocio avanzadas"). Ej.: sin retiro en Belgrano si
+// el carrito tiene un producto con SKU que empieza con M (muebles y sillas).
+const REGLA_NUEVA = { activa: true, nombre: '', locales: [], prefijos: [] };
+function ReglasLocales({ guardadas, locales, guardar, saving, conectado }) {
+  const [reglas, setReglas] = useState(guardadas);
+  useEffect(() => { setReglas(guardadas); }, [JSON.stringify(guardadas)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cambiar = (i, k, v) => setReglas((rs) => rs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const alternarLocal = (i, code) => setReglas((rs) => rs.map((r, j) => (j !== i ? r
+    : { ...r, locales: r.locales.includes(code) ? r.locales.filter((c) => c !== code) : [...r.locales, code] })));
+  const incompletas = reglas.some((r) => !r.locales.length || !r.prefijos.length);
+  const hayCambios = JSON.stringify(reglas) !== JSON.stringify(guardadas);
+  const nombreLocal = (code) => (locales.find((l) => l.code === code)?.nombre || code);
+  return (
+    <section className="ls-card ls-card--wide">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <h2>Retiro en locales según el producto</h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="ls-btn-secondary" onClick={() => setReglas((rs) => [...rs, { ...REGLA_NUEVA }])} disabled={saving}><Plus size={14} /> Agregar regla</button>
+          <button className="ls-btn-primary" onClick={() => guardar({ reglasLocales: reglas })} disabled={saving || !hayCambios || incompletas}><Save size={14} /> Guardar reglas</button>
+        </div>
+      </div>
+      <p className="ls-help">
+        Oculta el retiro en los locales que elijas cuando el carrito tiene algún producto cuyo SKU empieza con alguno de los
+        prefijos. Por ejemplo: sin retiro en Belgrano si hay muebles o sillas (SKU que empiezan con M). Funciona aunque el
+        módulo de desplegables esté desactivado.
+        {!conectado && <b> Primero conectá con TiendaNube (abajo, en Estado).</b>}
+      </p>
+      {!reglas.length && <p className="ls-help">No hay reglas.</p>}
+      {reglas.map((r, i) => (
+        <div key={i} style={{ border: '1px solid #e5e5e5', borderRadius: 10, padding: 14, marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <label style={{ flex: '1 1 220px' }}>
+              Nombre (opcional)
+              <input type="text" maxLength={60} value={r.nombre} placeholder="Muebles y sillas sin retiro en Belgrano" onChange={(ev) => cambiar(i, 'nombre', ev.target.value)} />
+            </label>
+            <label style={{ flex: '1 1 220px' }}>
+              SKU que empiezan con (separados por coma)
+              <input type="text" value={r.prefijos.join(', ')} placeholder="M"
+                onChange={(ev) => cambiar(i, 'prefijos', ev.target.value.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean))} />
+            </label>
+            <button className={`ls-toggle ${r.activa ? 'on' : 'off'}`} onClick={() => cambiar(i, 'activa', !r.activa)} disabled={saving}>
+              <Power size={16} /> {r.activa ? 'Activa' : 'Pausada'}
+            </button>
+            <button className="ls-btn-secondary" onClick={() => setReglas((rs) => rs.filter((_, j) => j !== i))} disabled={saving} title="Borrar regla"><Trash2 size={14} /></button>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, marginBottom: 6 }}>Ocultar el retiro en:</div>
+            {!locales.length && <p className="ls-help">No hay locales en el catálogo de envíos todavía. Tocá "Reconectar con TiendaNube".</p>}
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              {locales.map((l) => (
+                <label key={l.code} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="checkbox" checked={r.locales.includes(l.code)} onChange={() => alternarLocal(i, l.code)} /> {l.nombre}
+                </label>
+              ))}
+              {r.locales.filter((c) => !locales.some((l) => l.code === c)).map((c) => (
+                <span key={c} className="ls-help">({nombreLocal(c)}: ya no está en el catálogo)</span>
+              ))}
+            </div>
+          </div>
+          {(!r.locales.length || !r.prefijos.length) && <p className="ls-help" style={{ color: '#b45309' }}>Elegí al menos un local y un prefijo de SKU.</p>}
+        </div>
+      ))}
+    </section>
+  );
+}
 
 function AltoEnviosConfig() {
   const navigate = useNavigate();
@@ -229,6 +298,12 @@ function AltoEnviosConfig() {
             {config.ocultar ? 'Ocultando' : 'Sin ocultar'}
           </button>
         </section>
+
+        <ReglasLocales
+          guardadas={config.reglasLocales || []}
+          locales={(salud?.opcionesCatalogo || []).filter((o) => o.carrier === 'Locale')}
+          guardar={guardar} saving={saving} conectado={conectado}
+        />
 
         <section className="ls-card ls-card--wide">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

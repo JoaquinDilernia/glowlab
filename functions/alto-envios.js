@@ -143,7 +143,8 @@ const tiendasConCatalogo = () => [..._CATALOGO.keys()];
  *  catálogo es "table-7620339". null si no está en el catálogo (entonces no se manda ninguna lista). */
 function formatoTn(o, cat) {
   const code = str(o.code);
-  for (const c of [code, "table-" + code]) {
+  // en el checkout los locales llegan como "pickup-point_<código>" y en el catálogo son "<código>"
+  for (const c of [code, "table-" + code, code.replace(/^pickup-point[_-]/, "")]) {
     const e = cat[c];
     if (e) return { id: e.id, option_id: e.option_id, code: c };
   }
@@ -172,6 +173,67 @@ function decidir(storeId, cartId, zipcode, items, ahora) {
   return { mostrar: [], fuente: "sin_datos", ocultas: 0 };
 }
 
+// ---- regla de locales por SKU (13/11/2026): reemplaza a la app "reglas de negocio avanzadas" ----
+// Ej.: sin retiro en Belgrano si el carrito tiene muebles o sillas (SKU que empiezan con M). TiendaNube no manda el
+// SKU en la consulta (solo product_id y variant_id): los SKU de la tienda se tienen en memoria (se bajan cada hora).
+const _SKUS = new Map();   // "store|v<variant_id>" -> sku ; "store|p<product_id>" -> [skus]
+const MAX_REGLAS = 10;
+
+function cargarSkus(storeId, productos) {
+  const sid = str(storeId);
+  let n = 0;
+  for (const p of productos || []) {
+    if (!p || typeof p !== "object") continue;
+    const lista = [];
+    for (const v of p.variants || []) {
+      const sku = str(v && v.sku);
+      if (v && v.id !== undefined && sku) { _SKUS.set(`${sid}|v${str(v.id)}`, sku); lista.push(sku); n++; }
+    }
+    if (p.id !== undefined) _SKUS.set(`${sid}|p${str(p.id)}`, lista);
+  }
+  return n;
+}
+
+/** SKU de los productos del carrito; faltan = product_id de los que no hay datos en memoria. */
+function skusDelCarrito(storeId, items) {
+  const sid = str(storeId);
+  const skus = [], faltan = [];
+  for (const it of items || []) {
+    if (!it || typeof it !== "object") continue;
+    const v = _SKUS.get(`${sid}|v${str(it.variant_id)}`);
+    if (v) { skus.push(v); continue; }
+    const p = _SKUS.get(`${sid}|p${str(it.product_id)}`);
+    if (p) { skus.push(...p); continue; }
+    if (str(it.product_id)) faltan.push(str(it.product_id));
+  }
+  return { skus, faltan };
+}
+
+/** Solo reglas con al menos un local y un prefijo; prefijos en mayúscula. */
+function limpiarReglas(reglas) {
+  if (!Array.isArray(reglas)) return [];
+  const out = [];
+  for (const r of reglas.slice(0, MAX_REGLAS)) {
+    if (!r || typeof r !== "object") continue;
+    const locales = (Array.isArray(r.locales) ? r.locales : []).map((x) => str(x).slice(0, 80)).filter(Boolean);
+    const prefijos = (Array.isArray(r.prefijos) ? r.prefijos : []).map((x) => str(x).toUpperCase().slice(0, 30)).filter(Boolean);
+    if (!locales.length || !prefijos.length) continue;
+    out.push({ activa: r.activa === true, locales, prefijos, nombre: str(r.nombre).slice(0, 60) });
+  }
+  return out;
+}
+
+/** Códigos de catálogo que hay que sacar según las reglas activas que aplican a estos SKU. */
+function localesAQuitar(reglas, skus) {
+  const fuera = new Set();
+  const SK = skus.map((x) => str(x).toUpperCase());
+  for (const r of reglas || []) {
+    if (!r.activa) continue;
+    if (SK.some((sku) => r.prefijos.some((p) => sku.startsWith(p)))) r.locales.forEach((c) => fuera.add(c));
+  }
+  return fuera;
+}
+
 // ---- carritos por los que TiendaNube preguntó: solo se aceptan fotos de esos (una foto inventada no oculta nada) ----
 function marcarVisto(storeId, cartId, ahora) {
   const s = str(storeId), c = str(cartId);
@@ -185,7 +247,7 @@ function visto(storeId, cartId, ahora) {
   return ts !== undefined && ahora - ts < TTL_SEG;
 }
 
-function borrarTodo() { _DATOS.clear(); _VISTOS.clear(); }
+function borrarTodo() { _DATOS.clear(); _VISTOS.clear(); _SKUS.clear(); }
 const cantidad = () => _DATOS.size;
 
 // ======================================================================= servicio (rutas) ====
@@ -267,7 +329,7 @@ function cors(res) {
 /** Servicio con sus dependencias inyectadas (db = Firestore, fetchFn = fetch) para poder probarlo sin red. */
 function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO_ENVIOS_BASE || DEFAULT_BASE } = {}) {
   const config = new Map();              // storeId -> {enabled, ocultar, install}
-  const estado = { configTs: 0, catalogoTs: 0, fotosMin: 0, fotosN: 0, aceptadas: 0, rechazadas: 0 };
+  const estado = { configTs: 0, catalogoTs: 0, fotosMin: 0, fotosN: 0, aceptadas: 0, rechazadas: 0, skus: new Map() };
   const decisiones = [];                 // memoria circular: {t, storeId, fuente, ocultas, mostradas, ms}
   const consultas = new Map();           // storeId -> {n, ultima}
   let widgetCache = null;
@@ -319,16 +381,46 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
     return { status, n: 0, error: JSON.stringify(datos || "").slice(0, 200) };
   }
 
-  /** Catálogo de cada tienda con la función prendida (enabled u ocultar). Se refresca cada hora. */
+  const reglasActivas = (c) => limpiarReglas(c && c.reglasLocales).filter((r) => r.activa);
+
+  /** Catálogo (y SKU, si hay reglas de locales) de cada tienda con algo prendido. Se refresca cada hora. */
   async function cargarCatalogos() {
     estado.catalogoTs = Date.now();
     for (const [sid, c] of config) {
-      if (!c.enabled && !c.ocultar) continue;
+      if (!permitida(sid)) continue;
+      const reglas = reglasActivas(c).length > 0;
+      if (!c.enabled && !c.ocultar && !reglas) continue;
       try {
         const r = await cargarCatalogoDe(sid);
         if (r.error) console.warn(`[alto-envios] catálogo ${sid}: ${r.status} ${r.error}`);
+        if (reglas) await cargarProductos(sid);
       } catch (e) { console.warn(`[alto-envios] catálogo ${sid}:`, e.message); }
     }
+  }
+
+  /** SKU de todos los productos de la tienda (de a 200 por página). */
+  async function cargarProductos(sid) {
+    const tok = await token(sid);
+    if (!tok) return 0;
+    let n = 0;
+    for (let page = 1; page <= 100; page++) {
+      const { status, datos } = await tn("GET", sid, `products?per_page=200&page=${page}&fields=id,variants`, tok);
+      if (status !== 200 || !Array.isArray(datos)) break;
+      n += cargarSkus(sid, datos);
+      if (datos.length < 200) break;
+    }
+    estado.skus.set(str(sid), { n, at: new Date().toISOString() });
+    return n;
+  }
+
+  /** Un producto que no estaba en memoria (recién creado): se busca en el momento (la regla le pone tope). */
+  async function buscarProducto(sid, pid) {
+    try {
+      const tok = await token(sid);
+      if (!tok) return;
+      const { status, datos } = await tn("GET", sid, `products/${encodeURIComponent(pid)}?fields=id,variants`, tok);
+      if (status === 200 && datos) cargarSkus(sid, [datos]);
+    } catch { /* sin datos: la regla no aplica */ }
   }
 
   /** Recupera las fotos de las últimas 12 h (Railway reinicia el proceso y la memoria se pierde). */
@@ -363,11 +455,34 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
       consultas.set(sid, { n: c.n + 1, ultima: new Date().toISOString() });
     }
     let respuesta = null, dec = null;
-    if (sid && cfg(sid).ocultar === true) {
+    const c = cfg(sid);
+    const reglas = reglasActivas(c);
+    if (sid && (c.ocultar === true || reglas.length)) {
       const envio = p.shipping && typeof p.shipping === "object" ? p.shipping : {};
-      dec = decidir(sid, p.cart_id, envio.postalcode, p.products || []);
+      const items = Array.isArray(p.products) ? p.products : [];
       // filtered_options = las opciones que QUEDAN; vacío = no se filtra nada
-      if (dec.mostrar.length) respuesta = { command: "filter_shipping_options", detail: { filtered_options: dec.mostrar } };
+      let mostrar = [];
+      if (c.ocultar === true) { dec = decidir(sid, p.cart_id, envio.postalcode, items); mostrar = dec.mostrar; }
+      if (reglas.length) {
+        let { skus, faltan } = skusDelCarrito(sid, items);
+        if (faltan.length) {
+          // tope de 400 ms (TiendaNube espera 800): si no llega, ese producto no cuenta y queda para la próxima
+          await Promise.race([Promise.all(faltan.slice(0, 5).map((pid) => buscarProducto(sid, pid))), new Promise((r) => setTimeout(r, 400))]);
+          ({ skus } = skusDelCarrito(sid, items));
+        }
+        const fuera = localesAQuitar(reglas, skus);
+        if (fuera.size) {
+          // sin cotización real: todas las opciones del catálogo (TiendaNube muestra solo las que aplican)
+          const base = mostrar.length ? mostrar
+            : Object.entries(catalogo(sid)).map(([code, e]) => ({ id: e.id, option_id: e.option_id, code }));
+          const quedan = base.filter((o) => !fuera.has(str(o.code)));
+          if (quedan.length && quedan.length < base.length) {
+            dec = { ...(dec || {}), mostrar: quedan, fuente: "regla_local", ocultas: ((dec && dec.ocultas) || 0) + (base.length - quedan.length) };
+            mostrar = quedan;
+          } else if (!dec) dec = { mostrar: [], fuente: "regla_sin_cambios", ocultas: 0 };
+        } else if (!dec) dec = { mostrar: [], fuente: "regla_no_aplica", ocultas: 0 };
+      }
+      if (mostrar.length) respuesta = { command: "filter_shipping_options", detail: { filtered_options: mostrar } };
     }
     const ms = Number(process.hrtime.bigint() - t0) / 1e6;
     anotar({ t: new Date().toISOString(), storeId: sid, cp: str((p.shipping || {}).postalcode), fuente: dec ? dec.fuente : "apagado",
@@ -476,12 +591,13 @@ window.__altoEnviosIconos=${JSON.stringify(ICONOS)};
       config: cfg(sid), consultas: c.n, ultimaConsulta: c.ultima,
       catalogo: Object.keys(catalogo(sid)).length, cotizaciones: cantidad(),
       opcionesCatalogo: Object.entries(catalogo(sid)).map(([code, e]) => ({ code, nombre: e.nombre, carrier: e.carrier })),
+      skus: estado.skus.get(sid) || null,
       fotos: { aceptadas: estado.aceptadas, rechazadas: estado.rechazadas },
       decisiones: decisiones.filter((d) => d.storeId === sid).slice(0, 50),
     };
   }
 
-  return { regla, foto, configPublica, widget, icono, install, salud, ponerConfig, refrescarConfig, cargarCatalogos, recuperarFotos, cfg };
+  return { regla, foto, configPublica, widget, icono, install, cargarProductos, salud, ponerConfig, refrescarConfig, cargarCatalogos, recuperarFotos, cfg };
 }
 
 function registerAltoEnviosRoutes(app, { db }) {
@@ -500,9 +616,10 @@ function registerAltoEnviosRoutes(app, { db }) {
     if (typeof enabled === "boolean") cambios.enabled = enabled;
     if (typeof ocultar === "boolean") cambios.ocultar = ocultar;
     if (req.body && req.body.estilo !== undefined) cambios.estilo = limpiarEstilo(req.body.estilo);
+    if (req.body && req.body.reglasLocales !== undefined) cambios.reglasLocales = limpiarReglas(req.body.reglasLocales);
     try {
       const c = await s.ponerConfig(storeId, cambios);
-      if (c.enabled || c.ocultar) s.cargarCatalogos();
+      if (c.enabled || c.ocultar || cambios.reglasLocales) s.cargarCatalogos();
       res.json({ success: true, config: c });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
   });
@@ -517,7 +634,7 @@ function registerAltoEnviosRoutes(app, { db }) {
 }
 
 module.exports = {
-  TTL_SEG, MAX_CLAVES, MAX_OPCIONES, ALLOWED_STORES, DEFAULT_ESTILO, FUENTES, ICONOS, limpiarEstilo, _DATOS,
+  TTL_SEG, MAX_CLAVES, MAX_OPCIONES, ALLOWED_STORES, DEFAULT_ESTILO, FUENTES, ICONOS, limpiarReglas, cargarSkus, skusDelCarrito, localesAQuitar, limpiarEstilo, _DATOS,
   huella, guardar, clasificar, elegidas, aOcultar, cargarCatalogo, catalogo, tiendasConCatalogo,
   formatoTn, decidir, marcarVisto, visto, borrarTodo, cantidad,
   crearServicio, registerAltoEnviosRoutes,

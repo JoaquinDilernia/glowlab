@@ -357,3 +357,103 @@ test("íconos de Google (Material Symbols): SVG con el color pedido, para el che
   await s.widget({ query: { store: SID } }, w);
   for (const k of ["domicilio", "local", "punto", "abrir", "derecha"]) assert.ok(String(w.body).includes(F.ICONOS[k]));
 });
+
+// ------------------------------------------------------- regla de locales por SKU (13/11/2026) ----
+// Reemplaza a la app "reglas de negocio avanzadas": sin retiro en Belgrano si el carrito tiene muebles o sillas
+// (SKU que empiezan con M).
+const BELGRANO = "01ULID2";
+const PRODUCTOS = [
+  { id: 10, variants: [{ id: 5, sku: "MSL-001" }, { id: 6, sku: "MSL-002" }] },
+  { id: 20, variants: [{ id: 7, sku: "BZ-100" }] },
+];
+function servicioConProductos(extra = {}) {
+  const llamadas = [];
+  const fetchFn = async (url, opt = {}) => {
+    llamadas.push({ url, ...opt });
+    if (url.endsWith("/shipping_carriers/options")) return { status: 200, ok: true, json: async () => CATALOGO, text: async () => "" };
+    let m = url.match(/\/products\/(\d+)\?/);
+    if (m) return { status: 200, ok: true, json: async () => ({ id: Number(m[1]), variants: [{ id: 99, sku: "MX-NUEVO" }] }), text: async () => "" };
+    m = url.match(/\/products\?.*page=(\d+)/);
+    if (m) return m[1] === "1" ? { status: 200, ok: true, json: async () => PRODUCTOS, text: async () => "" } : { status: 404, ok: false, json: async () => ({}), text: async () => "" };
+    return { status: 204, ok: true, json: async () => ({}), text: async () => "" };
+  };
+  const db = dbFalsa({ promonube_stores: { [SID]: { accessToken: "tok" } }, ...extra });
+  return { s: F.crearServicio({ db, fetchFn, base: "https://api.example.com" }), llamadas };
+}
+const REGLA = { activa: true, locales: [BELGRANO], prefijos: ["M"] };
+const carrito = (items) => ({ store_id: SID, cart_id: 777, shipping: { postalcode: "1428" }, products: items });
+
+test("formatoTn: los locales llegan del checkout como pickup-point_<código>", () => {
+  const cat = {}; F.cargarCatalogo("x", CATALOGO); Object.assign(cat, F.catalogo("x"));
+  assert.deepEqual(F.formatoTn({ code: "pickup-point_01ULID2" }, cat), { id: "2ebc", option_id: "01ULID2", code: "01ULID2" });
+});
+
+test("limpiarReglas: solo reglas con locales y prefijos válidos", () => {
+  assert.deepEqual(F.limpiarReglas([{ activa: true, locales: ["A", "", 3], prefijos: [" m ", "", "SL"], nombre: "x".repeat(99) }, { locales: [] }, "basura"]),
+    [{ activa: true, locales: ["A", "3"], prefijos: ["M", "SL"], nombre: "x".repeat(60) }]);
+  assert.deepEqual(F.limpiarReglas(null), []);
+});
+
+test("regla de locales: carrito con un SKU M → todas las opciones del catálogo menos Belgrano", async () => {
+  F.borrarTodo();
+  const { s } = servicioConProductos();
+  await s.ponerConfig(SID, { enabled: true, ocultar: false, reglasLocales: [REGLA] });
+  F.cargarCatalogo(SID, CATALOGO);
+  await s.cargarProductos(SID);
+  const r = resFalsa();
+  await s.regla({ body: carrito([{ product_id: 10, variant_id: 5, quantity: 1 }, { product_id: 20, variant_id: 7, quantity: 1 }]) }, r);
+  assert.equal(r.statusCode, 200);
+  const codes = r.body.detail.filtered_options.map((o) => o.code);
+  assert.equal(codes.length, 11);
+  assert.ok(!codes.includes(BELGRANO));
+  assert.ok(codes.includes("01ULID") && codes.includes("table-7620339"));
+  assert.equal(s.salud(SID).decisiones[0].fuente, "regla_local");
+});
+
+test("regla de locales: sin SKU M, con la regla apagada o sin catálogo → no se toca nada (204)", async () => {
+  F.borrarTodo();
+  const { s } = servicioConProductos();
+  await s.ponerConfig(SID, { reglasLocales: [REGLA] });
+  F.cargarCatalogo(SID, CATALOGO);
+  await s.cargarProductos(SID);
+  const r = resFalsa();
+  await s.regla({ body: carrito([{ product_id: 20, variant_id: 7, quantity: 1 }]) }, r);
+  assert.equal(r.statusCode, 204);
+  await s.ponerConfig(SID, { reglasLocales: [{ ...REGLA, activa: false }] });
+  const r2 = resFalsa();
+  await s.regla({ body: carrito([{ product_id: 10, variant_id: 5 }]) }, r2);
+  assert.equal(r2.statusCode, 204);
+  await s.ponerConfig(SID, { reglasLocales: [REGLA] });
+  F.cargarCatalogo(SID, []);
+  const r3 = resFalsa();
+  await s.regla({ body: carrito([{ product_id: 10, variant_id: 5 }]) }, r3);
+  assert.equal(r3.statusCode, 204);
+});
+
+test("regla de locales: producto nuevo que no estaba en memoria → se busca en el momento", async () => {
+  F.borrarTodo();
+  const { s, llamadas } = servicioConProductos();
+  await s.ponerConfig(SID, { reglasLocales: [REGLA] });
+  F.cargarCatalogo(SID, CATALOGO);
+  await s.cargarProductos(SID);
+  const r = resFalsa();
+  await s.regla({ body: carrito([{ product_id: 30, variant_id: 99, quantity: 1 }]) }, r);
+  assert.ok(llamadas.some((l) => /\/products\/30\?/.test(l.url)));
+  assert.equal(r.statusCode, 200);
+  assert.ok(!r.body.detail.filtered_options.some((o) => o.code === BELGRANO));
+});
+
+test("regla de locales + ocultar con cotización real: se aplican las dos", async () => {
+  F.borrarTodo();
+  const { s } = servicioConProductos();
+  await s.ponerConfig(SID, { ocultar: true, reglasLocales: [REGLA] });
+  F.cargarCatalogo(SID, CATALOGO);
+  await s.cargarProductos(SID);
+  F.guardar(fotoSid);   // cart 999, CP 1642, items variant 5 → carrito con SKU M
+  const r = resFalsa();
+  await s.regla({ body: pedido }, r);
+  assert.equal(r.statusCode, 200);
+  const codes = r.body.detail.filtered_options.map((o) => o.code);
+  assert.equal(codes.length, 9);   // 10 que deja "ocultar" menos Belgrano
+  assert.ok(!codes.includes(BELGRANO));
+});
