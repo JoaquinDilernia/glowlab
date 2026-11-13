@@ -273,3 +273,19 @@ test("solo Alto Rancho: otra tienda no se instala, no se prende ni recibe el wid
   await s.widget({ query: { store: "1" } }, w);
   assert.ok(!String(w.body).includes("alto-env"));
 });
+
+test("la foto que se guarda en Firestore no lleva campos undefined (Firestore los rechaza)", async () => {
+  F.borrarTodo();
+  const { s, db } = servicio();
+  await s.regla({ body: { store_id: SID, cart_id: 5 } }, resFalsa());
+  const sinCp = { store_id: Number(SID), cart_id: 5, items: [{ variant_id: 1 }], opciones: [{ code: "a", price: 1 }] };
+  // sin CP no hay clave de carrito: se agrega uno para que se guarde y se fuerza un campo sin valor
+  const r = resFalsa();
+  await s.foto({ method: "POST", body: { ...sinCp, zipcode: "1000", items: undefined } }, r);
+  assert.equal(r.statusCode, 204);
+  await new Promise((ok) => setImmediate(ok));
+  const guardadas = [...(db.cols.get("promonube_alto_envios_fotos") || new Map()).values()];
+  assert.equal(guardadas.length, 1);
+  const hayUndefined = (o) => o === undefined || (o && typeof o === "object" && Object.values(o).some(hayUndefined));
+  assert.equal(hayUndefined(guardadas[0]), false);
+});
