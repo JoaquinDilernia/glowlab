@@ -205,16 +205,17 @@ export function App(nube) {
 				// OJO: "grupo" va en las props para que el botón de cada grupo tenga su propio __internalId.
 				filas.push(ui("button", { variant: "transparent", grupo: g, style: { padding: "2px", textAlign: "left", textDecoration: "underline", color: "#555", fontSize: px(T * 12 / 14) },
 					onClick: () => { verMasCk[g] = !verMasCk[g]; grupoAbiertoCk = g; agrupado(nube.getState()); },
-					children: verMasCk[g] ? "Ver menos" : `Ver ${resto.length} ${resto.length === 1 ? "opción más" : "opciones más"}` }));
+					children: verMasCk[g] ? "ver menos" : `ver ${resto.length} ${resto.length === 1 ? "opción más" : "opciones más"}` }));
 			}
-			items.push(ui("accordionItem", { value: g, onToggle: () => { grupoAbiertoCk = grupoAbiertoCk === g ? null : g; }, children: [
-				ui("accordionHeader", { showIcon: true, style: { background: elegidaX ? E.fondoTituloElegida : E.fondoTitulo, borderRadius: px(E.radio) }, children: [
+			items.push(ui("accordionItem", { value: g, onToggle: () => { grupoAbiertoCk = grupoAbiertoCk === g ? null : g; agrupado(nube.getState()); }, children: [
+				ui("accordionHeader", { showIcon: false, style: { background: elegidaX ? E.fondoTituloElegida : E.fondoTitulo, borderRadius: px(E.radio) }, children: [
 					ui("row", { alignItems: "center", gap: "8px", children: [
 						...(E.mostrarIconos ? [icono(g)] : []),
-						ui("col", { gap: "1px", children: [
+						ui("col", { gap: "1px", style: { flex: 1 }, children: [
 							txt(titulos[g], { modifiers: ["bold"], style: { ...T0, fontSize: px(T), color: E.colorTexto } }),
 							txt(sub, { style: { ...T0, fontSize: px(T * 12 / 14), color: "#555" } }),
 						] }),
+						icono(grupoAbiertoCk === g ? "cerrar" : "abrir"),
 					] }),
 				] }),
 				ui("accordionContent", { children: [ui("col", { gap: "4px", children: filas })] }),

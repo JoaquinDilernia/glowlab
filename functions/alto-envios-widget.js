@@ -47,7 +47,8 @@
   .alto-env-h .alto-env-ht{flex:1;min-width:0}
   .alto-env-h .alto-env-ht b{display:block;font-weight:700;font-size:${px(T)}}
   .alto-env-h .alto-env-ht small{display:block;font-size:${px(T * 12 / 14)};opacity:.7;margin-top:1px}
-  .alto-env-h .alto-env-caret{flex:none;transition:transform .15s;opacity:.6}
+  .alto-env-h .alto-env-caret{flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;transition:transform .2s ease;opacity:.75}
+  .alto-env-h .alto-env-caret svg{width:22px;height:22px;fill:currentColor;display:block}
   .alto-env-g.abierto .alto-env-caret{transform:rotate(180deg)}
   .alto-env-g.con-elegida .alto-env-h{background:${E.fondoTituloElegida}}
   .alto-env-b{display:none;padding:6px 8px 8px}
@@ -248,7 +249,7 @@
       const h = document.createElement("button");
       h.type = "button"; h.className = "alto-env-h";
       const sub = todas.every(function (o) { return o.precio === 0; }) ? "Gratis" : (minP === 0 ? "con opción gratis" : "desde " + fmt(minP));
-      h.innerHTML = (E.mostrarIconos ? '<span class="alto-env-ic">' + icono(g.k) + '</span>' : '') + '<span class="alto-env-ht"><b></b><small></small></span><span class="alto-env-caret">⌄</span>';
+      h.innerHTML = (E.mostrarIconos ? '<span class="alto-env-ic">' + icono(g.k) + '</span>' : '') + '<span class="alto-env-ht"><b></b><small></small></span><span class="alto-env-caret">' + icono("abrir") + '</span>';
       h.querySelector("b").textContent = g.titulo;
       h.querySelector("small").textContent = sub;
       h.onclick = function () {
@@ -301,12 +302,12 @@
       if (resto.length) {
         const mas = document.createElement("button");
         mas.type = "button"; mas.className = "alto-env-todas";
-        const textoMas = "Ver " + resto.length + (resto.length === 1 ? " opción más" : " opciones más");
-        mas.textContent = verTodas[g.k] ? "Ver menos" : textoMas;
+        const textoMas = "ver " + resto.length + (resto.length === 1 ? " opción más" : " opciones más");
+        mas.textContent = verTodas[g.k] ? "ver menos" : textoMas;
         mas.onclick = function () {
           verTodas[g.k] = !verTodas[g.k];
           Array.from(b.querySelectorAll(".alto-env-resto")).forEach(function (x) { x.classList.toggle("alto-env-oculto", !verTodas[g.k]); });
-          mas.textContent = verTodas[g.k] ? "Ver menos" : textoMas;
+          mas.textContent = verTodas[g.k] ? "ver menos" : textoMas;
         };
         b.appendChild(mas);
       }
