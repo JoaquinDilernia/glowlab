@@ -324,3 +324,13 @@ test("config pública y widget llevan el diseño", async () => {
   assert.ok(js.includes("Retirá en Belgrano"));
   assert.ok(!js.includes("</script>"));   // escapado: no puede cortar un <script> inline
 });
+
+test("install: activa en la tienda los dos scripts del Portal (tienda #12611 y checkout #12612)", async () => {
+  const { s, llamadas } = servicio();
+  const r = resFalsa();
+  await s.install({ body: { storeId: SID } }, r);
+  const posts = llamadas.filter((x) => x.method === "POST" && x.url === `https://api.tiendanube.com/2025-03/${SID}/scripts`);
+  assert.deepEqual(posts.map((p) => JSON.parse(p.body).script_id).sort(), [12611, 12612]);
+  assert.equal(posts[0].headers.Authorization, "Bearer tok");
+  assert.deepEqual(Object.keys(r.body.install.scripts).sort(), ["checkout", "tienda"]);
+});

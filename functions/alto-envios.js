@@ -230,6 +230,9 @@ const COL_CONFIG = "promonube_alto_envios";
 const COL_FOTOS = "promonube_alto_envios_fotos";
 const TN_API = "https://api.tiendanube.com/v1";
 const EVENTO_ENVIO = "shipping/before-filter";
+// Scripts del Portal (GlowLab #23137 → Scripts). Los "auto instalados" creados después de que la tienda instaló
+// la app no se agregan solos: se activan por API (POST /2025-03/{store}/scripts {script_id}).
+const SCRIPTS_PORTAL = { tienda: 12611, checkout: 12612 };
 const USER_AGENT = "GlowLab (info@techdi.com.ar)";
 const DEFAULT_BASE = "https://glowlab-production.up.railway.app";
 const CONFIG_SEG = 30;
@@ -415,10 +418,23 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
       if (!tok) return res.status(404).json({ success: false, message: "La tienda no tiene GlowLab instalado" });
       const r = await tn("PUT", sid, "business_rules/integrations/shipping", tok, { url: `${base}/api/alto-envios/regla`, event: EVENTO_ENVIO });
       const cat = await cargarCatalogoDe(sid);
+      const scripts = {};
+      for (const [nombre, id] of Object.entries(SCRIPTS_PORTAL)) {
+        try {
+          const rs = await fetchFn(`https://api.tiendanube.com/2025-03/${sid}/scripts`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${tok}`, "User-Agent": USER_AGENT, "Content-Type": "application/json" },
+            body: JSON.stringify({ script_id: id }),
+          });
+          let txt = "";
+          try { txt = await rs.text(); } catch { txt = ""; }
+          scripts[nombre] = { id, status: rs.status, ...(rs.status >= 300 ? { respuesta: String(txt).slice(0, 300) } : {}) };
+        } catch (e) { scripts[nombre] = { id, status: 0, respuesta: e.message }; }
+      }
       const inst = {
         at: new Date().toISOString(),
         regla: { status: r.status, respuesta: r.datos ? JSON.stringify(r.datos).slice(0, 500) : null },
-        catalogo: cat.n, catalogoStatus: cat.status, ...(cat.error ? { catalogoError: cat.error } : {}),
+        catalogo: cat.n, catalogoStatus: cat.status, scripts, ...(cat.error ? { catalogoError: cat.error } : {}),
       };
       await ponerConfig(sid, { install: inst });
       return res.json({ success: r.status < 300, install: inst });
