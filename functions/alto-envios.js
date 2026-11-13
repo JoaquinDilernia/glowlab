@@ -491,6 +491,26 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
     return res.status(200).json(respuesta);
   }
 
+  // ---- GET /api/alto-envios/locales-ocultos?store=&productos=1,2 ----
+  // El calculador de envíos del carrito y del producto no pasa por la regla de TiendaNube (solo el checkout): el
+  // script de la tienda pregunta acá qué locales sacar para esos productos. Devuelve códigos del catálogo.
+  async function localesOcultos(req, res) {
+    cors(res);
+    res.set("Cache-Control", "no-store");
+    refrescarSiHaceFalta();
+    const sid = str(req.query && req.query.store);
+    const reglas = reglasActivas(cfg(sid));
+    const productos = str(req.query && req.query.productos).split(",").map((x) => x.trim()).filter((x) => /^[0-9]{1,15}$/.test(x)).slice(0, 50);
+    if (!reglas.length || !productos.length) return res.json({ success: true, ocultar: [] });
+    const items = productos.map((product_id) => ({ product_id }));
+    let { skus, faltan } = skusDelCarrito(sid, items);
+    if (faltan.length) {
+      await Promise.race([Promise.all(faltan.slice(0, 5).map((pid) => buscarProducto(sid, pid))), new Promise((r) => setTimeout(r, 1500))]);
+      ({ skus } = skusDelCarrito(sid, items));
+    }
+    return res.json({ success: true, ocultar: [...localesAQuitar(reglas, skus)] });
+  }
+
   // ---- POST /api/alto-envios/foto: cotización real que vio el script del checkout ----
   async function foto(req, res) {
     cors(res);
@@ -535,6 +555,7 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
     const datos = JSON.stringify(limpiarEstilo(cfg(req.query.store).estilo)).replace(/</g, "\x5cu003c");
     return res.send(`window.__altoEnviosCfg=${datos};
 window.__altoEnviosIconos=${JSON.stringify(ICONOS)};
+window.__altoEnviosLocales=${reglasActivas(cfg(req.query.store)).length > 0};
 ` + widgetCache);
   }
 
@@ -597,7 +618,7 @@ window.__altoEnviosIconos=${JSON.stringify(ICONOS)};
     };
   }
 
-  return { regla, foto, configPublica, widget, icono, install, cargarProductos, salud, ponerConfig, refrescarConfig, cargarCatalogos, recuperarFotos, cfg };
+  return { regla, foto, configPublica, widget, icono, install, cargarProductos, localesOcultos, salud, ponerConfig, refrescarConfig, cargarCatalogos, recuperarFotos, cfg };
 }
 
 function registerAltoEnviosRoutes(app, { db }) {
@@ -625,6 +646,7 @@ function registerAltoEnviosRoutes(app, { db }) {
   });
   app.get("/api/alto-envios-widget.js", s.widget);
   app.get("/api/alto-envios/icono/:nombre", s.icono);
+  app.get("/api/alto-envios/locales-ocultos", s.localesOcultos);
   app.post("/api/alto-envios/install", s.install);
   app.get("/api/alto-envios/salud", (req, res) => res.json({ success: true, ...s.salud(req.query.storeId) }));
   // al arrancar: config, cotizaciones guardadas y catálogo (en segundo plano)

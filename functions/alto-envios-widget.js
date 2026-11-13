@@ -30,6 +30,40 @@
   const icono = function (k) {
     return ICONOS[k] ? '<svg viewBox="0 -960 960 960" aria-hidden="true"><path d="' + ICONOS[k] + '"/></svg>' : "";
   };
+  // Reglas de locales por SKU (13/11/2026): el calculador de la tienda no pasa por la regla de TiendaNube, así que
+  // se le pregunta al backend qué locales sacar para los productos del carrito (o el del producto que se está viendo).
+  const API = "https://glowlab-production.up.railway.app";
+  const HAY_REGLAS = window.__altoEnviosLocales === true;
+  const fueraPor = {};   // "ids de productos" -> Set de códigos | "cargando"
+  const sinPrefijo = function (code) { return String(code || "").replace(/^pickup-point[_-]/, ""); };
+  function productosDe(cont) {
+    let el = cont;
+    while (el && el !== document.body && !el.querySelector(".js-cart-item")) el = el.parentElement;
+    const enCarrito = el && el !== document.body && el !== document.documentElement;
+    let ids = [];
+    if (enCarrito) {
+      ids = Array.from(el.querySelectorAll('.js-cart-item[data-store^="cart-item-"]')).map(function (x) { return x.dataset.store.replace("cart-item-", ""); });
+    } else if (window.LS && LS.product && LS.product.id) ids = [String(LS.product.id)];
+    return ids.filter(function (x) { return /^[0-9]+$/.test(x); }).sort().filter(function (x, i, a) { return a.indexOf(x) === i; });
+  }
+  // Set de códigos a sacar, o null mientras se consulta (después se vuelve a armar).
+  function localesFuera(cont) {
+    if (!HAY_REGLAS) return new Set();
+    const ids = productosDe(cont);
+    if (!ids.length) return new Set();
+    const k = ids.join(",");
+    if (fueraPor[k] instanceof Set) return fueraPor[k];
+    if (fueraPor[k] !== "cargando") {
+      fueraPor[k] = "cargando";
+      const tienda = (window.LS && LS.store && LS.store.id) || "";
+      fetch(API + "/api/alto-envios/locales-ocultos?store=" + tienda + "&productos=" + k)
+        .then(function (r) { return r.json(); })
+        .then(function (j) { fueraPor[k] = new Set((j && j.ocultar) || []); })
+        .catch(function () { fueraPor[k] = new Set(); })
+        .then(function () { correr(); });
+    }
+    return null;
+  }
   const T = E.tamano;          // 14 = tamaño original
   const R = E.radio;           // radio de los grupos y de la opción elegida
   const FAMILIA = E.fuente === "inherit" ? "inherit" : "'" + E.fuente + "', sans-serif";
@@ -70,6 +104,7 @@
   .alto-env-todas{display:none;margin:-2px 0 12px 64px;background:none;border:0;padding:0;color:#333;text-decoration:underline;cursor:pointer;font:inherit;font-size:${px(T * 12 / 14)}}
   .alto-env-g.abierto + .alto-env-todas{display:block}
   .alto-env-oculto{display:none !important}
+  .alto-env-fuera{display:none !important}
   /* el formulario "Cambiar CP" del tema queda invisible (opacidad 0) pero encima de la lista: su link
      "No sé mi código postal" (correoargentino.com.ar) recibía los toques sobre el título del primer grupo
      (visto por Pedro en el celular, 27/10/2026). Mientras está oculto, no recibe toques.
@@ -208,7 +243,12 @@
   const verTodas = {};   // grupo → true si el cliente tocó "Ver N opciones más"
 
   function armar(cont) {
-    const ops = leer(cont);
+    const fuera = localesFuera(cont);
+    if (fuera === null) return;   // esperando al backend: se arma cuando contesta
+    const todasOps = leer(cont);
+    const ops = todasOps.filter(function (o) { return !fuera.has(sinPrefijo(o.code)); });
+    // el local oculto tampoco tiene que quedar en la lista del tema (si estaba elegido, el tema lo manda al checkout)
+    todasOps.forEach(function (o) { o.li.classList.toggle("alto-env-fuera", fuera.has(sinPrefijo(o.code))); });
     const ul = cont.querySelector("ul.radio-button-container");
     if (ops.length < 2 || !ul) {
       // con 0 o 1 opciones no hay nada que agrupar: si quedó un desplegable viejo se saca y se vuelve a mostrar
@@ -217,7 +257,7 @@
       if (viejo) { viejo.remove(); ocultar(cont, false); }
       return;
     }
-    const firma = ops.map(function (o) { return o.code + ":" + o.precioTxt + ":" + o.fecha; }).join(",");
+    const firma = ops.map(function (o) { return o.code + ":" + o.precioTxt + ":" + o.fecha; }).join(",") + "|" + Array.from(fuera).join(",");
     const previo = cont.querySelector(".alto-env");
     if (previo && previo.dataset.firma === firma) {
       // el tema a veces vuelve a dibujar sus bloques sin cambiar las opciones: hay que volver a esconderlos

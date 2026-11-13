@@ -457,3 +457,26 @@ test("regla de locales + ocultar con cotización real: se aplican las dos", asyn
   assert.equal(codes.length, 9);   // 10 que deja "ocultar" menos Belgrano
   assert.ok(!codes.includes(BELGRANO));
 });
+
+test("locales ocultos para el carrito/producto (el calculador de la tienda no pasa por la regla de TiendaNube)", async () => {
+  F.borrarTodo();
+  const { s } = servicioConProductos();
+  await s.ponerConfig(SID, { reglasLocales: [REGLA] });
+  await s.cargarProductos(SID);
+  const r = resFalsa();
+  await s.localesOcultos({ query: { store: SID, productos: "20,10" } }, r);
+  assert.deepEqual(r.body, { success: true, ocultar: [BELGRANO] });
+  assert.equal(r.headers["Access-Control-Allow-Origin"], "*");
+  const r2 = resFalsa();
+  await s.localesOcultos({ query: { store: SID, productos: "20" } }, r2);
+  assert.deepEqual(r2.body.ocultar, []);
+  const r3 = resFalsa();   // producto nuevo: se busca
+  await s.localesOcultos({ query: { store: SID, productos: "30" } }, r3);
+  assert.deepEqual(r3.body.ocultar, [BELGRANO]);
+  const r4 = resFalsa();   // otra tienda o basura: nada
+  await s.localesOcultos({ query: { store: "1", productos: "10" } }, r4);
+  assert.deepEqual(r4.body.ocultar, []);
+  const r5 = resFalsa();
+  await s.localesOcultos({ query: { store: SID, productos: "abc,<x>" } }, r5);
+  assert.deepEqual(r5.body.ocultar, []);
+});
