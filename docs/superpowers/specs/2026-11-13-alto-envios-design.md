@@ -58,10 +58,10 @@ Solo cambia dónde corre: el backend de GlowLab en Railway (Node + Firestore), e
   - `GET /api/alto-envios-widget.js?store=`: el `alto-envios.js` del tema sin cambios. Si `enabled` está apagado,
     devuelve un script vacío.
   - `POST /api/alto-envios/install {storeId}`: con el token de `promonube_stores`, hace PUT
-    `business_rules/integrations/shipping` (url = `/api/alto-envios/regla`), instala el script de tienda (POST
-    `/scripts`, sin duplicar), carga el catálogo y devuelve el estado de cada paso.
-  - `POST /api/alto-envios/uninstall {storeId}`: saca el script de tienda y pone `ocultar=false`. La regla queda
-    registrada, pero sin `ocultar` contesta 204 y no oculta nada.
+    `business_rules/integrations/shipping` (url = `/api/alto-envios/regla`), carga el catálogo y devuelve el
+    estado de cada paso. Los scripts no se instalan acá: los pone el Portal (auto instalados).
+  - Apagar = `enabled=false` y `ocultar=false` desde el panel. La regla queda registrada, pero sin `ocultar`
+    contesta 204 y no oculta nada.
   - `GET /api/alto-envios/salud?storeId=`: cantidad de cotizaciones, tamaño del catálogo, últimas ~200
     decisiones (fuente / ocultas / mostradas / ms) y el resultado de la última instalación.
 - **Datos (Firestore):**
@@ -82,9 +82,22 @@ Solo cambia dónde corre: el backend de GlowLab en Railway (Node + Firestore), e
   consulta `/api/alto-envios/config` (si `enabled` está apagado, no hace nada). La foto se manda siempre que el
   script corra, porque el filtro la necesita.
 - Build con esbuild a `dist/main.js`, igual que `nube-sdk-checkout-notice`.
-- **Paso del usuario:** subirlo al Portal de Socios de GlowLab como script nuevo (ubicación checkout) y activarlo.
-  Si el Portal no deja agregar un script sin revisión, alternativa: subirlo como versión nueva del script 6288
-  (`checkout-notice`). El aviso de Factura A hoy corre por el bootstrap de "Códigos externos" y no por ese script.
+- **Paso del usuario:** subirlo al Portal de Socios de GlowLab (app 23137) como script nuevo: NubeSDK, checkout,
+  onfirstinteraction, auto instalado. Visto en el Portal el 13/11/2026: la app ya tiene 18 scripts y varios se
+  agregaron después de publicarla (local-stock #6266, Precios y Cuotas #9837, category-carousel #10245), así que
+  agregar uno no pide homologación. No se recicla "PromoNube Checkout Notice" (#6542): está activo como NubeSDK.
+
+### Carrito y producto: script de Portal + widget
+
+- `alto-envios-version.js` (raíz del repo, igual que `local-stock-version.js`): un bootstrap que detecta el
+  storeId, corta si no es 2547699 y carga `/api/alto-envios-widget.js?store=`.
+- **Paso del usuario:** subirlo al Portal como script nuevo: store, onfirstinteraction, auto instalado. Ya no hace
+  falta el POST `/scripts` desde install.
+
+### URL del backend
+
+Todo lo nuevo usa `https://glowlab-production.up.railway.app` (Railway). Los scripts viejos apuntan a
+`apipromonube-jlfopowzaq-uc.a.run.app`, que es el deploy viejo de Cloud Run: el código nuevo no llega ahí.
 
 ### Panel (frontend)
 
@@ -99,8 +112,10 @@ Hace falta porque los datos de producción los cambia el usuario desde el panel.
 
 ## Restricciones y riesgos
 
-- **Reglas de negocio tiene que estar habilitado para la app GlowLab** (lo habilita Soporte de Partners). Si no lo
-  está, el PUT de install falla y el panel lo muestra. Las partes 1 y 2 funcionan igual.
+- **Reglas de negocio:** no se pide nada de antemano. El token de GlowLab ya tiene `read_shipping`. Que el PUT de
+  install dé OK no alcanza, porque el paquete comprobó que TiendaNube acepta incluso registros inventados. La
+  prueba es que lleguen consultas a `/regla`, y `/salud` las cuenta. Si no llegan, recién ahí se le pide a Soporte
+  de Partners. Mientras tanto, las partes 1 y 2 funcionan igual.
 - La regla tiene que contestar en menos de 800 ms. Se resuelve todo en memoria y Railway no se duerme.
 - Conocido de TiendaNube y aceptado: en el paso de pago, "Cambiar" abre la lista nativa. Las opciones de retiro
   no aceptan nombres propios.
