@@ -39,6 +39,54 @@ export function App(nube) {
 	// El checkout identifica las opciones por su code (state.shipping.selected trae el code, no el id largo).
 	const clave = (o) => String(o.code || o.id);
 
+	// ---- reglas de locales por SKU (16/11/2026) ----
+	// La regla shipping/before-filter depende de que TiendaNube llame al backend, y dejó de llamar el 13/11 a la
+	// tarde (entraron compras de muebles con retiro en Belgrano). El script se lo pregunta directo al backend (igual
+	// que el carrito): saca esos locales de los desplegables y, si igual queda uno elegido, lo cambia y frena el pago.
+	let ocultar = new Set();     // códigos de catálogo de los locales que no van con estos productos
+	let ocultarDe = null;        // ids de productos para los que ya se preguntó
+	let bloqueado = false;
+	let corregido = "";
+	const codigoLocal = (o) => String(o.code || "").replace(/^pickup-point[_-]/, "");
+	const prohibida = (o) => ocultar.size > 0 && (ocultar.has(codigoLocal(o)) || ocultar.has(String(o.code || "")));
+	function pedirOcultos(st) {
+		const ids = [...new Set((st.cart?.items || []).map((i) => String(i.product_id || "")).filter((x) => /^\d+$/.test(x)))].sort();
+		const k = ids.join(",");
+		if (k === ocultarDe) return;
+		ocultarDe = k;
+		if (!ids.length) { ocultar = new Set(); return; }
+		fetch(`${BASE}/api/alto-envios/locales-ocultos?store=${storeId}&productos=${k}`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then((d) => {
+				if (ocultarDe !== k) return;
+				ocultar = new Set(((d && d.ocultar) || []).map(String));
+				ultimaFirma = ""; preseleccionado = "";   // redibujar y re-preseleccionar sin los locales sacados
+				evaluar();
+			})
+			.catch(() => { if (ocultarDe === k) ocultarDe = null; });   // se reintenta en el próximo cambio
+	}
+	// Si la elegida es un local prohibido: elegir la más barata a domicilio y no dejar pagar mientras siga elegido.
+	function controlarElegida(st, opciones) {
+		const sel = String(st.shipping?.selected || "");
+		const mala = sel ? opciones.find((o) => clave(o) === sel && prohibida(o)) : null;
+		if (mala) {
+			if (!bloqueado) {
+				bloqueado = true;
+				nube.send("cart:validate", () => ({ cart: { validation: { status: "fail",
+					reason: `El retiro en ${titulo(String(mala.name || "este local").replace(/^altorancho\s+/i, ""))} no está disponible para algunos productos de tu carrito. Elegí otra opción de envío.` } } }));
+			}
+			if (corregido !== sel) {
+				corregido = sel;
+				const { barata } = elegir(opciones.filter((o) => o.type !== "pickup" && !prohibida(o)));
+				const otra = barata || opciones.find((o) => !prohibida(o));
+				if (otra) { seleccionPropia = clave(otra); nube.send("shipping:select", () => ({ shipping: { selected: clave(otra) } })); }
+			}
+		} else {
+			corregido = "";
+			if (bloqueado) { bloqueado = false; nube.send("cart:validate", () => ({ cart: { validation: { status: "success" } } })); }
+		}
+	}
+
 	// Componentes de UI sin JSX: objetos {type, ...props, __internalId} como arma @tiendanube/nube-sdk-ui.
 	function hash(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = (h * 33) ^ str.charCodeAt(i); return (h >>> 0).toString(36); }
 	function ui(type, props) {
@@ -132,7 +180,7 @@ export function App(nube) {
 	function agrupado(st) {
 		// ojo: los retiros en local vienen con shippable:false y method "pickup-point" (no filtrar por shippable)
 		// ojo: TiendaNube marca hidden:true a lo que pliega en "ver más"; no es un ocultamiento real, se usan todas.
-		const ops = (st.shipping?.options || []).filter((o) => o);
+		const ops = (st.shipping?.options || []).filter((o) => o && !prohibida(o));
 		if (!ops.length) return;
 		const grupos = { domicilio: [], punto: [], local: [] };
 		for (const o of ops) { const c = clasificar(o); grupos[c.grupo].push({ o, transp: c.transp, p: Number(o.price) || 0, d: diasCk(o) }); }
@@ -269,8 +317,11 @@ export function App(nube) {
 			const opciones = (st.shipping?.options || []).filter((o) => o);
 			if (!opciones.length) return;
 			foto(st, opciones);
+			pedirOcultos(st);
+			controlarElegida(st, opciones);   // corre aunque los desplegables estén apagados
 			if (!habilitado) return;
-			const visibles = opciones; // hidden de TiendaNube = plegada en "ver más", no oculta
+			// hidden de TiendaNube = plegada en "ver más", no oculta; los locales de la regla sí se sacan
+			const visibles = opciones.filter((o) => !prohibida(o));
 			const labels = {};
 			const nombreDe = (o) => nombreCompleto(o) || o.name;
 			// OJO (probado 27/10/2026): el checkout NO aplica custom_labels a las opciones type "pickup"; se mandan igual.
