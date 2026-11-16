@@ -501,8 +501,10 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
     const sid = str(req.query && req.query.store);
     const reglas = reglasActivas(cfg(sid));
     const productos = str(req.query && req.query.productos).split(",").map((x) => x.trim()).filter((x) => /^[0-9]{1,15}$/.test(x)).slice(0, 50);
-    if (!reglas.length || !productos.length) return res.json({ success: true, ocultar: [] });
-    const items = productos.map((product_id) => ({ product_id }));
+    const variantes = str(req.query && req.query.variantes).split(",").map((x) => x.trim()).filter((x) => /^[0-9]{1,15}$/.test(x)).slice(0, 50);
+    if (!reglas.length || (!productos.length && !variantes.length)) return res.json({ success: true, ocultar: [] });
+    // variantes primero (las tiene siempre el checkout); los productos se buscan si no están en memoria
+    const items = [...variantes.map((variant_id) => ({ variant_id })), ...productos.map((product_id) => ({ product_id }))];
     let { skus, faltan } = skusDelCarrito(sid, items);
     if (faltan.length) {
       await Promise.race([Promise.all(faltan.slice(0, 5).map((pid) => buscarProducto(sid, pid))), new Promise((r) => setTimeout(r, 1500))]);

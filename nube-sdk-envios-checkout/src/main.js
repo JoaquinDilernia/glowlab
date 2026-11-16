@@ -49,17 +49,31 @@ export function App(nube) {
 	let corregido = "";
 	const codigoLocal = (o) => String(o.code || "").replace(/^pickup-point[_-]/, "");
 	const prohibida = (o) => ocultar.size > 0 && (ocultar.has(codigoLocal(o)) || ocultar.has(String(o.code || "")));
+	// Regla fija en el script (16/11/2026): en el checkout real el pedido al backend no alcanzaba (en el worker de
+	// NubeSDK los items no siempre traen product_id). Con el SKU del carrito alcanza, sin red.
+	const REGLAS_FIJAS = [{ prefijos: ["M"], locales: ["01K1DYMNDS36MF0N96D7R5M0YZ"] }];   // muebles y sillas sin Belgrano
+	function fijos(st) {
+		const skus = (st.cart?.items || []).map((i) => String(i.sku || "").trim().toUpperCase()).filter(Boolean);
+		const fuera = [];
+		for (const r of REGLAS_FIJAS) if (skus.some((s) => r.prefijos.some((p) => s.startsWith(p)))) fuera.push(...r.locales);
+		return fuera;
+	}
 	function pedirOcultos(st) {
-		const ids = [...new Set((st.cart?.items || []).map((i) => String(i.product_id || "")).filter((x) => /^\d+$/.test(x)))].sort();
-		const k = ids.join(",");
+		const items = st.cart?.items || [];
+		const ids = [...new Set(items.map((i) => String(i.product_id || "")).filter((x) => /^\d+$/.test(x)))].sort();
+		const vars = [...new Set(items.map((i) => String(i.variant_id || "")).filter((x) => /^\d+$/.test(x)))].sort();
+		const base = fijos(st);
+		const k = ids.join(",") + "|" + vars.join(",") + "|" + base.join(",");
 		if (k === ocultarDe) return;
 		ocultarDe = k;
-		if (!ids.length) { ocultar = new Set(); return; }
-		fetch(`${BASE}/api/alto-envios/locales-ocultos?store=${storeId}&productos=${k}`)
+		ocultar = new Set(base);
+		if (base.length) { ultimaFirma = ""; preseleccionado = ""; }
+		if (!ids.length && !vars.length) return;
+		fetch(`${BASE}/api/alto-envios/locales-ocultos?store=${storeId}&productos=${ids.join(",")}&variantes=${vars.join(",")}`)
 			.then((r) => (r.ok ? r.json() : null))
 			.then((d) => {
 				if (ocultarDe !== k) return;
-				ocultar = new Set(((d && d.ocultar) || []).map(String));
+				ocultar = new Set([...base, ...((d && d.ocultar) || []).map(String)]);
 				ultimaFirma = ""; preseleccionado = "";   // redibujar y re-preseleccionar sin los locales sacados
 				evaluar();
 			})
