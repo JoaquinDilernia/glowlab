@@ -308,7 +308,7 @@ const TN_API = "https://api.tiendanube.com/v1";
 const EVENTO_ENVIO = "shipping/before-filter";
 // Scripts del Portal (GlowLab #23137 → Scripts). Los "auto instalados" creados después de que la tienda instaló
 // la app no se agregan solos: se activan por API (POST /2025-03/{store}/scripts {script_id}).
-const SCRIPTS_PORTAL = { tienda: 12611, checkout: 12612 };
+const SCRIPTS_PORTAL = { tienda: 12611, checkout: 12737 };   // checkout: 12737 reemplaza al 12612 (16/11/2026: seguía corriendo código viejo)
 const USER_AGENT = "GlowLab (info@techdi.com.ar)";
 const DEFAULT_BASE = "https://glowlab-production.up.railway.app";
 const CONFIG_SEG = 30;
