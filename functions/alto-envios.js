@@ -438,6 +438,7 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
     return n;
   }
 
+  const diag = [];
   function anotar(d) {
     decisiones.unshift(d);
     if (decisiones.length > MAX_DECISIONES) decisiones.length = MAX_DECISIONES;
@@ -504,6 +505,8 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
     const variantes = str(req.query && req.query.variantes).split(",").map((x) => x.trim()).filter((x) => /^[0-9]{1,15}$/.test(x)).slice(0, 50);
     if (!reglas.length || (!productos.length && !variantes.length)) return res.json({ success: true, ocultar: [] });
     // variantes primero (las tiene siempre el checkout); los productos se buscan si no están en memoria
+    diag.unshift({ t: new Date().toISOString(), tipo: "ocultos", productos: productos.join(","), variantes: variantes.join(",") });
+    if (diag.length > 20) diag.length = 20;
     const items = [...variantes.map((variant_id) => ({ variant_id })), ...productos.map((product_id) => ({ product_id }))];
     let { skus, faltan } = skusDelCarrito(sid, items);
     if (faltan.length) {
@@ -526,6 +529,9 @@ function crearServicio({ db, fetchFn = globalThis.fetch, base = process.env.ALTO
     let p;
     try { p = JSON.parse(crudo || "{}"); } catch { return res.status(400).end(); }
     if (!p || typeof p !== "object") return res.status(400).end();
+    // diagnóstico (16/11/2026): qué trae el carrito en el worker del checkout (sin datos personales)
+    diag.unshift({ t: new Date().toISOString(), tipo: "foto", items: (Array.isArray(p.items) ? p.items : []).slice(0, 5).map((i) => Object.keys(i || {}).join("+") + ":" + str(i && i.variant_id)), opciones: (p.opciones || []).length });
+    if (diag.length > 20) diag.length = 20;
     // solo carritos por los que TiendaNube ya nos consultó: una foto inventada no puede ocultar nada
     if (!visto(p.store_id, p.cart_id)) { estado.rechazadas++; return res.status(403).end(); }
     const opciones = Array.isArray(p.opciones) ? p.opciones : [];
@@ -616,6 +622,7 @@ window.__altoEnviosLocales=${reglasActivas(cfg(req.query.store)).length > 0};
       opcionesCatalogo: Object.entries(catalogo(sid)).map(([code, e]) => ({ code, nombre: e.nombre, carrier: e.carrier })),
       skus: estado.skus.get(sid) || null,
       fotos: { aceptadas: estado.aceptadas, rechazadas: estado.rechazadas },
+      diag,
       decisiones: decisiones.filter((d) => d.storeId === sid).slice(0, 50),
     };
   }
