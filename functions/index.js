@@ -811,6 +811,7 @@ require('./style-top-header').registerTopHeaderRoute(app, { checkStoreActive, ge
 registerStyleMenuRoutes(app, {
   getStoreDoc: async (id) => { const d = await db.collection('promonube_stores').doc(String(id)).get(); return d.exists ? d.data() : null; },
   getCachedData: (key, fn) => getCachedData(key, fn),
+  invalidate: (key) => _configCache.delete(key),
 });
 
 // Cuenta Regresiva - barra con contador (ubicacion pensada para Ipanema / Alto Rancho)

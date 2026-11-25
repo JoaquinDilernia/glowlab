@@ -446,6 +446,43 @@ function parseMenuTree(html) {
   }).filter((x) => x.label);
 }
 
+// Plan B cuando la home no muestra el menu (tienda cerrada con contraseña):
+// arbol a partir de las categorias visibles de la API, en el orden que vienen.
+function localizedName(name) {
+  if (!name || typeof name !== "object") return text(name, 80);
+  return text(name.es_AR || name.es || Object.values(name).find((v) => v && String(v).trim()) || "", 80);
+}
+function treeFromCategories(categories) {
+  const list = Array.isArray(categories) ? categories : [];
+  const visible = (c) => !c.visibility || c.visibility === "visible";
+  const byParent = new Map();
+  for (const c of list) {
+    if (!c || !visible(c)) continue;
+    const p = Number(c.parent) || 0;
+    if (!byParent.has(p)) byParent.set(p, []);
+    byParent.get(p).push(c);
+  }
+  return (byParent.get(0) || []).map((c) => ({
+    label: localizedName(c.name),
+    children: (byParent.get(Number(c.id)) || []).map((s) => localizedName(s.name)).filter(Boolean),
+  })).filter((x) => x.label);
+}
+async function fetchCategoryTree(storeId, store) {
+  if (!store || !store.accessToken) return [];
+  const all = [];
+  for (let page = 1; page <= 5; page++) {
+    const r = await fetch(`https://api.tiendanube.com/v1/${storeId}/categories?per_page=200&page=${page}&fields=id,name,parent,visibility`, {
+      headers: { Authentication: `bearer ${store.accessToken}`, "User-Agent": "GlowLab (info@techdi.com.ar)" },
+    });
+    if (!r.ok) break;
+    const batch = await r.json();
+    if (!Array.isArray(batch) || !batch.length) break;
+    all.push(...batch);
+    if (batch.length < 200) break;
+  }
+  return treeFromCategories(all);
+}
+
 function storeHomeUrl(store) {
   const c = store || {};
   const domains = Array.isArray(c.domains) ? c.domains : [];
@@ -470,7 +507,7 @@ async function resolveStoreUrl(storeId, { getStoreDoc, getCachedData }) {
   return url;
 }
 
-function registerStyleMenuRoutes(app, { getStoreDoc, getCachedData }) {
+function registerStyleMenuRoutes(app, { getStoreDoc, getCachedData, invalidate }) {
   // Style > Banners (editor v2): bloques de banner de la home para elegir en el panel.
   app.get("/api/style/home-banners", async (req, res) => {
     const storeId = String(req.query.storeId || "");
@@ -514,13 +551,26 @@ function registerStyleMenuRoutes(app, { getStoreDoc, getCachedData }) {
     if (!storeId) return res.status(400).json({ success: false, message: "storeId requerido" });
     try {
       const url = await resolveStoreUrl(storeId, { getStoreDoc, getCachedData });
-      if (!url) return res.json({ success: true, tree: [], message: "La tienda no tiene URL cargada" });
-      const tree = await getCachedData(`menu-tree:${storeId}`, async () => {
-        const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (GlowLab menu reader)" }, redirect: "follow" });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return parseMenuTree(await r.text());
+      const result = await getCachedData(`menu-tree:${storeId}`, async () => {
+        if (url) {
+          try {
+            const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (GlowLab menu reader)" }, redirect: "follow" });
+            if (r.ok) {
+              const html = await r.text();
+              const tree = parseMenuTree(html);
+              if (tree.length) return { tree, source: "store" };
+            }
+          } catch (e) {
+            console.error("menu-tree html:", e.message);
+          }
+        }
+        // Tienda cerrada con contraseña (o HTML ilegible): categorias de la API.
+        const tree = await fetchCategoryTree(storeId, await getStoreDoc(storeId));
+        return { tree, source: "categories" };
       });
-      res.json({ success: true, url, tree });
+      // No dejamos cacheado el plan B: apenas abran la tienda se lee el menu real.
+      if (result.source !== "store" && invalidate) invalidate(`menu-tree:${storeId}`);
+      res.json({ success: true, url, tree: result.tree, source: result.source });
     } catch (error) {
       console.error("menu-tree:", error.message);
       res.json({ success: false, tree: [], message: "No se pudo leer el menú de la tienda" });
@@ -536,6 +586,7 @@ module.exports = {
   menuPayload,
   buildMenuScript,
   parseMenuTree,
+  treeFromCategories,
   storeHomeUrl,
   registerStyleMenuRoutes,
 };

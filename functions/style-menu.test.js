@@ -94,3 +94,17 @@ test("URL de la home desde la respuesta de Tiendanube", () => {
   assert.equal(sm.storeHomeUrl({ domains: ["altorancho.com"], original_domain: "altorancho.mitiendanube.com" }), "https://altorancho.com/");
   assert.equal(sm.storeHomeUrl({ original_domain: "altorancho.mitiendanube.com" }), "https://altorancho.mitiendanube.com/");
 });
+
+test("tienda cerrada: arbol desde las categorias visibles, en orden, con nombre localizado", () => {
+  const tree = sm.treeFromCategories([
+    { id: 1, name: { es_AR: "Black Days" }, parent: 0, visibility: "visible" },
+    { id: 2, name: { es_AR: "Muebles hasta 30%OFF" }, parent: 1, visibility: "visible" },
+    { id: 3, name: { es_AR: "Oculta" }, parent: 1, visibility: "hidden" },
+    { id: 4, name: { en_US: "", es_AR: "Alto Cyber." }, parent: 0, visibility: "hidden" },
+    { id: 5, name: { en_US: "Sillas", es_AR: "" }, parent: null },
+  ]);
+  assert.deepEqual(tree, [
+    { label: "Black Days", children: ["Muebles hasta 30%OFF"] },
+    { label: "Sillas", children: [] },
+  ]);
+});
