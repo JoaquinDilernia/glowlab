@@ -51,7 +51,7 @@ export default function CountdownBarPreview({ config: c, endMs, now, mobile = fa
       }}
     >
       {c.message && (
-        <p style={{ margin: 0, fontSize: px(s.msg), fontWeight: 600, letterSpacing: '.01em', flexBasis: mobile && !shortMsg ? '100%' : 'auto' }}>
+        <p style={{ margin: 0, color: c.textColor, fontSize: px(s.msg), fontWeight: 600, letterSpacing: '.01em', flexBasis: mobile && !shortMsg ? '100%' : 'auto' }}>
           {c.message}
         </p>
       )}

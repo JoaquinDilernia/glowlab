@@ -288,7 +288,7 @@ function storefrontCountdown(LIST, API, SIZES, MOBILE_SCALE) {
       "animation:pnCdIn .35s cubic-bezier(.16,1,.3,1)}",
       bar + ".pn-cd-bottom{position:fixed;left:0;right:0;bottom:0;z-index:9990;padding-bottom:calc(" + s.padY + "px + env(safe-area-inset-bottom,0px));box-shadow:0 -4px 16px rgba(0,0,0,.15);animation-name:pnCdUp}",
       bar + " *{box-sizing:border-box;font-family:inherit}",
-      bar + " .pn-cd-msg{font-size:" + s.msg + "px;font-weight:600;letter-spacing:.01em;margin:0}",
+      bar + " .pn-cd-msg{color:" + c.fg + ";font-size:" + s.msg + "px;font-weight:600;letter-spacing:.01em;margin:0}",
       bar + " .pn-cd-timer{display:flex;align-items:center;gap:4px;color:" + c.timer + ";font-variant-numeric:tabular-nums}",
       bar + " .pn-cd-unit{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}",
       bar + " .pn-cd-num{font-size:" + s.digit + "px;font-weight:700}",
